@@ -63,7 +63,10 @@ prompts/03의 위임 규칙을 따른다: 기계적 대량 작업은 bulk-worker
 - 코드와 소스 밖 증거(데이터·설정·프론트·로그)로 확인할 수 없는 정책만
   SECURITY_GRILL_GUIDE.md에 따라 한 번에 하나씩, 보안 용어가 아니라
   업무 사실로 질문한다. 사용자가 모르면 동작을 보존하는 기본안을
-  미확인으로 적용하고 결정 주체를 기록한다.
+  미확인으로 적용한다. 결정은 `data/decisions.json`에 decidedBy와 함께
+  기록하고 sync한다 — 미확인 결정에 관찰 장치가 없으면 validate 에러.
+- 큰 findings.json은 읽지 않는다. `tools/sast_toolkit.py query`로 그룹·
+  상태별 항목만 받고, 현황은 `query --summary`로 본다.
 - 상태의 기준은 `security-results/`이며 `data/progress.json`은 이와
   일치해야 한다. 갱신 후 `sync`와 `validate`를 실행한다.
 - 이전 차수 산출물이 있으면 fingerprint 기준으로 오탐·예외 결론을
@@ -75,6 +78,6 @@ prompts/03의 위임 규칙을 따른다: 기계적 대량 작업은 bulk-worker
 모든 산출물은 프로젝트의 `sast-remediation-toolkit/` 아래에 생성된다:
 `project/`(분석·정책), `data/`(대시보드 데이터),
 `security-guides/`·`security-results/`(항목별 기록),
-`evidence/`(제출용 xlsx). 사용자 안내 문서는 `USAGE.md` /
-`USAGE.html`, 동작 원리 설명은 `docs/HOW_IT_WORKS.md`다. 사용자가
+`evidence/`(제출용 xlsx). 사용자 안내 문서는 `USAGE.md`(정본)와
+거기서 생성되는 `USAGE.html`, 동작 원리 설명은 `docs/HOW_IT_WORKS.md`다. 사용자가
 스킬의 동작 방식이나 원리를 물으면 이 문서를 기반으로 답한다.

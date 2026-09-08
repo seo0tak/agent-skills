@@ -29,6 +29,7 @@
 | `data/input-validation.json` | 에러 |
 | `data/project-profile.json` | 에러 |
 | `data/progress.json` | 에러 |
+| `data/decisions.json` | 에러 (없으면 경고 — 1.9 이전 프로젝트) |
 | `data/findings.json` (항목별) | 경고 |
 | `security-guides/*.json` | 경고 |
 | `security-results/*.json` | 경고 |
@@ -62,10 +63,26 @@ breaking 변경이므로 다음 메이저까지 보류한다.
    마이그레이션 대상이 드러난다 — 위 검사 수준 표대로 레코드류는
    경고로만 나오므로 에러 0건을 통과로 오해하면 안 된다
 
+## 마이그레이션 기록
+
+### 1.8 → 1.9: 결정 로그가 JSON 정본이 됨
+
+- `project/DECISION_LOG.md`를 손으로 쓰던 방식에서 `data/decisions.json`
+  정본 + sync 생성으로 바뀌었다. 하위호환: 손으로 쓴 DECISION_LOG.md는
+  sync가 덮어쓰지 않고, validate가 경고만 낸다.
+- 옮기는 법: 기존 md의 결정마다 `decisions.json`에 항목을 추가한다
+  (`schemas/decisions.schema.json`). `결정 주체`가 없던 옛 결정은
+  실제로 사용자가 확인했으면 `user`, 추천을 그대로 적용했으면
+  `baseline-default`로 두고 관찰 장치·재검토 조건을 채운다. 옮긴 뒤 md를
+  지우고 `sync`.
+- `data/decisions.json`이 없으면 `init`이 만든다(다른 산출물은 건드리지
+  않음).
+
 ## 배포·롤백
 
 - 배포: 저장소 push → 각 PC `claude plugin marketplace update`
-- 사전 검증: push 전에 로컬 경로 마켓플레이스로 테스트
+- 사전 검증: push 전에 `python3 -m unittest tools.test_toolkit`가 전부
+  통과해야 하고, 로컬 경로 마켓플레이스로 설치 테스트
   (`claude plugin marketplace add <로컬경로>`)
 - 롤백: `git revert` 후 push → update. 산출물은 하위호환 원칙 덕에
   구버전 툴킷으로도 읽힌다

@@ -156,8 +156,9 @@ PDF에서는 체커별로 다음을 추출합니다.
   "모르겠다"를 항상 둡니다.
 - 모르면 동작을 보존하는 기본안을 미확인으로 적용하고 관찰 로그와
   트리거 가능한 재검토 조건을 붙입니다.
-- 답변은 `project/PROJECT_SECURITY_POLICY.md`와
-  `project/DECISION_LOG.md`에 결정 주체와 함께 기록합니다.
+- 답변은 `project/PROJECT_SECURITY_POLICY.md`와 `data/decisions.json`에
+  결정 주체(decidedBy)와 함께 기록하고 sync로 `DECISION_LOG.md`를
+  생성합니다. 미확인 결정에 관찰 장치가 없으면 validate 에러입니다.
 - 이미 확정된 정책은 동일 범위의 다른 항목에 재사용합니다.
 
 ## 5단계: 초기 분류와 작업 묶음

@@ -53,9 +53,10 @@
    바로잡고 다시 실행합니다.
 5. 생성된 `project/PROJECT_ANALYSIS.md`와
    `SECURITY_CHECKLIST.html`을 확인합니다.
-6. AI가 코드만으로 결정할 수 없는 정책을 질문하면 한 번에 하나씩
-   답합니다. 답변은 `project/PROJECT_SECURITY_POLICY.md`와
-   `project/DECISION_LOG.md`에 누적됩니다.
+6. AI가 코드와 증거로 결정할 수 없는 정책을 업무 사실로 질문하면 한
+   번에 하나씩 답합니다("모르겠다"도 답입니다). 답변은
+   `project/PROJECT_SECURITY_POLICY.md`와 `data/decisions.json`에
+   누적되고, `project/DECISION_LOG.md`는 거기서 생성됩니다.
 7. 이전 차수 산출물이 있으면 `prompts/06-carry-over.md`로 오탐·예외
    결론을 먼저 이월합니다.
 8. 초기 분석을 확인한 후 `prompts/03-remediation-wave.md`로 실제 조치를
@@ -112,7 +113,7 @@ sast-remediation-toolkit/
 - `project/INPUT_VALIDATION.md`
 - `project/PROJECT_ANALYSIS.md`
 - `project/PROJECT_SECURITY_POLICY.md`
-- `project/DECISION_LOG.md`
+- `project/DECISION_LOG.md` (생성물 — 정본은 `data/decisions.json`)
 - `project/WORK_GROUPS.md`
 - `data/input-validation.json` 및 `.js`
 - `data/project-profile.json` 및 `.js`

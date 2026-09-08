@@ -8,7 +8,7 @@
 - data/progress.json
 - security-results/*.json
 - project/PROJECT_SECURITY_POLICY.md
-- project/DECISION_LOG.md
+- data/decisions.json (결정 근거 참조 ID의 정본)
 
 컬럼 구성과 정렬은 `templates/evidence-columns.md` 정의를 그대로
 따릅니다. 임의로 컬럼을 추가·삭제·재배치하지 않습니다.

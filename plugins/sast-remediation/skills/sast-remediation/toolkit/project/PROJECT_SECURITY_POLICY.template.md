@@ -1,3 +1,11 @@
+---
+type: sast/security-policy
+title: Project Security Policy
+description: 현재 프로젝트에서 사용자와 함께 확정한 정책 (공통 기준과의 차이)
+timestamp:
+tags: [sast]
+---
+
 # Project Security Policy
 
 ## 적용 범위

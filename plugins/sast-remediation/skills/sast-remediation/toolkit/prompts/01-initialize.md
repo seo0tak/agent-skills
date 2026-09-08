@@ -88,8 +88,10 @@ tags: [sast, <프로젝트명>]
 ---
 ```
 
-DECISION_LOG.md는 OKF log 규약을 따릅니다: 날짜별 그룹, 최신이 위,
-결정마다 결정 ID·질문·답·근거·영향 체커를 기록합니다.
+결정 로그는 직접 쓰지 않습니다. 정본은 `data/decisions.json`이고
+`project/DECISION_LOG.md`는 `sync`가 거기서 생성합니다(날짜별 그룹, 최신이
+위, frontmatter 포함). 결정을 기록할 때는 decisions.json에 항목을 추가하고
+sync를 실행합니다 — 필드는 schemas/decisions.schema.json.
 project/index.md를 생성해 각 문서를 한 줄 설명과 함께 링크합니다
 (OKF 디렉터리 목록 규약). frontmatter는 미래의 지식 수집·에이전트
 소비를 위한 것이며, 없는 필드가 있어도 동작에는 영향이 없습니다.
@@ -99,13 +101,14 @@ project/index.md를 생성해 각 문서를 한 줄 설명과 함께 링크합�
 - project/INPUT_VALIDATION.md
 - project/PROJECT_ANALYSIS.md
 - project/PROJECT_SECURITY_POLICY.md
-- project/DECISION_LOG.md
+- project/DECISION_LOG.md (sync가 data/decisions.json에서 생성)
 - project/WORK_GROUPS.md
 - data/input-validation.json 및 .js
 - data/project-profile.json 및 .js
 - data/findings.json 및 .js
 - data/checker-guides.json 및 .js
 - data/progress.json 및 .js
+- data/decisions.json 및 .js (workspaceId를 프로필과 맞춤, decisions는 빈 배열로 시작)
 
 tools/sast_toolkit.py validate를 실행해 결과 형식을 검증합니다.
 

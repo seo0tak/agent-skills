@@ -20,8 +20,12 @@
    개발자가 답할 수 없는 질문은 답할 사람을 표시합니다.
 5. 내가 모르겠다고 하면 동작을 보존하는 기본안을 미확인으로 적용하고,
    관찰 로그와 트리거 가능한 재검토 조건을 붙입니다.
-6. 내 답변을 project/PROJECT_SECURITY_POLICY.md와
-   project/DECISION_LOG.md에 결정 주체와 함께 즉시 반영합니다.
+6. 내 답변을 project/PROJECT_SECURITY_POLICY.md에 반영하고, 결정은
+   data/decisions.json에 항목으로 추가한 뒤 sync를 실행합니다
+   (DECISION_LOG.md는 거기서 생성됨). decidedBy는 user /
+   baseline-default / choice-irrelevant / deferred 중 하나이며,
+   baseline-default에는 observation과 reviewTrigger가 없으면 validate가
+   에러를 냅니다 — 관찰 장치 없는 미확인 결정은 기록될 수 없습니다.
 7. 확정된 정책이 적용되는 모든 검출 ID와 작업 그룹을 갱신합니다.
 8. 새로운 증거가 기존 정책과 충돌할 때만 같은 주제를 다시 질문합니다.
 9. 끝날 때 개발자가 답할 수 없어 보류된 질문을 답할 사람별로 모아

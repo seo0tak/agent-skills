@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0",
+  "workspaceId": "sample-workspace",
+  "updatedAt": "2026-01-01T01:00:00Z",
+  "decisions": [
+    {
+      "id": "DEC-002",
+      "decidedAt": "2026-01-01T01:00:00Z",
+      "topic": "회원가입 전화번호 없이 진행 가능 여부",
+      "question": "회원가입 화면에서 전화번호를 안 넣어도 가입이 되나요?",
+      "recommendation": "모르면 B(값 없음으로 처리) — 지금 동작이 유지됩니다",
+      "decidedBy": "baseline-default",
+      "decision": "값 없음(Optional)으로 처리. 검증 오류로 바꾸지 않음.",
+      "scope": "NULL_RETURN_STD 중 UserService.getPhone 호출 경로 12건",
+      "rationale": "담당자가 화면 정책을 모름. 필수값으로 바꾸면 전화번호 없이 가입하던 사용자가 막히므로 동작 보존 쪽을 택함.",
+      "evidence": [
+        "users.phone nullable, 실제 null 3,200행 (12%)",
+        "signup.html:41 required 없음",
+        "UserValidator에 phone 검증 없음"
+      ],
+      "checkers": ["NULL_RETURN_STD"],
+      "findingIds": ["SAMPLE-001"],
+      "answerableBy": "developer",
+      "exceptions": "",
+      "observation": "SmsSender.send:88 phone==null 경로에 WARN 로그 추가 (비밀값 없음)",
+      "reviewTrigger": "운영 2주 내 위 WARN이 찍히면 선택값 확정, 안 찍히면 필수값으로 재검토"
+    },
+    {
+      "id": "DEC-001",
+      "decidedAt": "2026-01-01T00:30:00Z",
+      "topic": "비밀번호 해시 형식 변경 가능 여부",
+      "question": "이 해시값을 우리 말고 읽는 시스템이 있나요? 예전 데이터도 같은 형식인가요?",
+      "recommendation": "명세와 양쪽 사용처가 확인되기 전에는 형식을 변경하지 않음",
+      "decidedBy": "user",
+      "decision": "형식 유지. SSO 연동이 같은 해시를 검증하므로 변경 금지.",
+      "scope": "WEAK_HASH 체커 전체",
+      "rationale": "사용자가 SSO 연동 담당에게 확인함. 형식을 바꾸면 SSO 로그인이 전부 실패.",
+      "evidence": ["sso-integration.md §3.2", "AuthProvider.verify:120"],
+      "checkers": ["WEAK_HASH"],
+      "findingIds": [],
+      "answerableBy": "integration-owner",
+      "exceptions": "",
+      "observation": "",
+      "reviewTrigger": "SSO 연동 명세가 개정되면"
+    }
+  ]
+}

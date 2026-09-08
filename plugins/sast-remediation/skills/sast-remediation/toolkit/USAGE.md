@@ -136,8 +136,9 @@ AI는 소스와 소스 밖 증거(데이터·설정·프론트·로그)로 판�
 실제 동작 차이와 틀렸을 때의 결과가 적혀 있고, "모르겠다"도 정식
 답입니다 — 모르면 동작을 보존하는 기본안을 미확인으로 적용하고 관찰
 로그를 붙입니다. 답변은 `project/PROJECT_SECURITY_POLICY.md`와
-`project/DECISION_LOG.md`에 결정 주체와 함께 누적되어 같은 질문이
-반복되지 않습니다. 이 프로젝트나 보안을 잘 몰라도 답할 수 있게
+`data/decisions.json`에 결정 주체와 함께 누적되어 같은 질문이
+반복되지 않습니다. `project/DECISION_LOG.md`는 거기서 생성되는 읽기용
+파일이고, 미확인 결정에 관찰 장치가 없으면 `validate`가 에러를 냅니다. 이 프로젝트나 보안을 잘 몰라도 답할 수 있게
 설계되어 있습니다(`docs/HOW_IT_WORKS.md` 9번).
 
 ## 사람이 개입하는 지점 (요약)
@@ -249,6 +250,10 @@ strict는 게이트 미통과, 입력 누락, 미초기화 메타데이터, 상�
 | `python3 tools/sast_toolkit.py sync` | JSON → JS 미러·인덱스 동기화 |
 | `python3 tools/sast_toolkit.py validate` | 데이터 정합성 검증 |
 | `python3 tools/sast_toolkit.py validate --strict` | 제출 전 최종 검증 |
+| `python3 tools/sast_toolkit.py query --summary` | 상태·결론·위험도·그룹별 건수 (progress.json을 읽지 않고) |
+| `python3 tools/sast_toolkit.py query --group WG-003 --status todo` | 그 그룹의 미완료 항목만 (findings 전체를 읽지 않고) |
+| `python3 tools/sast_toolkit.py query --ids A,B --fields id,location,progress` | 지정 항목의 지정 필드만 |
+| `python3 -m unittest tools.test_toolkit` | 툴킷 자체 회귀 테스트 (배포·업그레이드 전) |
 
 프로젝트 루트가 툴킷 상위 디렉터리가 아니면 `--project-root <경로>`를
 붙입니다.
@@ -264,3 +269,6 @@ strict는 게이트 미통과, 입력 누락, 미초기화 메타데이터, 상�
 | 대시보드가 비어 보임 | `sync` 실행 여부 확인 후 새로고침 |
 | 브라우저 변경이 사라질까 걱정될 때 | 상태 백업 먼저, 그다음 파일 작업 |
 | 기존 진행 중 프로젝트에 새 툴킷 덮어씀 | fingerprint 에러 발생 시 위 요청 한 번 실행 |
+| validate: DECISION_LOG.md is hand-written | 1.8 이전 형식. 항목을 `data/decisions.json`으로 옮기고 md를 지운 뒤 `sync` |
+| validate: applied unconfirmed ... has no observation | 미확인 결정에 관찰 로그를 넣고 `observation`·`reviewTrigger`를 채우기 |
+| validate: USAGE.html / DECISION_LOG.md is out of date | 생성물이 뒤처짐. `sync` |

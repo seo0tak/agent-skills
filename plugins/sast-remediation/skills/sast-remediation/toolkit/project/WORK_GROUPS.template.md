@@ -1,3 +1,11 @@
+---
+type: sast/work-groups
+title: SAST Work Groups
+description: 충돌 없는 조치 묶음과 작업 순서
+timestamp:
+tags: [sast]
+---
+
 # SAST Work Groups
 
 ## 그룹 원칙

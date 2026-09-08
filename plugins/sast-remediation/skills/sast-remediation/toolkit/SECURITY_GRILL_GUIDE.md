@@ -231,25 +231,38 @@ C) 모르겠다 → <미확인 기본안>으로 적용하고 <관찰 장치>를 
 
 ## 결정 기록 형식
 
-```text
-결정 ID:
-결정일:
-주제:
-질문:
-결정 주체: 사용자 확인 | 기본안 적용(미확인) | 선택 무관 | 보류
-확정 결정:
-적용 범위:
-근거:
-확인한 소스/명세/증거:
-영향받는 체커:
-예외:
-관찰 장치: <미확인일 때 — 어디에 무슨 로그를 넣었는지>
-재검토 조건: <트리거 가능하게 — "무엇이 관찰되면 어떻게">
+결정의 정본은 `data/decisions.json`입니다(스키마:
+`schemas/decisions.schema.json`, 예시: `examples/decisions.json`).
+`project/DECISION_LOG.md`는 `sync`가 거기서 생성하므로 직접 쓰지
+않습니다. 항목 하나의 형태:
+
+```json
+{
+  "id": "DEC-002",
+  "decidedAt": "2026-01-01T01:00:00Z",
+  "topic": "<업무 사실로 쓴 제목>",
+  "question": "<실제로 물은 업무 질문>",
+  "recommendation": "<추천안>",
+  "decidedBy": "user | baseline-default | choice-irrelevant | deferred",
+  "decision": "<확정 결정>",
+  "scope": "<자동 적용 범위>",
+  "rationale": "<근거>",
+  "evidence": ["<확인한 소스·명세·데이터·설정·로그>"],
+  "checkers": ["<영향받는 체커>"],
+  "findingIds": ["<관련 검출 ID>"],
+  "answerableBy": "developer | operations | integration-owner | security-team",
+  "exceptions": "",
+  "observation": "<baseline-default 필수 — 어디에 무슨 관찰 로그를 넣었는지>",
+  "reviewTrigger": "<baseline-default·deferred 필수 — 트리거 가능한 재검토 조건>"
+}
 ```
 
-`결정 주체`가 있어야 고민해서 내린 결정과 추천을 그냥 누른 결정이
-기록에서 구분됩니다. 검토자는 "기본안 적용(미확인)"만 골라 볼 수
-있어야 합니다.
+`decidedBy`가 있어야 고민해서 내린 결정과 추천을 그냥 누른 결정이
+기록에서 구분됩니다. 검토자는 `baseline-default`만 골라 볼 수 있어야
+합니다. **validate가 강제하는 것**: decidedBy는 네 값 중 하나,
+baseline-default에는 observation과 reviewTrigger가 반드시 있어야 하고,
+deferred에는 reviewTrigger가 있어야 합니다. 관찰 장치 없는 미확인
+결정은 기록될 수 없습니다.
 
 ## Grill 종료 조건
 

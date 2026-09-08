@@ -54,7 +54,9 @@
 이 둘을 분리해서 "검증 안 된 수정"과 "검증 끝난 오탐 판정"을 정확히
 구분합니다. 진실의 원천은 항목별 `security-results/<ID>.json`이고,
 `data/progress.json`은 대시보드용 집계입니다. 두 저장소가 어긋나면
-`validate`가 에러를 냅니다.
+`validate`가 에러를 냅니다. 정책 결정도 같은 원리입니다 — 정본은
+`data/decisions.json`, `project/DECISION_LOG.md`는 sync가 만드는 읽기용
+미러입니다.
 
 ### 3. JSON이 기록, JS는 미러
 
@@ -149,10 +151,23 @@
    찍히면 확정"처럼 트리거 가능하게 씁니다. 조치가 판단에서 관찰로
    바뀝니다.
 
-결정 로그의 `결정 주체`(사용자 확인 / 기본안 적용(미확인) / 선택 무관 /
-보류)가 이 설계의 감사 장치입니다. 어떤 도구도 모르는 사람에게 정답을
-만들어 주진 못합니다. 도구가 할 일은 **모름을 숨기지 않는 것**입니다.
-규칙과 질문 형식은 `SECURITY_GRILL_GUIDE.md`에 있습니다.
+결정 로그의 `decidedBy`(사용자 확인 / 기본안 적용(미확인) / 선택 무관 /
+보류)가 이 설계의 감사 장치이고, **validate가 강제합니다**: 미확인
+결정에 관찰 장치(`observation`)와 트리거 가능한 재검토
+조건(`reviewTrigger`)이 없으면 에러입니다. 문서 규칙이 아니라 기계
+규칙이라, 추천을 그냥 누른 결정은 관찰 장치 없이는 기록 자체가 안
+됩니다. 어떤 도구도 모르는 사람에게 정답을 만들어 주진 못합니다.
+도구가 할 일은 **모름을 숨기지 않는 것**입니다. 규칙과 질문 형식은
+`SECURITY_GRILL_GUIDE.md`에 있습니다.
+
+### 10. 큰 데이터는 도구가 잘라 준다
+
+수천 건 findings.json을 웨이브마다 AI가 통째로 읽으면 토큰이 새고,
+저비용 서브에이전트는 잘못 읽습니다. `query` 명령이 그룹·상태·위험도·
+체커·파일로 필터하고 progress 상태를 합쳐서 필요한 항목만 돌려줍니다.
+`--summary`는 재개 시 현황 파악을 파일 두 개 읽지 않고 끝내고,
+`--fields`는 필요한 필드만 남깁니다. "전체를 읽지 말라"는 지시 대신
+읽지 않아도 되는 명령을 준 것입니다.
 
 ## 한 차수의 생애
 
@@ -173,7 +188,10 @@ AI  : [05] 증적 4종 생성(templates/ 컬럼 고정)          ← 사람: 확
 `project/` 아래 마크다운 산출물(분석, 정책, 결정 로그, 작업 그룹)은
 구글 클라우드의 Open Knowledge Format 호환 frontmatter(type 필수,
 title·description·timestamp·tags 권장)로 생성되고, `project/index.md`가
-디렉터리 목록, `DECISION_LOG.md`가 시간순 로그 역할을 합니다. 상태
+디렉터리 목록, `DECISION_LOG.md`가 시간순 로그 역할을 합니다.
+템플릿 5종 모두 frontmatter를 갖고, DECISION_LOG.md는 sync가
+`data/decisions.json`에서 날짜 그룹·최신 우선으로 생성하므로 로그
+규약이 손이 아니라 도구로 지켜집니다. 상태
 데이터(JSON)는 스키마 강제가 필요해 OKF 대상이 아닙니다. frontmatter가
 없어도 워크플로우 동작에는 영향이 없으며(소프트 적용), 이렇게 해두면
 프로젝트별 SAST 정책·결정 지식을 조직 지식 카탈로그나 다른 에이전트가
@@ -189,5 +207,8 @@ title·description·timestamp·tags 권장)로 생성되고, `project/index.md`�
 JSON↔JS 미러 드리프트, 스키마↔검증기 enum 불일치, 스키마↔검증기
 schemaVersion 불일치, 산출물 schemaVersion 불일치(단일 파일은 에러,
 레코드류는 경고), fingerprint 누락, 검증 없는 verified,
-method 없는 verified(경고), 필수 파일 누락.
+method 없는 verified(경고), 관찰 장치 없는 미확인 결정, 생성물
+드리프트(DECISION_LOG.md·USAGE.html), 필수 파일 누락.
+툴킷 자체는 `tools/test_toolkit.py`(unittest 22건)가 오류 주입으로
+회귀를 막습니다.
 AI가 규칙을 잊어도 validate가 빨간불을 켭니다.
