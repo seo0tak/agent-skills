@@ -154,6 +154,8 @@ title·description·timestamp·tags 권장)로 생성되고, `project/index.md`�
 
 규칙은 문서가 아니라 도구가 강제합니다. `validate`가 잡는 것:
 게이트 미통과(strict), 중복 ID, 잘못된 enum, progress↔results 불일치,
-JSON↔JS 미러 드리프트, 스키마↔검증기 enum 불일치, fingerprint 누락,
-검증 없는 verified, method 없는 verified(경고), 필수 파일 누락.
+JSON↔JS 미러 드리프트, 스키마↔검증기 enum 불일치, 스키마↔검증기
+schemaVersion 불일치, 산출물 schemaVersion 불일치(단일 파일은 에러,
+레코드류는 경고), fingerprint 누락, 검증 없는 verified,
+method 없는 verified(경고), 필수 파일 누락.
 AI가 규칙을 잊어도 validate가 빨간불을 켭니다.

@@ -130,6 +130,27 @@ SKIP_PROJECT_DIRS = {
 
 FINGERPRINT_REQUIRED_MAPPINGS = {"exact", "relocated", "changed"}
 
+# 산출물 스키마 버전. breaking 변경 시 여기 한 곳만 올리면 검증기 전체가
+# 따라간다. schemas/*.json의 const 값과 반드시 같아야 한다.
+# (docs/VERSIONING.md 참조)
+SCHEMA_VERSION = "1.0"
+
+# checker-guides.json은 code -> guide 맵이라 최상위에 schemaVersion을 둘
+# 자리가 없다. 필드를 넣으려면 {schemaVersion, guides} 로 감싸야 하고
+# 이는 breaking 변경이므로 다음 메이저로 미룬다.
+
+# 스키마 파일의 schemaVersion const가 위 상수와 어긋나지 않도록 교차
+# 검증한다. (schema path, JSON pointer segments)
+# checker-guides.schema.json은 schemaVersion을 갖지 않아 제외한다.
+SCHEMA_VERSION_CHECKS = (
+    ("schemas/findings.schema.json", ("items", "properties", "schemaVersion", "const")),
+    ("schemas/input-validation.schema.json", ("properties", "schemaVersion", "const")),
+    ("schemas/item-guide.schema.json", ("properties", "schemaVersion", "const")),
+    ("schemas/progress.schema.json", ("properties", "schemaVersion", "const")),
+    ("schemas/project-profile.schema.json", ("properties", "schemaVersion", "const")),
+    ("schemas/result.schema.json", ("properties", "schemaVersion", "const")),
+)
+
 # 스키마 파일과 이 검증기의 enum 정의가 어긋나지 않도록 교차 검증한다.
 # (schema path, JSON pointer segments, validator value-set name)
 SCHEMA_ENUM_CHECKS = (
@@ -231,6 +252,25 @@ class ValidationReport:
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
+
+    def schema_version(self, value: Any, context: str, level: str) -> None:
+        """산출물의 schemaVersion을 확인한다.
+
+        level="error"는 초기화 시점부터 필드가 보장된 단일 파일 산출물,
+        level="warn"은 구버전 산출물이 남아 있을 수 있는 레코드류에 쓴다.
+        경고 단계는 다음 메이저에서 에러로 올린다 (docs/VERSIONING.md).
+        """
+        found = value.get("schemaVersion") if isinstance(value, dict) else None
+        if found == SCHEMA_VERSION:
+            return
+        detail = "is missing" if found is None else f"is {found!r}"
+        message = (
+            f"{context} schemaVersion {detail}; expected {SCHEMA_VERSION!r}"
+        )
+        if level == "error":
+            self.error(message)
+        else:
+            self.warn(f"{message} (migration may be needed)")
 
     def print(self) -> None:
         for message in self.errors:
@@ -907,8 +947,7 @@ def validate_input_validation(
     report: ValidationReport, value: Any, strict: bool
 ) -> dict[str, Any]:
     record = require_mapping(report, value, "input validation")
-    if record.get("schemaVersion") != "1.0":
-        report.error("input validation schemaVersion must be 1.0")
+    report.schema_version(record, "input validation", "error")
     status = record.get("status")
     if status not in INPUT_VALIDATION_VALUES:
         report.error(f"input validation has invalid status: {status}")
@@ -1086,8 +1125,7 @@ def validate_profile(
     input_validation: dict[str, Any],
 ) -> str:
     profile_map = require_mapping(report, profile, "project profile")
-    if profile_map.get("schemaVersion") != "1.0":
-        report.error("project profile schemaVersion must be 1.0")
+    report.schema_version(profile_map, "project profile", "error")
     workspace_id = str(profile_map.get("workspaceId", ""))
     if strict and (not workspace_id or workspace_id == "uninitialized"):
         report.error("project profile workspaceId is not initialized")
@@ -1142,6 +1180,7 @@ def validate_findings(report: ValidationReport, findings: Any) -> tuple[list[Any
     sequences: set[int] = set()
     for index, raw in enumerate(finding_list):
         item = require_mapping(report, raw, f"findings[{index}]")
+        report.schema_version(item, f"findings[{index}]", "warn")
         finding_id = str(item.get("id", ""))
         if not finding_id:
             report.error(f"findings[{index}].id is empty")
@@ -1218,8 +1257,7 @@ def validate_progress(
     strict: bool,
 ) -> None:
     progress_map = require_mapping(report, progress, "progress")
-    if progress_map.get("schemaVersion") != "1.0":
-        report.error("progress schemaVersion must be 1.0")
+    report.schema_version(progress_map, "progress", "error")
     progress_workspace = str(progress_map.get("workspaceId", ""))
     if workspace_id and progress_workspace != workspace_id:
         report.error("progress workspaceId does not match project profile")
@@ -1264,6 +1302,9 @@ def validate_record_files(
             report.error(f"{path.relative_to(ROOT)} references unknown finding id")
         if finding_id in values:
             report.error(f"duplicate {record_type} record for {finding_id}")
+        report.schema_version(
+            item, f"{record_type} record {finding_id}", "warn"
+        )
         values[finding_id] = item
         if record_type == "result":
             workflow = item.get("workflowStatus")
@@ -1434,6 +1475,37 @@ def validate_schema_enums(report: ValidationReport) -> None:
             )
 
 
+def validate_schema_versions(report: ValidationReport) -> None:
+    """스키마 파일의 schemaVersion const와 SCHEMA_VERSION 상수를 대조한다.
+
+    breaking 변경 때 한쪽만 올리면 정상 산출물이 전부 불일치로 잡히므로,
+    문서 지침 대신 여기서 기계적으로 막는다 (docs/VERSIONING.md).
+    """
+    for relative, pointer in SCHEMA_VERSION_CHECKS:
+        path = ROOT / relative
+        try:
+            node: Any = load_json(path)
+        except (OSError, json.JSONDecodeError) as error:
+            report.error(f"cannot read schema {relative}: {error}")
+            continue
+        for segment in pointer:
+            if not isinstance(node, dict) or segment not in node:
+                report.error(
+                    f"schema {relative} is missing schemaVersion const at "
+                    f"/{'/'.join(pointer)}"
+                )
+                node = None
+                break
+            node = node[segment]
+        if node is None:
+            continue
+        if node != SCHEMA_VERSION:
+            report.error(
+                f"schema {relative} schemaVersion const is {node!r} but "
+                f"validator SCHEMA_VERSION is {SCHEMA_VERSION!r}"
+            )
+
+
 def validate_progress_result_consistency(
     report: ValidationReport,
     progress: Any,
@@ -1464,6 +1536,7 @@ def validate_all(strict: bool, project_root: Path) -> int:
     report = ValidationReport()
     validate_required_files(report)
     validate_schema_enums(report)
+    validate_schema_versions(report)
     validate_dashboard(report)
     validate_inputs(report, strict)
     def load_data(relative: str) -> Any:

@@ -29,7 +29,7 @@ claude plugin marketplace update seo0tak-skills
 
 | 플러그인 | 설명 | 버전 |
 |---|---|---|
-| sast-remediation | SAST 취약점 조치 워크플로우 (게이트·이월·증적·모델 티어링) | 1.6.2 |
+| sast-remediation | SAST 취약점 조치 워크플로우 (게이트·이월·증적·모델 티어링) | 1.7.0 |
 | skill-architect | 스킬 아키텍처 감사·설계 (품질 체크리스트 10범주) | 0.1.0 |
 
 버전 정본은 각 플러그인의 `.claude-plugin/plugin.json`입니다. 위 표는 요약이므로
