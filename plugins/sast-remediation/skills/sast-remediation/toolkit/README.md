@@ -40,7 +40,8 @@
 출력(SARIF)을 이 툴킷의 입력으로 사용하면 됩니다.
 
 실제 차수를 처리하는 순서별 상세 절차, 명령어 치트시트, 자주 겪는
-상황은 `USAGE.md` 또는 브라우저용 `USAGE.html`을 참고합니다.
+상황은 `USAGE.md` 또는 브라우저용 `USAGE.html`을, 동작 원리는
+`docs/HOW_IT_WORKS.md`를 참고합니다.
 
 ## 빠른 시작
 
@@ -58,7 +59,8 @@
 7. 이전 차수 산출물이 있으면 `prompts/06-carry-over.md`로 오탐·예외
    결론을 먼저 이월합니다.
 8. 초기 분석을 확인한 후 `prompts/03-remediation-wave.md`로 실제 조치를
-   시작합니다.
+   시작합니다. 새 세션에서 이어서 할 때는 `prompts/07-resume.md`를
+   사용합니다.
 9. 처리 결과는 `security-results/`와 `data/progress.*`에 반영합니다.
    상태의 기준 저장소는 `security-results/`이며 `data/progress.json`은
    집계본입니다.
@@ -121,6 +123,10 @@ sast-remediation-toolkit/
 - `security-results/<ID>.json` 및 `.js`
 - `evidence/` 아래 제출용 결과
 
+`project/`의 지식 산출물은 OKF(Open Knowledge Format) 호환
+frontmatter로 생성되어 조직 지식 카탈로그·다른 에이전트가 수집할 수
+있습니다. 상세는 `docs/HOW_IT_WORKS.md` 참고.
+
 ## 기준 자료 우선순위
 
 판단이 충돌하면 다음 우선순위를 사용합니다.
@@ -138,6 +144,10 @@ PDF의 해결 예시는 특정 코드에 그대로 적용하는 패치가 아닙
 
 `SECURITY_CHECKLIST.html`을 브라우저에서 직접 엽니다. 프로젝트별 데이터는
 `data/*.js`로 읽기 때문에 별도 서버가 없어도 기본 기능이 동작합니다.
+
+대시보드는 열릴 때 `security-results/`의 항목별 결과를 자동으로
+반영합니다(상태의 기준). `전체 결과 갱신`은 페이지를 새로고침하지 않고
+파일 결과를 다시 읽을 때 사용합니다.
 
 진행상태는 브라우저에도 임시 저장됩니다. 파일 상태와 브라우저 저장본이
 다르면 항목별 `updatedAt`이 최신인 쪽을 반영하고, 충돌이 있으면 화면

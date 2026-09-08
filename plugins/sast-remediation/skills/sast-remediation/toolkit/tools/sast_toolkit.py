@@ -197,6 +197,8 @@ REQUIRED_FILES = (
     "README.md",
     "USAGE.md",
     "USAGE.html",
+    "templates/evidence-columns.md",
+    "docs/HOW_IT_WORKS.md",
     "SECURITY_CHECKLIST.html",
     "SECURITY_SAST_WORKFLOW.md",
     "SECURITY_POLICY_BASELINE.md",
@@ -263,6 +265,27 @@ class DashboardParser(HTMLParser):
             self.assets.add(str(values["href"]))
 
 
+def write_text_atomic(path: Path, content: str) -> None:
+    """중단 시 반쪽 파일이 남지 않도록 임시 파일에 쓴 뒤 교체한다."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def load_json_or_exit(path: Path) -> Any:
+    try:
+        return load_json(path)
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"SYNC ERROR: cannot read {display_path(path)}: {error}")
+        print(
+            "The file is likely half-written from an interrupted session. "
+            "Restore or rewrite this file, then run sync again. "
+            "If it is data/progress.json, it can be rebuilt from "
+            "security-results/."
+        )
+        raise SystemExit(1)
+
+
 def load_json(path: Path) -> Any:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
@@ -305,25 +328,24 @@ def iter_record_json(directory: Path) -> Iterable[Path]:
 def sync_data() -> None:
     for filename, property_name in DATA_MIRRORS.items():
         json_path = DATA_DIR / f"{filename}.json"
-        value = load_json(json_path)
-        (DATA_DIR / f"{filename}.js").write_text(
-            data_mirror_text(property_name, value), encoding="utf-8"
+        value = load_json_or_exit(json_path)
+        write_text_atomic(
+            DATA_DIR / f"{filename}.js", data_mirror_text(property_name, value)
         )
 
 
 def sync_records(directory: Path, namespace: str) -> None:
     values: dict[str, Any] = {}
     for json_path in iter_record_json(directory):
-        value = load_json(json_path)
+        value = load_json_or_exit(json_path)
         finding_id = str(value.get("id", json_path.stem))
         values[finding_id] = value
-        json_path.with_suffix(".js").write_text(
-            item_mirror_text(namespace, finding_id, value), encoding="utf-8"
+        write_text_atomic(
+            json_path.with_suffix(".js"),
+            item_mirror_text(namespace, finding_id, value),
         )
-    (directory / "index.json").write_text(json_text(values), encoding="utf-8")
-    (directory / "index.js").write_text(
-        index_mirror_text(namespace, values), encoding="utf-8"
-    )
+    write_text_atomic(directory / "index.json", json_text(values))
+    write_text_atomic(directory / "index.js", index_mirror_text(namespace, values))
 
 
 def sync_all() -> None:
@@ -829,9 +851,7 @@ def run_preflight(project_root: Path, input_set: str | None = None) -> int:
     if not target.exists():
         shutil.copyfile(template, target)
     record = build_preflight_record(project_root, input_set)
-    (DATA_DIR / "input-validation.json").write_text(
-        json_text(record), encoding="utf-8"
-    )
+    write_text_atomic(DATA_DIR / "input-validation.json", json_text(record))
     sync_data()
     print(f"PREFLIGHT: {record['status'].upper()}")
     print(f"Project candidate: {record['project']['identity'] or 'not detected'}")
@@ -1257,6 +1277,14 @@ def validate_record_files(
             )
             if verification.get("status") not in VERIFICATION_VALUES:
                 report.error(f"result {finding_id} has invalid verification status")
+            if workflow == "verified" and not str(
+                verification.get("method", "")
+            ).strip():
+                report.warn(
+                    f"result {finding_id} is verified but verification.method "
+                    "is empty; record which means (build/lint/unit-test/...) "
+                    "was used"
+                )
             if workflow == "verified" and verification.get("status") != "passed":
                 report.error(
                     f"result {finding_id} is verified without passed verification"
@@ -1438,9 +1466,23 @@ def validate_all(strict: bool, project_root: Path) -> int:
     validate_schema_enums(report)
     validate_dashboard(report)
     validate_inputs(report, strict)
+    def load_data(relative: str) -> Any:
+        try:
+            return load_json(DATA_DIR / relative)
+        except (OSError, json.JSONDecodeError) as error:
+            report.error(
+                f"cannot read data/{relative}: {error} "
+                "(likely half-written from an interrupted session)"
+            )
+            return None
+
     try:
-        input_validation = load_json(DATA_DIR / "input-validation.json")
-        validated_input = validate_input_validation(report, input_validation, strict)
+        input_validation = load_data("input-validation.json")
+        validated_input = (
+            validate_input_validation(report, input_validation, strict)
+            if input_validation is not None
+            else {}
+        )
         if strict:
             mechanical = build_preflight_record(
                 project_root,
@@ -1449,23 +1491,32 @@ def validate_all(strict: bool, project_root: Path) -> int:
             for blocker in mechanical["blockers"]:
                 report.error(f"mechanical preflight failed: {blocker}")
             compare_current_preflight(report, validated_input, mechanical)
-        findings_raw = load_json(DATA_DIR / "findings.json")
-        findings, finding_ids = validate_findings(report, findings_raw)
-        profile = load_json(DATA_DIR / "project-profile.json")
-        workspace_id = validate_profile(
-            report, profile, findings, strict, validated_input
+        findings_raw = load_data("findings.json")
+        findings, finding_ids = (
+            validate_findings(report, findings_raw)
+            if findings_raw is not None
+            else ([], set())
         )
-        guides = load_json(DATA_DIR / "checker-guides.json")
-        validate_checker_guides(report, guides, findings)
-        progress = load_json(DATA_DIR / "progress.json")
-        validate_progress(report, progress, finding_ids, workspace_id, strict)
+        profile = load_data("project-profile.json")
+        workspace_id = (
+            validate_profile(report, profile, findings, strict, validated_input)
+            if profile is not None
+            else ""
+        )
+        guides = load_data("checker-guides.json")
+        if guides is not None:
+            validate_checker_guides(report, guides, findings)
+        progress = load_data("progress.json")
+        if progress is not None:
+            validate_progress(report, progress, finding_ids, workspace_id, strict)
         guide_values = validate_record_files(
             report, GUIDE_DIR, finding_ids, "guide"
         )
         result_values = validate_record_files(
             report, RESULT_DIR, finding_ids, "result"
         )
-        validate_progress_result_consistency(report, progress, result_values)
+        if progress is not None:
+            validate_progress_result_consistency(report, progress, result_values)
         validate_mirrors(report, guide_values, result_values)
     except (OSError, json.JSONDecodeError) as error:
         report.error(f"cannot load toolkit data: {error}")

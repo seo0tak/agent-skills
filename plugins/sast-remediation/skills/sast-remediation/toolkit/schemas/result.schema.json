@@ -21,36 +21,126 @@
     "updatedAt"
   ],
   "properties": {
-    "schemaVersion": { "const": "1.0" },
-    "id": { "type": "string", "minLength": 1 },
-    "sequence": { "type": "integer", "minimum": 1 },
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
     "workflowStatus": {
-      "enum": ["todo", "in-progress", "analyzed", "change-complete", "verified", "deferred"]
+      "enum": [
+        "todo",
+        "in-progress",
+        "analyzed",
+        "change-complete",
+        "verified",
+        "deferred"
+      ]
     },
     "conclusion": {
-      "enum": ["unreviewed", "fix", "false-positive", "operations", "exception", "needs-review"]
+      "enum": [
+        "unreviewed",
+        "fix",
+        "false-positive",
+        "operations",
+        "exception",
+        "needs-review"
+      ]
     },
-    "reason": { "type": "string" },
-    "resultFiles": { "type": "array", "items": { "type": "string" } },
-    "resultSummary": { "type": "string" },
-    "resultCodeDiff": { "type": "string" },
-    "resultGuideComparison": { "type": "string" },
-    "impact": { "type": "array", "items": { "type": "string" } },
+    "reason": {
+      "type": "string"
+    },
+    "resultFiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resultSummary": {
+      "type": "string"
+    },
+    "resultCodeDiff": {
+      "type": "string"
+    },
+    "resultGuideComparison": {
+      "type": "string"
+    },
+    "impact": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "verification": {
       "type": "object",
-      "required": ["status", "commands", "results", "limitations", "verifiedAt"],
+      "required": [
+        "status",
+        "commands",
+        "results",
+        "limitations",
+        "verifiedAt"
+      ],
       "properties": {
-        "status": { "enum": ["not-run", "passed", "failed", "partial", "manual-required"] },
-        "commands": { "type": "array", "items": { "type": "string" } },
-        "results": { "type": "array", "items": { "type": "string" } },
-        "limitations": { "type": "array", "items": { "type": "string" } },
-        "verifiedAt": { "type": ["string", "null"], "format": "date-time" }
+        "status": {
+          "enum": [
+            "not-run",
+            "passed",
+            "failed",
+            "partial",
+            "manual-required"
+          ]
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verifiedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "method": {
+          "type": "string",
+          "description": "검증 수단 — 프로필 validation.verificationMeans에 선언된 값 중 하나 (예: build, lint, unit-test, scanner-recheck, manual-review)"
+        }
       },
       "additionalProperties": true
     },
-    "duplicates": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-    "evidenceNote": { "type": "string" },
-    "updatedAt": { "type": "string", "format": "date-time" }
+    "duplicates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "evidenceNote": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
   },
   "additionalProperties": true
 }

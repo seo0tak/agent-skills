@@ -51,6 +51,10 @@
       <select id="mappingFilter" aria-label="소스 매핑 필터">
         <option value="">전체 소스 매핑</option>
       </select>
+      <select id="languageFilter" aria-label="언어 필터">
+        <option value="">전체 언어</option>
+      </select>
+      <button id="resetFilters" type="button">필터 초기화</button>
     </div>
   </header>
 
@@ -139,6 +143,17 @@
         </thead>
         <tbody id="findingsBody"></tbody>
       </table>
+      <div id="pager" class="pager">
+        <span id="pageInfo"></span>
+        <button id="prevPage" type="button">이전</button>
+        <button id="nextPage" type="button">다음</button>
+        <select id="pageSize" aria-label="표시 개수">
+          <option value="100">100개씩</option>
+          <option value="200" selected>200개씩</option>
+          <option value="500">500개씩</option>
+          <option value="all">전체</option>
+        </select>
+      </div>
       <div id="emptyState" class="empty-state hidden">
         현재 조건에 맞는 항목이 없습니다.
       </div>

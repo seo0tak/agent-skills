@@ -1,3 +1,11 @@
+---
+type: sast/project-analysis
+title: 프로젝트 초기 분석
+description: 모듈·계층·빌드·검증 수단 등 조치 작업의 전제가 되는 프로젝트 구조 분석
+timestamp:
+tags: [sast]
+---
+
 # Project Analysis
 
 ## 분석 기준

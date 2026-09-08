@@ -12,6 +12,7 @@ claude plugin marketplace add seo0tak/claude-skills
 
 # 플러그인 설치
 claude plugin install sast-remediation@seo0tak-skills
+claude plugin install skill-architect@seo0tak-skills
 ```
 
 세션 안에서는 `/plugin marketplace add`, `/plugin install`로 동일하게 가능합니다.
@@ -28,7 +29,8 @@ claude plugin marketplace update seo0tak-skills
 
 | 플러그인 | 설명 | 버전 |
 |---|---|---|
-| sast-remediation | SAST 취약점 조치 워크플로우 (게이트·이월·증적 포함) | 1.0.0 |
+| sast-remediation | SAST 취약점 조치 워크플로우 (게이트·이월·증적·모델 티어링) | 1.6.1 |
+| skill-architect | 스킬 아키텍처 감사·설계 (품질 체크리스트 10범주) | 0.1.0 |
 
 ## 새 스킬 추가
 

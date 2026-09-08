@@ -1,3 +1,11 @@
+---
+type: sast/input-validation
+title: 입력 적합성 게이트
+description: 이번 차수 입력(보고서·소스)의 일치 판정과 게이트 상태
+timestamp:
+tags: [sast]
+---
+
 # Input Validation
 
 ## Gate Status

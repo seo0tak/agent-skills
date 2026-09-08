@@ -83,6 +83,7 @@
   var sortState = { key: "sequence", direction: "asc" };
   var itemGuideCache = Object.assign({}, window.SAST_ITEM_GUIDES);
   var resultCache = Object.assign({}, window.SAST_ITEM_RESULTS);
+  var pageIndex = 0;
   var toastTimer = null;
 
   function byId(id) { return document.getElementById(id); }
@@ -287,9 +288,24 @@
 
   function initializeFilters() {
     var checkerSelect = byId("checkerFilter");
+    var checkerCounts = {};
+    findings.forEach(function (item) {
+      var code = checker(item).code;
+      if (code) checkerCounts[code] = (checkerCounts[code] || 0) + 1;
+    });
     Array.from(new Set(findings.map(function (item) { return checker(item).code; }).filter(Boolean))).sort().forEach(function (code) {
       var guide = checkerGuides[code] || {};
-      addOption(checkerSelect, code, guide.name ? code + " - " + guide.name : code);
+      var label = guide.name ? code + " - " + guide.name : code;
+      addOption(checkerSelect, code, label + " (" + (checkerCounts[code] || 0) + ")");
+    });
+
+    var languageCounts = {};
+    findings.forEach(function (item) {
+      var lang = asString(item.language).trim();
+      if (lang) languageCounts[lang] = (languageCounts[lang] || 0) + 1;
+    });
+    Object.keys(languageCounts).sort(function (a, b) { return languageCounts[b] - languageCounts[a]; }).forEach(function (lang) {
+      addOption(byId("languageFilter"), lang, lang + " (" + languageCounts[lang] + ")");
     });
 
     var riskValues = {};
@@ -331,6 +347,7 @@
     var workflowValue = byId("workflowFilter").value;
     var conclusionValue = byId("conclusionFilter").value;
     var mappingValue = byId("mappingFilter").value;
+    var languageValue = byId("languageFilter").value;
 
     return findings.filter(function (item) {
       var itemState = stateFor(item.id);
@@ -350,7 +367,8 @@
         (!riskValue || risk(item).level === riskValue) &&
         (!workflowValue || itemState.workflowStatus === workflowValue) &&
         (!conclusionValue || itemState.conclusion === conclusionValue) &&
-        (!mappingValue || mapping.status === mappingValue);
+        (!mappingValue || mapping.status === mappingValue) &&
+        (!languageValue || asString(item.language).trim() === languageValue);
     });
   }
 
@@ -511,7 +529,28 @@
   function renderTable(items) {
     var body = byId("findingsBody");
     body.textContent = "";
-    items.forEach(function (item) {
+    var sizeValue = byId("pageSize") ? byId("pageSize").value : "all";
+    var pageItems = items;
+    var totalPages = 1;
+    if (sizeValue !== "all") {
+      var size = Number(sizeValue) || 200;
+      totalPages = Math.max(1, Math.ceil(items.length / size));
+      if (pageIndex >= totalPages) pageIndex = totalPages - 1;
+      if (pageIndex < 0) pageIndex = 0;
+      pageItems = items.slice(pageIndex * size, (pageIndex + 1) * size);
+    } else {
+      pageIndex = 0;
+    }
+    var pager = byId("pager");
+    if (pager) {
+      var start = items.length === 0 ? 0 : (sizeValue === "all" ? 1 : pageIndex * Number(sizeValue) + 1);
+      var end = sizeValue === "all" ? items.length : Math.min(items.length, (pageIndex + 1) * Number(sizeValue));
+      byId("pageInfo").textContent = items.length === 0 ? "0건" : start + "\u2013" + end + " / " + items.length + "\uAC74";
+      byId("prevPage").disabled = pageIndex <= 0;
+      byId("nextPage").disabled = pageIndex >= totalPages - 1;
+      pager.classList.toggle("hidden", items.length === 0);
+    }
+    pageItems.forEach(function (item) {
       var itemState = stateFor(item.id);
       var mapping = sourceMapping(item);
       var row = document.createElement("tr");
@@ -599,6 +638,9 @@
     if (Array.isArray(guide.checkpoints) && guide.checkpoints.length) parts.push("확인 포인트:\n- " + guide.checkpoints.join("\n- "));
     if (Array.isArray(guide.impact) && guide.impact.length) parts.push("영향 범위:\n- " + guide.impact.join("\n- "));
     if (Array.isArray(guide.testPlan) && guide.testPlan.length) parts.push("검증 계획:\n- " + guide.testPlan.join("\n- "));
+    if (guide.stableKey) parts.push("고정 키: " + guide.stableKey);
+    if (guide.groupGuideRef) parts.push("그룹 대표 가이드: " + guide.groupGuideRef + " 항목을 함께 참조하세요.");
+    if (Array.isArray(guide.delta) && guide.delta.length) parts.push("대표와의 차이점:\n- " + guide.delta.join("\n- "));
     if (guide.duplicateGroup) parts.push("중복 그룹: " + guide.duplicateGroup);
     if (Array.isArray(guide.policyQuestions) && guide.policyQuestions.length) parts.push("정책 확인:\n- " + guide.policyQuestions.join("\n- "));
     return parts.join("\n\n") || "항목별 가이드가 비어 있습니다.";
@@ -738,11 +780,30 @@
     resultCache[key] = result;
     var current = stateFor(key);
     var incoming = normalizeStateItem(statePatchFromResult(result));
-    if (preserveVerified && current.workflowStatus === "verified" && incoming.workflowStatus !== "verified") {
+    var curT = timestampOf(current);
+    var incT = timestampOf(incoming);
+    if (curT !== null && incT !== null && curT > incT) {
+      // 브라우저 쪽 상태가 결과 파일보다 최신이면 유지
+      return false;
+    }
+    if (preserveVerified && current.workflowStatus === "verified" && incoming.workflowStatus !== "verified"
+      && !(curT !== null && incT !== null && incT > curT)) {
       incoming.workflowStatus = "verified";
     }
     state[key] = Object.assign({}, current, incoming);
     return true;
+  }
+
+  // 부팅 시 항목별 결과(index.js)를 상태에 즉시 반영한다.
+  // security-results가 상태의 기준이므로 버튼을 누르기 전에도
+  // 조치 결과가 바로 보여야 한다.
+  function applyBootResults() {
+    var applied = 0;
+    Object.keys(window.SAST_ITEM_RESULTS || {}).forEach(function (id) {
+      if (applyResult(window.SAST_ITEM_RESULTS[id], true)) applied += 1;
+    });
+    if (applied > 0) saveState();
+    return applied;
   }
 
   async function loadItemResult(id, force) {
@@ -1029,20 +1090,39 @@
     byId("workflowFilter").value = "";
     byId("conclusionFilter").value = "";
     byId("mappingFilter").value = "";
+    byId("languageFilter").value = "";
   }
 
   function bindEvents() {
-    ["search", "checkerFilter", "riskFilter", "workflowFilter", "conclusionFilter", "mappingFilter", "recommendationLimit"].forEach(function (id) {
+    var searchTimer = null;
+    ["search", "checkerFilter", "riskFilter", "workflowFilter", "conclusionFilter", "mappingFilter", "languageFilter", "recommendationLimit"].forEach(function (id) {
       byId(id).addEventListener("input", function () {
-        if (id !== "recommendationLimit") dashboardFilter = "all";
+        if (id !== "recommendationLimit") { dashboardFilter = "all"; pageIndex = 0; }
+        if (id === "search") {
+          if (searchTimer) clearTimeout(searchTimer);
+          searchTimer = setTimeout(render, 150);
+          return;
+        }
         render();
       });
     });
+
+    byId("resetFilters").addEventListener("click", function () {
+      clearFilters();
+      dashboardFilter = "all";
+      pageIndex = 0;
+      render();
+    });
+
+    byId("pageSize").addEventListener("input", function () { pageIndex = 0; render(); });
+    byId("prevPage").addEventListener("click", function () { pageIndex -= 1; render(); });
+    byId("nextPage").addEventListener("click", function () { pageIndex += 1; render(); });
 
     document.querySelectorAll("[data-dashboard-filter]").forEach(function (button) {
       button.addEventListener("click", function () {
         clearFilters();
         dashboardFilter = button.dataset.dashboardFilter || "all";
+        pageIndex = 0;
         render();
       });
     });
@@ -1141,6 +1221,7 @@
   }
 
   initializeHeader();
+  applyBootResults();
   renderSyncNotice();
   initializeFilters();
   initializeReadiness();

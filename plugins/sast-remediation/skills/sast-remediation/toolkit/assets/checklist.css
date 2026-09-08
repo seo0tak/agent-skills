@@ -346,3 +346,14 @@ td code { color: #344054; font-family: Consolas, "Courier New", monospace; font-
   font-size: 13px;
   line-height: 1.5;
 }
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 8px 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.pager button, .pager select { min-height: 30px; padding: 0 10px; }

@@ -31,6 +31,11 @@ prompts/00-preflight.md 절차로 돌아가 차단 원인을 보고하세요.
 1. 확정된 입력 검증 결과를 읽고 프로젝트 및 보고서 식별정보를 유지합니다.
 2. 프로젝트의 모듈, 소스 루트, 계층, 공통 컴포넌트, 외부 연동,
    설정 경계, 빌드 및 테스트 방법을 분석합니다.
+   프로필의 validation.verificationMeans에 이 프로젝트에서 실제로
+   사용 가능한 검증 수단을 선언합니다(예: build, lint, unit-test,
+   scanner-recheck, runtime-smoke, manual-review). 로컬·개발 환경에서
+   애플리케이션 기동이 가능한지도 이때 확인해 기록합니다. 테스트가 없는 영역이 있으면
+   validation.limitations에 명시합니다.
 3. 검출 목록을 표준 finding 형식으로 변환합니다.
    - 벤더 모드: 스프레드시트의 전체 검출 항목 사용.
      위험도 매핑: 벤더 등급을 표준 값으로 변환하고 매핑표를
@@ -59,12 +64,35 @@ prompts/00-preflight.md 절차로 돌아가 차단 원인을 보고하세요.
      추출. 내용이 부족한 체커는 일반 보안 지식으로 보완하되 출처를
      구분해 기록
 5. 모든 검출 파일, 함수, 라인과 검출 코드를 현재 소스에 대조합니다.
+   fingerprint가 기록된 항목에는 stableKey를 함께 부여합니다:
+   SK- + sha1(fingerprint) 앞 8자리. 이 값이 차수를 넘는 고정
+   식별자이며, 벤더 검출 ID는 차수마다 바뀝니다.
 6. 동일 원인과 충돌 파일을 기준으로 작업 그룹을 만듭니다.
 7. 초기 결론 후보를 수정, 오탐, 운영 설정, 예외처리, 추가 검토로 분류합니다.
 8. 코드만으로 결정할 수 없는 정책 질문을 식별합니다.
 9. 범용 HTML은 변경하지 않고 프로젝트별 data 파일만 생성합니다.
 
+project/ 아래 마크다운 산출물은 OKF(Open Knowledge Format) 호환
+frontmatter로 시작합니다. 필수는 type이고 나머지는 권장입니다.
+
+```yaml
+---
+type: sast/<종류>   # project-analysis | security-policy | decision-log | work-groups | input-validation
+title: <문서 제목>
+description: <한 줄 요약>
+timestamp: <YYYY-MM-DDTHH:MM:SSZ, 마지막 갱신>
+tags: [sast, <프로젝트명>]
+---
+```
+
+DECISION_LOG.md는 OKF log 규약을 따릅니다: 날짜별 그룹, 최신이 위,
+결정마다 결정 ID·질문·답·근거·영향 체커를 기록합니다.
+project/index.md를 생성해 각 문서를 한 줄 설명과 함께 링크합니다
+(OKF 디렉터리 목록 규약). frontmatter는 미래의 지식 수집·에이전트
+소비를 위한 것이며, 없는 필드가 있어도 동작에는 영향이 없습니다.
+
 생성 또는 갱신할 파일:
+- project/index.md
 - project/INPUT_VALIDATION.md
 - project/PROJECT_ANALYSIS.md
 - project/PROJECT_SECURITY_POLICY.md

@@ -10,6 +10,9 @@
 - project/PROJECT_SECURITY_POLICY.md
 - project/DECISION_LOG.md
 
+컬럼 구성과 정렬은 `templates/evidence-columns.md` 정의를 그대로
+따릅니다. 임의로 컬럼을 추가·삭제·재배치하지 않습니다.
+
 생성할 결과 (파일명은 data/project-profile.json의 evidence.outputs 설정을
 우선 사용하고, 설정이 없으면 아래 기본값을 사용합니다):
 1. evidence/SAST_전체조치결과.xlsx  (evidence.outputs.allResults)

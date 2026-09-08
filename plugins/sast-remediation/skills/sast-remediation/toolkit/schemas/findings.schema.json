@@ -20,85 +20,224 @@
       "suggestedConclusion"
     ],
     "properties": {
-      "schemaVersion": { "const": "1.0" },
-      "id": { "type": "string", "minLength": 1 },
-      "sequence": { "type": "integer", "minimum": 1 },
-      "risk": { "$ref": "#/$defs/severity" },
-      "impact": { "$ref": "#/$defs/severity" },
+      "schemaVersion": {
+        "const": "1.0"
+      },
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sequence": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "risk": {
+        "$ref": "#/$defs/severity"
+      },
+      "impact": {
+        "$ref": "#/$defs/severity"
+      },
       "checker": {
         "type": "object",
-        "required": ["code", "name", "category"],
+        "required": [
+          "code",
+          "name",
+          "category"
+        ],
         "properties": {
-          "code": { "type": "string", "minLength": 1 },
-          "name": { "type": "string" },
-          "category": { "type": "string" }
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       },
-      "language": { "type": "string" },
+      "language": {
+        "type": "string"
+      },
       "location": {
         "type": "object",
-        "required": ["reportedFile", "reportedLine", "reportedFunction"],
+        "required": [
+          "reportedFile",
+          "reportedLine",
+          "reportedFunction"
+        ],
         "properties": {
-          "reportedFile": { "type": "string" },
-          "reportedLine": { "type": ["integer", "null"], "minimum": 1 },
-          "reportedFunction": { "type": "string" }
+          "reportedFile": {
+            "type": "string"
+          },
+          "reportedLine": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "reportedFunction": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       },
       "report": {
         "type": "object",
-        "required": ["description", "detectedCode", "detectedAt"],
+        "required": [
+          "description",
+          "detectedCode",
+          "detectedAt"
+        ],
         "properties": {
-          "description": { "type": "string" },
-          "detectedCode": { "type": "string" },
-          "detectedAt": { "type": ["string", "null"] },
-          "section": { "type": "string" }
+          "description": {
+            "type": "string"
+          },
+          "detectedCode": {
+            "type": "string"
+          },
+          "detectedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "section": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       },
       "sourceMapping": {
         "type": "object",
-        "required": ["status", "currentFile", "currentLine", "currentFunction", "evidence", "fingerprint"],
+        "required": [
+          "status",
+          "currentFile",
+          "currentLine",
+          "currentFunction",
+          "evidence",
+          "fingerprint"
+        ],
         "properties": {
           "status": {
-            "enum": ["unreviewed", "exact", "relocated", "changed", "not-found", "generated-or-external"]
+            "enum": [
+              "unreviewed",
+              "exact",
+              "relocated",
+              "changed",
+              "not-found",
+              "generated-or-external"
+            ]
           },
-          "currentFile": { "type": "string" },
-          "currentLine": { "type": ["integer", "null"], "minimum": 1 },
-          "currentFunction": { "type": "string" },
-          "evidence": { "type": "string" },
-          "fingerprint": { "type": "string" }
+          "currentFile": {
+            "type": "string"
+          },
+          "currentLine": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "currentFunction": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       },
       "grouping": {
         "type": "object",
-        "required": ["duplicateGroup", "workGroup", "conflictFiles"],
+        "required": [
+          "duplicateGroup",
+          "workGroup",
+          "conflictFiles"
+        ],
         "properties": {
-          "duplicateGroup": { "type": "string" },
-          "workGroup": { "type": "string" },
-          "conflictFiles": { "type": "array", "items": { "type": "string" } },
-          "relatedIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+          "duplicateGroup": {
+            "type": "string"
+          },
+          "workGroup": {
+            "type": "string"
+          },
+          "conflictFiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "relatedIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          }
         },
         "additionalProperties": true
       },
       "suggestedConclusion": {
-        "enum": ["unreviewed", "fix", "false-positive", "operations", "exception", "needs-review"]
+        "enum": [
+          "unreviewed",
+          "fix",
+          "false-positive",
+          "operations",
+          "exception",
+          "needs-review"
+        ]
       },
-      "suggestedReason": { "type": "string" },
-      "policyDependencies": { "type": "array", "items": { "type": "string" } }
+      "suggestedReason": {
+        "type": "string"
+      },
+      "policyDependencies": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "stableKey": {
+        "type": "string",
+        "description": "차수를 넘어 같은 항목을 가리키는 고정 식별자 — sourceMapping.fingerprint의 SHA-1 해시 앞 8자리에 SK- 접두. 벤더 검출 ID는 차수마다 바뀌므로 증적·소통에는 이 값을 사용한다."
+      }
     },
     "additionalProperties": true
   },
   "$defs": {
     "severity": {
       "type": "object",
-      "required": ["level", "label", "rank"],
+      "required": [
+        "level",
+        "label",
+        "rank"
+      ],
       "properties": {
-        "level": { "enum": ["critical", "very-high", "high", "medium", "low", "info", "unknown"] },
-        "label": { "type": "string" },
-        "rank": { "type": "integer", "minimum": 0, "maximum": 100 }
+        "level": {
+          "enum": [
+            "critical",
+            "very-high",
+            "high",
+            "medium",
+            "low",
+            "info",
+            "unknown"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
       },
       "additionalProperties": false
     }

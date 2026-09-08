@@ -9,43 +9,114 @@
     "sequence",
     "title",
     "sourceMapping",
-    "summary",
-    "applicability",
-    "steps",
-    "checkpoints",
-    "impact",
-    "testPlan",
-    "duplicateGroup",
-    "policyQuestions"
+    "summary"
   ],
   "properties": {
-    "schemaVersion": { "const": "1.0" },
-    "id": { "type": "string", "minLength": 1 },
-    "sequence": { "type": "integer", "minimum": 1 },
-    "title": { "type": "string" },
-    "sourceMapping": {
-      "enum": ["unreviewed", "exact", "relocated", "changed", "not-found", "generated-or-external"]
+    "schemaVersion": {
+      "const": "1.0"
     },
-    "summary": { "type": "string" },
-    "applicability": { "type": "string" },
-    "steps": { "type": "array", "items": { "type": "string" } },
-    "checkpoints": { "type": "array", "items": { "type": "string" } },
-    "impact": { "type": "array", "items": { "type": "string" } },
-    "testPlan": { "type": "array", "items": { "type": "string" } },
-    "duplicateGroup": { "type": "string" },
-    "relatedIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-    "policyQuestions": { "type": "array", "items": { "type": "string" } },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "title": {
+      "type": "string"
+    },
+    "sourceMapping": {
+      "enum": [
+        "unreviewed",
+        "exact",
+        "relocated",
+        "changed",
+        "not-found",
+        "generated-or-external"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "applicability": {
+      "type": "string"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "impact": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "testPlan": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "duplicateGroup": {
+      "type": "string"
+    },
+    "relatedIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "policyQuestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "evidence": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["source", "detail"],
+        "required": [
+          "source",
+          "detail"
+        ],
         "properties": {
-          "source": { "enum": ["report", "source", "project-policy", "baseline", "inference"] },
-          "detail": { "type": "string" }
+          "source": {
+            "enum": [
+              "report",
+              "source",
+              "project-policy",
+              "baseline",
+              "inference"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
         },
         "additionalProperties": false
       }
+    },
+    "groupGuideRef": {
+      "type": "string",
+      "description": "그룹 대표 가이드의 검출 ID. 멤버 가이드는 이 필드와 summary(대표와의 차이점)만으로 충분하다."
+    },
+    "delta": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "대표 가이드와 다른 점만 기록"
     }
   },
   "additionalProperties": true

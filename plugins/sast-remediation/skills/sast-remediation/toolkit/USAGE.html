@@ -198,7 +198,10 @@ td code { white-space: nowrap; }
   <a href="#init">2. 초기 분석 확인</a>
   <a href="#carry">3. 차수 이월</a>
   <a href="#policy">4. 정책 질문</a>
+  <a href="#human">사람 개입 지점</a>
   <a href="#wave">5. 조치 웨이브</a>
+  <a href="#nonblocking">기다리지 않는 운영법</a>
+  <a href="#resume">5-1. 세션 재개</a>
   <a href="#dash">6. 대시보드</a>
   <a href="#evidence">7. 대조와 증적</a>
   <a href="#final">8. 최종 점검</a>
@@ -210,7 +213,7 @@ td code { white-space: nowrap; }
 <header class="page">
   <h1>SAST 취약점조치 툴킷 — 사용 가이드</h1>
   <p>실제 검사 차수를 처리하는 순서 그대로 정리한 실전 가이드입니다.
-  설계 배경은 <code>docs/DESIGN.md</code>, 단계별 규칙은
+  동작 원리는 <code>docs/HOW_IT_WORKS.md</code>, 설계 배경은 <code>docs/DESIGN.md</code>, 단계별 규칙은
   <code>SECURITY_SAST_WORKFLOW.md</code>를 참고합니다.</p>
 </header>
 
@@ -239,13 +242,13 @@ td code { white-space: nowrap; }
     </div>
     <div class="flow-step">
       <div class="flow-chip chip-analysis">02</div>
-      <div class="flow-body"><b>정책 질문</b>
+      <div class="flow-body"><b>정책 질문<span class="flow-cond">상시</span></b>
         <span>AI가 물으면 하나씩 답변. 정책·결정 로그에 누적됩니다.</span></div>
     </div>
     <div class="flow-step">
       <div class="flow-chip chip-work">03</div>
       <div class="flow-body"><b>조치 웨이브<span class="flow-cond">반복</span></b>
-        <span>작업 묶음 단위로 소스 조치와 검증을 수행합니다.</span></div>
+        <span>작업 묶음 단위로 소스 조치와 검증을 수행합니다. 새 세션에서 이어서 하려면 07 재개 프롬프트.</span></div>
     </div>
     <div class="flow-step">
       <div class="flow-chip chip-final">04</div>
@@ -363,6 +366,18 @@ td code { white-space: nowrap; }
   <code>project/DECISION_LOG.md</code>에 누적되어 같은 질문이 반복되지 않습니다.</p>
 </section>
 
+<section id="human">
+  <h2>사람이 개입하는 지점</h2>
+  <p>전체 흐름에서 사용자 확인이 필요한 곳은 세 곳입니다. 나머지는 AI가
+  진행하며, 대시보드는 언제든 열어 현황만 보면 됩니다.</p>
+  <table>
+    <tr><th>지점</th><th>할 일</th></tr>
+    <tr><td>정책 질문 답변 (수시)</td><td>AI가 코드로 판단 못 하는 것을 물으면 하나씩 답변</td></tr>
+    <tr><td>초기 분석 승인</td><td>01 산출물 확인 후 조치 시작 허락</td></tr>
+    <tr><td>증적 확인</td><td>05 산출물 제출 전 검토</td></tr>
+  </table>
+</section>
+
 <section id="wave">
   <h2>5. 조치 웨이브 — prompts/03</h2>
   <p><code>prompts/03-remediation-wave.md</code>로 작업 묶음(work group) 단위 조치를
@@ -375,15 +390,42 @@ td code { white-space: nowrap; }
   </ul>
 </section>
 
+<section id="nonblocking">
+  <h2>기다리지 않는 운영법</h2>
+  <p>할 일이 많을 때는 하나 시키고 기다리는 대신 이렇게 돌립니다.</p>
+  <h3>연속 실행</h3>
+  <pre><code>웨이브 연속으로 진행해줘. 정책 질문은 파킹했다가 5개 모이면 물어봐</code></pre>
+  <p>범위를 지정하면 그룹 사이에 멈추지 않습니다. 멈추는 건 validate 에러,
+  변경 금지 영역 충돌, 공통 컴포넌트 영향, 파킹 질문 누적, 범위 완료 — 다섯 가지뿐.</p>
+  <h3>정책 질문 파킹</h3>
+  <p>질문이 생긴 항목은 옆으로 빼고 나머지는 계속됩니다. 질문은 나중에 병합되어
+  순서대로 오고, 답하면 파킹 항목이 일괄 재처리됩니다.</p>
+  <h3>검토는 비동기 + 샘플링</h3>
+  <p>AI가 도는 동안 대시보드를 열어 두고 그룹별 대표 1개 + 무작위 2~3개만
+  확인하세요. 이견은 화면에서 바꾸면 04가 흡수합니다. 전수 확인은 증적(05) 때
+  한 번 — validate가 근거 없는 결론을 기계로 막고 있습니다.</p>
+</section>
+
+<section id="resume">
+  <h2>5-1. 세션 재개 — prompts/07</h2>
+  <p>작업이 여러 날에 걸치면 새 세션에서 <code>prompts/07-resume.md</code>를 전달합니다.
+  게이트 재확인 → 진행 현황·미완료 그룹 파악 → 확정 정책 재사용 → validate로 직전 세션
+  불일치 정리 후, 남은 그룹부터 이어서 진행합니다.</p>
+</section>
+
 <section id="dash">
   <h2>6. 대시보드로 검토</h2>
   <p><code>SECURITY_CHECKLIST.html</code>을 브라우저에서 직접 엽니다. 서버는 필요 없습니다.</p>
   <table>
     <tr><th>버튼</th><th>용도</th></tr>
-    <tr><td>전체 결과 갱신</td><td>AI가 갱신한 파일 상태 다시 읽기</td></tr>
+    <tr><td>전체 결과 갱신</td><td>새로고침 없이 파일 결과 다시 읽기 (열 때는 자동 반영됨)</td></tr>
     <tr><td>상태 백업</td><td>브라우저 변경분을 JSON으로 내려받기</td></tr>
     <tr><td>상태 불러오기</td><td>백업 JSON을 다시 반영</td></tr>
+    <tr><td>필터 초기화</td><td>검색·필터·메트릭 필터 일괄 해제</td></tr>
   </table>
+  <p>목록은 기본 200개씩 페이지로 표시됩니다(하단에서 100/200/500/전체 전환).
+  검색은 ID·파일·함수·체커·검출 코드를 대상으로 하고, 체커·언어 필터에는 건수가
+  함께 표시됩니다.</p>
   <p>파일과 브라우저 저장본이 다르면 항목별 <code>updatedAt</code>이 최신인 쪽이
   반영되고 상단에 충돌 배너가 뜹니다.</p>
   <div class="callout">배너에 「브라우저에만 있는 변경 n건」이 보이면
