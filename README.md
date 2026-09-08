@@ -64,21 +64,6 @@ codex plugin add skill-architect@0tak
 | 이어서 작업 | "SAST 조치 이어서 해줘" |
 | 스킬 품질 점검 | "이 스킬 감사해줘" / "sast-remediation 스킬 감사해줘" |
 
-### 기설치자용 1회성 마이그레이션
-
-마켓플레이스 이름이 `seo0tak-skills` → `0tak`, 저장소가 `claude-skills` →
-`agent-skills`로 바뀌었습니다. 예전 이름으로 등록한 PC는 한 번만 다시
-등록합니다. 프로젝트 산출물(`sast-remediation-toolkit/`)은 영향받지 않습니다.
-
-```bash
-claude plugin uninstall sast-remediation@seo0tak-skills
-claude plugin uninstall skill-architect@seo0tak-skills   # 설치했다면
-claude plugin marketplace remove seo0tak-skills
-claude plugin marketplace add seo0tak/agent-skills
-claude plugin install sast-remediation@0tak
-claude plugin install skill-architect@0tak
-```
-
 ## 왜 이렇게 만들었나
 
 1. **역할 분리** — AI가 실행자, 사람은 정책 결정자, 파일이 상태 저장소,
