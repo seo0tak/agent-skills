@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/sast/findings.schema.json",
+  "title": "SAST Findings",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "schemaVersion",
+      "id",
+      "sequence",
+      "risk",
+      "impact",
+      "checker",
+      "language",
+      "location",
+      "report",
+      "sourceMapping",
+      "grouping",
+      "suggestedConclusion"
+    ],
+    "properties": {
+      "schemaVersion": { "const": "1.0" },
+      "id": { "type": "string", "minLength": 1 },
+      "sequence": { "type": "integer", "minimum": 1 },
+      "risk": { "$ref": "#/$defs/severity" },
+      "impact": { "$ref": "#/$defs/severity" },
+      "checker": {
+        "type": "object",
+        "required": ["code", "name", "category"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "name": { "type": "string" },
+          "category": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "language": { "type": "string" },
+      "location": {
+        "type": "object",
+        "required": ["reportedFile", "reportedLine", "reportedFunction"],
+        "properties": {
+          "reportedFile": { "type": "string" },
+          "reportedLine": { "type": ["integer", "null"], "minimum": 1 },
+          "reportedFunction": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "report": {
+        "type": "object",
+        "required": ["description", "detectedCode", "detectedAt"],
+        "properties": {
+          "description": { "type": "string" },
+          "detectedCode": { "type": "string" },
+          "detectedAt": { "type": ["string", "null"] },
+          "section": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "sourceMapping": {
+        "type": "object",
+        "required": ["status", "currentFile", "currentLine", "currentFunction", "evidence", "fingerprint"],
+        "properties": {
+          "status": {
+            "enum": ["unreviewed", "exact", "relocated", "changed", "not-found", "generated-or-external"]
+          },
+          "currentFile": { "type": "string" },
+          "currentLine": { "type": ["integer", "null"], "minimum": 1 },
+          "currentFunction": { "type": "string" },
+          "evidence": { "type": "string" },
+          "fingerprint": { "type": "string" }
+        },
+        "additionalProperties": true
+      },
+      "grouping": {
+        "type": "object",
+        "required": ["duplicateGroup", "workGroup", "conflictFiles"],
+        "properties": {
+          "duplicateGroup": { "type": "string" },
+          "workGroup": { "type": "string" },
+          "conflictFiles": { "type": "array", "items": { "type": "string" } },
+          "relatedIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+        },
+        "additionalProperties": true
+      },
+      "suggestedConclusion": {
+        "enum": ["unreviewed", "fix", "false-positive", "operations", "exception", "needs-review"]
+      },
+      "suggestedReason": { "type": "string" },
+      "policyDependencies": { "type": "array", "items": { "type": "string" } }
+    },
+    "additionalProperties": true
+  },
+  "$defs": {
+    "severity": {
+      "type": "object",
+      "required": ["level", "label", "rank"],
+      "properties": {
+        "level": { "enum": ["critical", "very-high", "high", "medium", "low", "info", "unknown"] },
+        "label": { "type": "string" },
+        "rank": { "type": "integer", "minimum": 0, "maximum": 100 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "EXAMPLE_CHECKER": {
+    "code": "EXAMPLE_CHECKER",
+    "name": "Example checker",
+    "description": "Example checker description extracted from the report.",
+    "cwe": ["CWE-000"],
+    "reportGuidance": "Validate the value before using it.",
+    "vulnerableExample": "value.use()",
+    "solutionExample": "if (value != null) { value.use(); }",
+    "reviewNotes": "Confirm whether the value is required before choosing an exception or fallback.",
+    "verificationFocus": ["missing value", "valid value"],
+    "sourcePages": [1],
+    "sourceType": "report"
+  }
+}

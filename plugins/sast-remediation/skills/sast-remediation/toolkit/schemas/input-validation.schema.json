@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/sast/input-validation.schema.json",
+  "title": "SAST Input Validation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "checkedAt",
+    "project",
+    "inputs",
+    "checks",
+    "matching",
+    "blockers",
+    "notes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "status": {
+      "enum": ["unreviewed", "mechanical-ready", "ready", "blocked"]
+    },
+    "checkedAt": { "type": ["string", "null"] },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "identity", "identityEvidence"],
+      "properties": {
+        "root": { "type": "string" },
+        "identity": { "type": "string" },
+        "identityEvidence": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pdf", "spreadsheet"],
+      "properties": {
+        "pdf": { "$ref": "#/$defs/inputFile" },
+        "spreadsheet": { "$ref": "#/$defs/inputFile" }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "status", "summary", "evidence"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["pass", "fail", "manual"] },
+          "summary": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "matching": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sameProject",
+        "sameRun",
+        "findingCountConsistent",
+        "sourceScopeCompatible",
+        "reason"
+      ],
+      "properties": {
+        "sameProject": { "type": ["boolean", "null"] },
+        "sameRun": { "type": ["boolean", "null"] },
+        "findingCountConsistent": { "type": ["boolean", "null"] },
+        "sourceScopeCompatible": { "type": ["boolean", "null"] },
+        "reason": { "type": "string" }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "inputFile": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["path", "size", "format", "formatValid", "evidence"],
+      "properties": {
+        "path": { "type": "string" },
+        "size": { "type": "integer", "minimum": 0 },
+        "format": { "type": "string" },
+        "formatValid": { "type": "boolean" },
+        "evidence": { "type": "string" }
+      }
+    }
+  }
+}

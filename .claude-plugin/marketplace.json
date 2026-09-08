@@ -1,0 +1,14 @@
+{
+  "name": "seo0tak-skills",
+  "owner": {
+    "name": "seo0tak"
+  },
+  "plugins": [
+    {
+      "name": "sast-remediation",
+      "source": "./plugins/sast-remediation",
+      "description": "SAST 취약점 조치 워크플로우 — 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성",
+      "version": "1.0.0"
+    }
+  ]
+}

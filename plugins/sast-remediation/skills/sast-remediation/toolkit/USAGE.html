@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAST 취약점조치 툴킷 — 사용 가이드</title>
+<style>
+:root {
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --text: #17202a;
+  --muted: #667085;
+  --line: #d8dee7;
+  --head: #eef2f6;
+  --primary: #1f5fbf;
+  --primary-soft: #eef5ff;
+  --green: #067647;
+  --green-soft: #ecfdf3;
+  --amber: #a15c07;
+  --amber-soft: #fff8e8;
+  --red: #b42318;
+  --red-soft: #fff1f0;
+  --violet: #6941c6;
+  --violet-soft: #f4f0ff;
+  --code: #111827;
+  --code-text: #e5edf8;
+  --radius: 8px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 20px;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 16px 60px;
+}
+nav.toc {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 0;
+}
+nav.toc a {
+  display: block;
+  padding: 6px 16px;
+  color: var(--muted);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+}
+nav.toc a:hover { color: var(--primary); background: var(--primary-soft); border-left-color: var(--primary); }
+main { min-width: 0; }
+header.page {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin-bottom: 20px;
+}
+header.page h1 { margin: 0 0 6px; font-size: 21px; }
+header.page p { margin: 0; color: var(--muted); }
+section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  margin-bottom: 16px;
+}
+section h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+section h3 { margin: 16px 0 6px; font-size: 14px; }
+p { margin: 8px 0; }
+ul { margin: 8px 0; padding-left: 20px; }
+li { margin: 4px 0; }
+code {
+  background: var(--head);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: 12.5px;
+}
+pre {
+  background: var(--code);
+  color: var(--code-text);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  overflow-x: auto;
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+pre code { background: none; border: 0; padding: 0; color: inherit; font-size: inherit; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+}
+th, td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: var(--head); white-space: nowrap; }
+td code { white-space: nowrap; }
+.flow { display: flex; flex-direction: column; gap: 0; margin-top: 4px; }
+.flow-step {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  position: relative;
+  padding: 10px 0 18px;
+}
+.flow-step::before {
+  content: "";
+  position: absolute;
+  left: 43px;
+  top: 44px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--line);
+}
+.flow-step:last-child::before { display: none; }
+.flow-chip {
+  width: 88px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12.5px;
+  padding: 7px 0;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  position: relative;
+  z-index: 1;
+  background: var(--panel);
+}
+.chip-gate { background: var(--violet-soft); color: var(--violet); border-color: #d5c8f2; }
+.chip-analysis { background: var(--primary-soft); color: var(--primary); border-color: #bcd4f5; }
+.chip-work { background: var(--amber-soft); color: var(--amber); border-color: #ecd9a8; }
+.chip-final { background: var(--green-soft); color: var(--green); border-color: #b7e3c8; }
+.flow-body b { display: block; margin-bottom: 2px; }
+.flow-body span { color: var(--muted); }
+.flow-cond {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--violet);
+  background: var(--violet-soft);
+  border-radius: 4px;
+  padding: 0 6px;
+  margin-left: 6px;
+  font-weight: 700;
+}
+.callout {
+  border-left: 4px solid var(--amber);
+  background: var(--amber-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 10px 14px;
+  margin: 10px 0;
+}
+.callout.blue { border-left-color: var(--primary); background: var(--primary-soft); }
+.callout.red { border-left-color: var(--red); background: var(--red-soft); }
+.status-ready { color: var(--green); font-weight: 700; }
+.status-blocked { color: var(--red); font-weight: 700; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.toc { position: static; display: flex; flex-wrap: wrap; padding: 6px; }
+  nav.toc a { border-left: 0; padding: 5px 10px; }
+  .flow-step { grid-template-columns: 72px minmax(0, 1fr); }
+  .flow-chip { width: 72px; }
+  .flow-step::before { left: 35px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <a href="#flow">전체 흐름</a>
+  <a href="#skill">스킬로 설치</a>
+  <a href="#howto">AI에게 말하는 법</a>
+  <a href="#prep">0. 준비</a>
+  <a href="#gate">1. 사전 점검 게이트</a>
+  <a href="#init">2. 초기 분석 확인</a>
+  <a href="#carry">3. 차수 이월</a>
+  <a href="#policy">4. 정책 질문</a>
+  <a href="#wave">5. 조치 웨이브</a>
+  <a href="#dash">6. 대시보드</a>
+  <a href="#evidence">7. 대조와 증적</a>
+  <a href="#final">8. 최종 점검</a>
+  <a href="#cheat">명령어 치트시트</a>
+  <a href="#trouble">자주 겪는 상황</a>
+</nav>
+<main>
+
+<header class="page">
+  <h1>SAST 취약점조치 툴킷 — 사용 가이드</h1>
+  <p>실제 검사 차수를 처리하는 순서 그대로 정리한 실전 가이드입니다.
+  설계 배경은 <code>docs/DESIGN.md</code>, 단계별 규칙은
+  <code>SECURITY_SAST_WORKFLOW.md</code>를 참고합니다.</p>
+</header>
+
+<section id="flow">
+  <h2>전체 흐름</h2>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-chip chip-gate">준비</div>
+      <div class="flow-body"><b>툴킷 복사 + 입력 배치</b>
+        <span>툴킷 디렉터리를 프로젝트에 복사하고 <code>input/</code>에 PDF·스프레드시트를 넣습니다.</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-chip chip-gate">00</div>
+      <div class="flow-body"><b>사전 점검 게이트</b>
+        <span>기계 점검 → AI 대조 → <code>gate</code>. READY 전에는 아무것도 시작하지 않습니다.</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-chip chip-analysis">01</div>
+      <div class="flow-body"><b>초기 분석</b>
+        <span>프로젝트 분석, 검출 정규화, 현재 소스 매핑, 대시보드 데이터 생성.</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-chip chip-analysis">06</div>
+      <div class="flow-body"><b>차수 이월<span class="flow-cond">재검사 차수만</span></b>
+        <span>이전 차수의 오탐·예외 결론을 fingerprint 기준으로 승계합니다.</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-chip chip-analysis">02</div>
+      <div class="flow-body"><b>정책 질문</b>
+        <span>AI가 물으면 하나씩 답변. 정책·결정 로그에 누적됩니다.</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-chip chip-work">03</div>
+      <div class="flow-body"><b>조치 웨이브<span class="flow-cond">반복</span></b>
+        <span>작업 묶음 단위로 소스 조치와 검증을 수행합니다.</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-chip chip-final">04</div>
+      <div class="flow-body"><b>결과 대조</b>
+        <span>진행상태·결과 파일·대시보드 정합성을 확인합니다.</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-chip chip-final">05</div>
+      <div class="flow-body"><b>증적 생성</b>
+        <span>제출용 xlsx 4종을 <code>evidence/</code>에 생성합니다.</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-chip chip-final">제출 전</div>
+      <div class="flow-body"><b>최종 점검</b>
+        <span><code>validate --strict</code>가 OK여야 제출 준비 완료입니다.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="skill">
+  <h2>스킬로 설치 <span class="flow-cond">Claude Code, 선택</span></h2>
+  <p>툴킷을 스킬로 설치하면 프로젝트마다 복사할 필요 없이 어느 프로젝트에서든
+  「SAST 조치해줘」 한마디로 시작할 수 있습니다. 배포된
+  <code>sast-remediation-skill.zip</code>을 <code>~/.claude/skills/</code>에 풀면 끝입니다.</p>
+  <pre><code>~/.claude/skills/sast-remediation/
+├── SKILL.md
+└── toolkit/        # 이 툴킷 전체 동봉</code></pre>
+  <p>이후 아무 프로젝트에서나 <code>/sast-remediation</code> 또는 자연어로 요청하면
+  스킬이 툴킷 복사부터 워크플로우까지 알아서 진행합니다. 이 경우 아래
+  방식 A는 스킬 호출로 대체됩니다.</p>
+</section>
+
+<section id="howto">
+  <h2>AI에게 말하는 법</h2>
+  <p>각 단계의 요청문은 <code>prompts/</code> 파일 안에 이미 완성되어 있습니다.
+  새로 문장을 쓸 필요 없이 둘 중 한 방식으로 전달합니다.</p>
+  <h3>방식 A — 파일을 읽게 하기 <span class="flow-cond">권장</span></h3>
+  <p>Claude Code처럼 파일 접근이 가능한 환경에서 씁니다.</p>
+  <pre><code>sast-remediation-toolkit/prompts/00-preflight.md 읽고 그대로 수행해줘</code></pre>
+  <p>단계가 바뀌면 파일명만 바꿉니다. 이월처럼 추가 정보가 필요한 단계는 한 줄 덧붙입니다.</p>
+  <pre><code>prompts/06-carry-over.md 수행해줘. 이전 차수는 ../sast-2025-2차/ 에 있어</code></pre>
+  <h3>방식 B — 내용 복붙</h3>
+  <p>파일 접근이 없는 채팅 환경이면 프롬프트 파일을 열어 코드블록 안의
+  요청문을 복사해 붙여넣습니다.</p>
+  <h3>그 외 자주 쓰는 표현</h3>
+  <table>
+    <tr><th>상황</th><th>이렇게</th></tr>
+    <tr><td>다음 단계 진행</td><td>「다음 웨이브 진행해줘」</td></tr>
+    <tr><td>특정 항목만</td><td>「FIND-0231만 다시 분석해줘」</td></tr>
+    <tr><td>상태 반영</td><td>「sync 하고 validate 돌려줘」</td></tr>
+    <tr><td>대시보드 백업 반영</td><td>「이 JSON을 progress에 반영해줘」 (백업 파일 첨부)</td></tr>
+    <tr><td>fingerprint 에러</td><td>「매핑된 항목에 fingerprint 채워줘」</td></tr>
+  </table>
+</section>
+
+<section id="prep">
+  <h2>0. 준비</h2>
+  <ul>
+    <li><code>sast-remediation-toolkit/</code> 디렉터리 전체를 대상 프로젝트 루트 안에 복사합니다.</li>
+    <li>이번 차수의 SAST PDF 1개와 스프레드시트 1개를 <code>input/</code>에 넣습니다.
+      파일명은 자유이며, 반드시 같은 검사 차수의 자료여야 합니다.</li>
+    <li>에이전트를 쓰는 경우 <code>AGENTS_SNIPPET.md</code> 내용을 프로젝트의 에이전트 지침 파일에 붙여 넣습니다.</li>
+  </ul>
+</section>
+
+<section id="gate">
+  <h2>1. 사전 점검 게이트 — prompts/00</h2>
+  <p>AI에게 <code>prompts/00-preflight.md</code>의 요청문을 그대로 전달합니다.
+  내부적으로 다음이 일어납니다.</p>
+  <ul>
+    <li><code>python3 tools/sast_toolkit.py preflight</code> — 소스 존재, 입력 개수,
+      파일 시그니처를 기계적으로 검사해 <code>data/input-validation.json</code>에 기록.</li>
+    <li>AI가 소스·PDF·스프레드시트의 프로젝트 식별정보, 검사 차수, 검출 건수,
+      소스 범위를 대조해 판정을 기록.</li>
+    <li><code>python3 tools/sast_toolkit.py gate</code> — 판정과 현재 입력 파일을 재대조.
+      입력 파일이 바뀌면 이전 승인은 자동 무효.</li>
+  </ul>
+  <p><span class="status-ready">GATE: READY</span>이면 AI가 <code>prompts/01-initialize.md</code>
+  절차까지 이어서 진행합니다. <span class="status-blocked">BLOCKED</span>이면 차단 사유에 맞게
+  입력을 바로잡고 00부터 다시 실행합니다.</p>
+  <div class="callout red">READY 전에는 어떤 분석·조치도 시작하지 않습니다.</div>
+</section>
+
+<section id="init">
+  <h2>2. 초기 분석 확인 — prompts/01 산출물</h2>
+  <table>
+    <tr><th>산출물</th><th>확인 포인트</th></tr>
+    <tr><td><code>project/PROJECT_ANALYSIS.md</code></td><td>모듈·빌드·테스트 명령이 실제와 맞는지</td></tr>
+    <tr><td><code>data/findings.json</code></td><td>검출 건수가 스프레드시트와 일치하는지</td></tr>
+    <tr><td><code>SECURITY_CHECKLIST.html</code></td><td>브라우저에서 열어 목록·집계 확인</td></tr>
+  </table>
+  <p>소스 매핑이 <code>exact</code> / <code>relocated</code> / <code>changed</code>인 항목에는
+  <code>fingerprint</code>가 기록됩니다. 다음 차수 이월의 매칭 키이므로 비어 있으면
+  validate가 에러를 냅니다.</p>
+</section>
+
+<section id="carry">
+  <h2>3. 차수 이월 — prompts/06 <span class="flow-cond">재검사 차수만</span></h2>
+  <p>이전 차수의 툴킷 산출물(findings, progress, security-results)이 있으면
+  <code>prompts/06-carry-over.md</code>를 전달합니다. 이전 차수 디렉터리 경로를 함께 알려줍니다.</p>
+  <ul>
+    <li>오탐·예외 결론은 코드가 그대로일 때만 자동 승계됩니다.</li>
+    <li>코드가 바뀐 항목과 수정했는데 재검출된 항목(회귀 의심)은 <code>needs-review</code>로 남습니다.</li>
+    <li>첫 차수라면 이 단계는 건너뜁니다.</li>
+  </ul>
+</section>
+
+<section id="policy">
+  <h2>4. 정책 질문 답변 — prompts/02</h2>
+  <p>AI는 소스와 보고서로 판단할 수 없는 것만, 한 번에 하나씩, 추천 답변과 함께
+  질문합니다. 답변은 <code>project/PROJECT_SECURITY_POLICY.md</code>와
+  <code>project/DECISION_LOG.md</code>에 누적되어 같은 질문이 반복되지 않습니다.</p>
+</section>
+
+<section id="wave">
+  <h2>5. 조치 웨이브 — prompts/03</h2>
+  <p><code>prompts/03-remediation-wave.md</code>로 작업 묶음(work group) 단위 조치를
+  요청합니다. 필요한 만큼 반복합니다.</p>
+  <ul>
+    <li>웨이브 시작 전에 gate READY를 다시 확인합니다.</li>
+    <li>항목별 결과는 <code>security-results/&lt;ID&gt;.json</code>에 기록됩니다.
+      이것이 상태의 기준이며 <code>data/progress.json</code>은 대시보드용 집계입니다.</li>
+    <li>검증(빌드·테스트)이 통과하지 않은 수정은 <code>verified</code>가 될 수 없습니다.</li>
+  </ul>
+</section>
+
+<section id="dash">
+  <h2>6. 대시보드로 검토</h2>
+  <p><code>SECURITY_CHECKLIST.html</code>을 브라우저에서 직접 엽니다. 서버는 필요 없습니다.</p>
+  <table>
+    <tr><th>버튼</th><th>용도</th></tr>
+    <tr><td>전체 결과 갱신</td><td>AI가 갱신한 파일 상태 다시 읽기</td></tr>
+    <tr><td>상태 백업</td><td>브라우저 변경분을 JSON으로 내려받기</td></tr>
+    <tr><td>상태 불러오기</td><td>백업 JSON을 다시 반영</td></tr>
+  </table>
+  <p>파일과 브라우저 저장본이 다르면 항목별 <code>updatedAt</code>이 최신인 쪽이
+  반영되고 상단에 충돌 배너가 뜹니다.</p>
+  <div class="callout">배너에 「브라우저에만 있는 변경 n건」이 보이면
+  <b>상태 백업</b>으로 내려받아 <code>data/progress.json</code>에 반영한 뒤
+  AI에게 <code>sync</code>를 요청합니다.</div>
+</section>
+
+<section id="evidence">
+  <h2>7. 결과 대조와 증적 — prompts/04, 05</h2>
+  <ul>
+    <li><code>prompts/04-reconcile-results.md</code>: 진행상태·결과·대시보드가 서로 맞는지 대조합니다.</li>
+    <li><code>prompts/05-final-evidence.md</code>: 제출용 xlsx 4종을 <code>evidence/</code>에 생성합니다.
+      파일명을 바꾸려면 <code>data/project-profile.json</code>의 <code>evidence.outputs</code>에 지정합니다.</li>
+  </ul>
+</section>
+
+<section id="final">
+  <h2>8. 제출 전 최종 점검</h2>
+  <pre><code>python3 tools/sast_toolkit.py validate --strict</code></pre>
+  <p>strict는 게이트 미통과, 입력 누락, 미초기화 메타데이터, 상태 불일치를 전부
+  오류로 처리합니다. <code>OK</code>가 나와야 제출 준비 완료입니다.</p>
+</section>
+
+<section id="cheat">
+  <h2>명령어 치트시트</h2>
+  <p><code>sast-remediation-toolkit/</code> 디렉터리에서 실행합니다.
+  외부 라이브러리는 필요 없습니다(Python 3 표준 라이브러리만 사용).</p>
+  <table>
+    <tr><th>명령</th><th>용도</th></tr>
+    <tr><td><code>python3 tools/sast_toolkit.py preflight</code></td><td>입력·소스 기계 점검</td></tr>
+    <tr><td><code>python3 tools/sast_toolkit.py gate</code></td><td>게이트 판정 (READY / BLOCKED)</td></tr>
+    <tr><td><code>python3 tools/sast_toolkit.py init</code></td><td>게이트 통과 후 초기화</td></tr>
+    <tr><td><code>python3 tools/sast_toolkit.py sync</code></td><td>JSON → JS 미러·인덱스 동기화</td></tr>
+    <tr><td><code>python3 tools/sast_toolkit.py validate</code></td><td>데이터 정합성 검증</td></tr>
+    <tr><td><code>python3 tools/sast_toolkit.py validate --strict</code></td><td>제출 전 최종 검증</td></tr>
+  </table>
+  <p>프로젝트 루트가 툴킷 상위 디렉터리가 아니면
+  <code>--project-root &lt;경로&gt;</code>를 붙입니다.</p>
+</section>
+
+<section id="trouble">
+  <h2>자주 겪는 상황</h2>
+  <table>
+    <tr><th>증상</th><th>조치</th></tr>
+    <tr><td><span class="status-blocked">GATE: BLOCKED</span> — 입력 개수</td>
+        <td><code>input/</code>에 PDF 1개·스프레드시트 1개만 남기기</td></tr>
+    <tr><td><span class="status-blocked">GATE: BLOCKED</span> — recorded ... differs</td>
+        <td>입력 파일이 바뀜. 00 사전 점검부터 재실행</td></tr>
+    <tr><td>validate: fingerprint is empty</td>
+        <td>AI에게 「매핑된 항목에 fingerprint 채워줘」 요청</td></tr>
+    <tr><td>validate: progress and result disagree</td>
+        <td>AI에게 04 대조 요청. results가 기준</td></tr>
+    <tr><td>대시보드가 비어 보임</td>
+        <td><code>sync</code> 실행 여부 확인 후 새로고침</td></tr>
+    <tr><td>브라우저 변경이 사라질까 걱정될 때</td>
+        <td>상태 백업 먼저, 그다음 파일 작업</td></tr>
+    <tr><td>기존 진행 중 프로젝트에 새 툴킷 덮어씀</td>
+        <td>fingerprint 에러 발생 시 위 요청 한 번 실행</td></tr>
+  </table>
+</section>
+
+</main>
+</div>
+</body>
+</html>

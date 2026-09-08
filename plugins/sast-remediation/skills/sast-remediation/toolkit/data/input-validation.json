@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1.0",
+  "status": "unreviewed",
+  "checkedAt": null,
+  "project": {
+    "root": "",
+    "identity": "",
+    "identityEvidence": []
+  },
+  "inputs": {
+    "pdf": null,
+    "spreadsheet": null
+  },
+  "checks": [],
+  "matching": {
+    "sameProject": null,
+    "sameRun": null,
+    "findingCountConsistent": null,
+    "sourceScopeCompatible": null,
+    "reason": ""
+  },
+  "blockers": [
+    "사전 점검을 실행하지 않았습니다."
+  ],
+  "notes": []
+}

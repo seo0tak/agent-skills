@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/sast/checker-guides.schema.json",
+  "title": "SAST Checker Guides",
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "required": ["code", "name", "description", "cwe", "reportGuidance", "reviewNotes", "verificationFocus"],
+    "properties": {
+      "code": { "type": "string", "minLength": 1 },
+      "name": { "type": "string" },
+      "description": { "type": "string" },
+      "cwe": { "type": "array", "items": { "type": "string" } },
+      "reportGuidance": { "type": "string" },
+      "vulnerableExample": { "type": "string" },
+      "solutionExample": { "type": "string" },
+      "reviewNotes": { "type": "string" },
+      "verificationFocus": { "type": "array", "items": { "type": "string" } },
+      "sourcePages": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+      "sourceType": { "const": "report" }
+    },
+    "additionalProperties": true
+  }
+}

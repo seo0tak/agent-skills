@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/sast/progress.schema.json",
+  "title": "SAST Progress",
+  "type": "object",
+  "required": ["schemaVersion", "workspaceId", "updatedAt", "items"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "workspaceId": { "type": "string" },
+    "updatedAt": { "type": ["string", "null"], "format": "date-time" },
+    "items": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["workflowStatus", "conclusion", "note"],
+        "properties": {
+          "workflowStatus": {
+            "enum": ["todo", "in-progress", "analyzed", "change-complete", "verified", "deferred"]
+          },
+          "conclusion": {
+            "enum": ["unreviewed", "fix", "false-positive", "operations", "exception", "needs-review"]
+          },
+          "note": { "type": "string" },
+          "updatedAt": { "type": ["string", "null"], "format": "date-time" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

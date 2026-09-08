@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SAST 취약점 체크리스트</title>
+  <link rel="stylesheet" href="assets/checklist.css">
+  <script src="data/input-validation.js"></script>
+  <script src="data/project-profile.js"></script>
+  <script src="data/findings.js"></script>
+  <script src="data/checker-guides.js"></script>
+  <script src="data/progress.js"></script>
+  <script src="security-guides/index.js"></script>
+  <script src="security-results/index.js"></script>
+  <script defer src="assets/checklist.js"></script>
+</head>
+<body>
+  <div id="syncNotice" class="sync-notice" role="alert" hidden></div>
+  <header class="app-header">
+    <div class="title-row">
+      <div>
+        <h1 id="pageTitle">SAST 취약점 체크리스트</h1>
+        <div class="meta-row">
+          <span class="badge" id="projectBadge">프로젝트 미분석</span>
+          <span class="badge" id="reportBadge">리포트 미등록</span>
+          <span class="badge" id="inputBadge">입력 확인 전</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="refreshResults" type="button">전체 결과 갱신</button>
+        <button id="importProgress" type="button">상태 불러오기</button>
+        <button id="exportProgress" class="primary" type="button">상태 백업</button>
+        <input id="progressFile" class="hidden" type="file" accept="application/json,.json">
+      </div>
+    </div>
+
+    <div class="controls" aria-label="검출 항목 필터">
+      <input id="search" type="search" placeholder="ID, 파일, 함수, 체커, 검출 코드 검색">
+      <select id="checkerFilter" aria-label="체커 필터">
+        <option value="">전체 체커</option>
+      </select>
+      <select id="riskFilter" aria-label="위험도 필터">
+        <option value="">전체 위험도</option>
+      </select>
+      <select id="workflowFilter" aria-label="작업 단계 필터">
+        <option value="">전체 작업 단계</option>
+      </select>
+      <select id="conclusionFilter" aria-label="조치 결론 필터">
+        <option value="">전체 조치 결론</option>
+      </select>
+      <select id="mappingFilter" aria-label="소스 매핑 필터">
+        <option value="">전체 소스 매핑</option>
+      </select>
+    </div>
+  </header>
+
+  <main>
+    <section id="readinessPanel" class="readiness-band" aria-live="polite">
+      <div>
+        <strong id="readinessTitle">작업 시작 조건 확인 전</strong>
+        <p id="readinessMessage">현재 프로젝트와 입력 보고서의 적합성을 먼저 확인해야 합니다.</p>
+      </div>
+      <ul id="readinessBlockers"></ul>
+    </section>
+
+    <section class="summary" aria-label="처리 현황">
+      <button class="metric-card active" type="button" data-dashboard-filter="all">
+        <strong id="totalCount">0</strong><span>전체 항목</span>
+      </button>
+      <div class="metric-card neutral">
+        <strong id="shownCount">0</strong><span>필터 결과</span>
+      </div>
+      <button class="metric-card danger" type="button" data-dashboard-filter="high-pending">
+        <strong id="highPendingCount">0</strong><span>높음 이상 대기</span>
+      </button>
+      <button class="metric-card info" type="button" data-dashboard-filter="analyzed">
+        <strong id="analyzedCount">0</strong><span>분석 완료</span>
+      </button>
+      <button class="metric-card warn" type="button" data-dashboard-filter="change-complete">
+        <strong id="changeCompleteCount">0</strong><span>변경 완료</span>
+      </button>
+      <button class="metric-card good" type="button" data-dashboard-filter="verified">
+        <strong id="verifiedCount">0</strong><span>검증 완료</span>
+      </button>
+      <button class="metric-card neutral" type="button" data-dashboard-filter="false-positive">
+        <strong id="falsePositiveCount">0</strong><span>오탐 결론</span>
+      </button>
+      <div class="metric-card progress-card">
+        <strong id="verificationRate">0%</strong><span>검증률</span>
+        <div class="progress-track"><div id="verificationBar" class="progress-bar"></div></div>
+      </div>
+    </section>
+
+    <section class="insights">
+      <article class="panel">
+        <div class="panel-head"><h2>위험도</h2></div>
+        <div id="riskStats" class="stats-list"></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><h2>조치 결론</h2></div>
+        <div id="conclusionStats" class="stats-list"></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><h2>소스 매핑</h2></div>
+        <div id="mappingStats" class="stats-list"></div>
+      </article>
+      <article class="panel recommendations-panel">
+        <div class="panel-head recommendation-head">
+          <div>
+            <h2>추천 작업 순서</h2>
+            <p>검증완료와 보류를 제외하고 위험도, 영향도, 소스 매핑 순으로 정렬합니다.</p>
+          </div>
+          <select id="recommendationLimit" aria-label="추천 작업 표시 개수">
+            <option value="5">5개</option>
+            <option value="10" selected>10개</option>
+            <option value="20">20개</option>
+            <option value="all">전체</option>
+          </select>
+        </div>
+        <div id="recommendations" class="recommendations"></div>
+      </article>
+    </section>
+
+    <section class="table-shell" aria-label="SAST 검출 목록">
+      <table>
+        <thead>
+          <tr>
+            <th><button class="sort-button" type="button" data-sort="sequence">순번 <span></span></button></th>
+            <th><button class="sort-button" type="button" data-sort="id">ID <span></span></button></th>
+            <th><button class="sort-button" type="button" data-sort="risk">위험도 <span></span></button></th>
+            <th>영향도</th>
+            <th><button class="sort-button" type="button" data-sort="checker">체커 <span></span></button></th>
+            <th><button class="sort-button" type="button" data-sort="file">파일 <span></span></button></th>
+            <th>소스 매핑</th>
+            <th>작업 단계</th>
+            <th>조치 결론</th>
+            <th>상세</th>
+          </tr>
+        </thead>
+        <tbody id="findingsBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty-state hidden">
+        현재 조건에 맞는 항목이 없습니다.
+      </div>
+    </section>
+  </main>
+
+  <div id="overlay" class="overlay"></div>
+  <aside id="detailDrawer" class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <p id="detailKicker" class="drawer-kicker"></p>
+        <h2 id="detailTitle">상세</h2>
+      </div>
+      <button id="closeDrawer" class="icon-button" type="button" aria-label="상세 닫기" title="닫기">×</button>
+    </div>
+
+    <div class="drawer-body">
+      <section id="detailMeta" class="detail-meta"></section>
+
+      <section class="action-grid">
+        <label>
+          <span>작업 단계</span>
+          <select id="detailWorkflow"></select>
+        </label>
+        <label>
+          <span>조치 결론</span>
+          <select id="detailConclusion"></select>
+        </label>
+        <label class="wide">
+          <span>비고</span>
+          <textarea id="detailNote" rows="3"></textarea>
+        </label>
+      </section>
+
+      <section class="task-panel">
+        <div class="section-head">
+          <h3>AI 처리 요청</h3>
+          <button id="copyTaskPrompt" type="button">요청문 복사</button>
+        </div>
+        <textarea id="taskPrompt" class="code-textarea hidden" rows="10" readonly></textarea>
+        <p id="taskMessage" class="message"></p>
+      </section>
+
+      <section>
+        <h3>리포트 검출 코드</h3>
+        <pre id="detectedCode" class="code-block"></pre>
+      </section>
+
+      <section>
+        <h3>현재 소스 매핑</h3>
+        <div id="sourceMapping" class="text-panel"></div>
+      </section>
+
+      <section>
+        <h3>체커 공통 가이드</h3>
+        <div id="checkerGuide" class="text-panel"></div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h3>항목별 검토 가이드</h3>
+          <button id="refreshGuide" type="button">가이드 갱신</button>
+        </div>
+        <div id="itemGuide" class="text-panel empty-panel">저장된 항목별 가이드가 없습니다.</div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h3>실제 처리 결과</h3>
+          <div class="section-actions">
+            <button id="refreshResult" type="button">결과 갱신</button>
+            <button id="exportResult" type="button">결과 JSON</button>
+          </div>
+        </div>
+        <div id="resultView" class="text-panel empty-panel">저장된 처리 결과가 없습니다.</div>
+      </section>
+
+      <section class="answer-panel">
+        <h3>AI 답변 반영</h3>
+        <textarea id="answerInput" rows="9" placeholder="항목별 처리 답변을 붙여넣으세요."></textarea>
+        <button id="parseAnswer" type="button">답변에서 결과 추출</button>
+        <p id="answerMessage" class="message"></p>
+      </section>
+    </div>
+  </aside>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "1.0",
+  "workspaceId": "sample-workspace",
+  "projectName": "Sample Application",
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "report": {
+    "id": "sample-report",
+    "pdf": "input/sample-report.pdf",
+    "spreadsheet": "input/sample-findings.xlsx",
+    "generatedAt": "2026-01-01T00:00:00Z",
+    "findingCount": 1,
+    "inputsMatch": true,
+    "mismatchReason": ""
+  },
+  "technology": {
+    "languages": ["Example Language"],
+    "frameworks": ["Example Framework"],
+    "buildTools": ["Example Build Tool"],
+    "testFrameworks": ["Example Test Framework"]
+  },
+  "paths": {
+    "sourceRoots": ["src"],
+    "testRoots": ["test"],
+    "configRoots": ["config"],
+    "templateRoots": ["templates"]
+  },
+  "modules": [
+    {
+      "name": "application",
+      "path": "src/application",
+      "role": "Application logic",
+      "dependencies": [],
+      "testPath": "test/application"
+    }
+  ],
+  "validation": {
+    "compileCommands": ["<discovered compile command>"],
+    "testCommands": ["<discovered test command>"],
+    "successSignals": ["successful exit status"],
+    "limitations": []
+  },
+  "constraints": [
+    {
+      "scope": "external protocol",
+      "rule": "Preserve the documented payload format until compatibility is verified.",
+      "source": "baseline"
+    }
+  ],
+  "analysisSummary": {
+    "exactMappings": 1,
+    "relocatedMappings": 0,
+    "notFoundMappings": 0
+  }
+}

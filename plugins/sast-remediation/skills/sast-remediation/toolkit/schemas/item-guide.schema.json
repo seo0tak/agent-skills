@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/sast/item-guide.schema.json",
+  "title": "SAST Item Guide",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "sequence",
+    "title",
+    "sourceMapping",
+    "summary",
+    "applicability",
+    "steps",
+    "checkpoints",
+    "impact",
+    "testPlan",
+    "duplicateGroup",
+    "policyQuestions"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "id": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string" },
+    "sourceMapping": {
+      "enum": ["unreviewed", "exact", "relocated", "changed", "not-found", "generated-or-external"]
+    },
+    "summary": { "type": "string" },
+    "applicability": { "type": "string" },
+    "steps": { "type": "array", "items": { "type": "string" } },
+    "checkpoints": { "type": "array", "items": { "type": "string" } },
+    "impact": { "type": "array", "items": { "type": "string" } },
+    "testPlan": { "type": "array", "items": { "type": "string" } },
+    "duplicateGroup": { "type": "string" },
+    "relatedIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "policyQuestions": { "type": "array", "items": { "type": "string" } },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "detail"],
+        "properties": {
+          "source": { "enum": ["report", "source", "project-policy", "baseline", "inference"] },
+          "detail": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0",
+  "id": "SAMPLE-001",
+  "sequence": 1,
+  "workflowStatus": "verified",
+  "conclusion": "fix",
+  "reason": "The current source used a required input before checking it.",
+  "resultFiles": ["src/application/ExampleService.ext"],
+  "resultSummary": "Added required-input validation at the service boundary.",
+  "resultCodeDiff": "Before: value.use()\nAfter: requireValue(value); value.use()",
+  "resultGuideComparison": "Applied the report's validation objective at the actual trust boundary.",
+  "impact": ["Missing input now returns the project's standard validation error."],
+  "verification": {
+    "status": "passed",
+    "commands": ["<discovered targeted test command>"],
+    "results": ["Targeted missing and valid input tests passed."],
+    "limitations": [],
+    "verifiedAt": "2026-01-01T01:00:00Z"
+  },
+  "duplicates": [],
+  "evidenceNote": "Required input is validated before dereference; missing and valid cases were verified.",
+  "updatedAt": "2026-01-01T01:00:00Z"
+}

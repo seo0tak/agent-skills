@@ -1,0 +1,37 @@
+window.SAST_TOOLKIT_DATA = window.SAST_TOOLKIT_DATA || {};
+window.SAST_TOOLKIT_DATA.projectProfile = {
+  "schemaVersion": "1.0",
+  "workspaceId": "uninitialized",
+  "projectName": "",
+  "generatedAt": null,
+  "report": {
+    "id": "",
+    "pdf": "",
+    "spreadsheet": "",
+    "generatedAt": null,
+    "findingCount": 0,
+    "inputsMatch": null,
+    "mismatchReason": ""
+  },
+  "technology": {
+    "languages": [],
+    "frameworks": [],
+    "buildTools": [],
+    "testFrameworks": []
+  },
+  "paths": {
+    "sourceRoots": [],
+    "testRoots": [],
+    "configRoots": [],
+    "templateRoots": []
+  },
+  "modules": [],
+  "validation": {
+    "compileCommands": [],
+    "testCommands": [],
+    "successSignals": [],
+    "limitations": []
+  },
+  "constraints": [],
+  "analysisSummary": {}
+};

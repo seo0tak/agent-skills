@@ -1,0 +1,51 @@
+[
+  {
+    "schemaVersion": "1.0",
+    "id": "SAMPLE-001",
+    "sequence": 1,
+    "risk": {
+      "level": "high",
+      "label": "High",
+      "rank": 70
+    },
+    "impact": {
+      "level": "medium",
+      "label": "Medium",
+      "rank": 50
+    },
+    "checker": {
+      "code": "EXAMPLE_CHECKER",
+      "name": "Example checker",
+      "category": "Security"
+    },
+    "language": "Example Language",
+    "location": {
+      "reportedFile": "src/application/ExampleService.ext",
+      "reportedLine": 42,
+      "reportedFunction": "processInput"
+    },
+    "report": {
+      "description": "Example report description.",
+      "detectedCode": "42. value.use()",
+      "detectedAt": "2026-01-01T00:00:00Z",
+      "section": "Example section"
+    },
+    "sourceMapping": {
+      "status": "exact",
+      "currentFile": "src/application/ExampleService.ext",
+      "currentLine": 42,
+      "currentFunction": "processInput",
+      "evidence": "The current source contains the same operation and data flow.",
+      "fingerprint": "ExampleService.processInput:value.use"
+    },
+    "grouping": {
+      "duplicateGroup": "",
+      "workGroup": "WG-001",
+      "conflictFiles": ["src/application/ExampleService.ext"],
+      "relatedIds": []
+    },
+    "suggestedConclusion": "needs-review",
+    "suggestedReason": "The source matches, but the required input policy is not yet confirmed.",
+    "policyDependencies": ["input-null-policy"]
+  }
+]

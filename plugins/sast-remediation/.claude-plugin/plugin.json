@@ -1,0 +1,5 @@
+{
+  "name": "sast-remediation",
+  "description": "SAST 취약점 조치 워크플로우 툴킷",
+  "version": "1.0.0"
+}
