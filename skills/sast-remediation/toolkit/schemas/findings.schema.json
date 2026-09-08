@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/sast/findings.schema.json",
+  "title": "SAST Findings",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "schemaVersion",
+      "id",
+      "sequence",
+      "risk",
+      "impact",
+      "checker",
+      "language",
+      "location",
+      "report",
+      "sourceMapping",
+      "grouping",
+      "suggestedConclusion"
+    ],
+    "properties": {
+      "schemaVersion": {
+        "const": "1.0"
+      },
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sequence": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "risk": {
+        "$ref": "#/$defs/severity"
+      },
+      "impact": {
+        "$ref": "#/$defs/severity"
+      },
+      "checker": {
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "category"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "language": {
+        "type": "string"
+      },
+      "location": {
+        "type": "object",
+        "required": [
+          "reportedFile",
+          "reportedLine",
+          "reportedFunction"
+        ],
+        "properties": {
+          "reportedFile": {
+            "type": "string"
+          },
+          "reportedLine": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "reportedFunction": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "report": {
+        "type": "object",
+        "required": [
+          "description",
+          "detectedCode",
+          "detectedAt"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "detectedCode": {
+            "type": "string"
+          },
+          "detectedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "section": {
+            "type": "string"
+          },
+          "vendorAttributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "정의를 모르는 벤더 전용 컬럼을 원문 그대로 보존한다 (예: Sparrow의 A.S). 결론·위험도 판단에 쓰지 않는다. 의미가 확인되면 재분류에 사용한다."
+          }
+        },
+        "additionalProperties": true
+      },
+      "sourceMapping": {
+        "type": "object",
+        "required": [
+          "status",
+          "currentFile",
+          "currentLine",
+          "currentFunction",
+          "evidence",
+          "fingerprint"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "unreviewed",
+              "exact",
+              "relocated",
+              "changed",
+              "not-found",
+              "generated-or-external"
+            ]
+          },
+          "currentFile": {
+            "type": "string"
+          },
+          "currentLine": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "currentFunction": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "grouping": {
+        "type": "object",
+        "required": [
+          "duplicateGroup",
+          "workGroup",
+          "conflictFiles"
+        ],
+        "properties": {
+          "duplicateGroup": {
+            "type": "string"
+          },
+          "workGroup": {
+            "type": "string"
+          },
+          "conflictFiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "relatedIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "suggestedConclusion": {
+        "enum": [
+          "unreviewed",
+          "fix",
+          "false-positive",
+          "operations",
+          "exception",
+          "needs-review"
+        ]
+      },
+      "suggestedReason": {
+        "type": "string"
+      },
+      "policyDependencies": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "stableKey": {
+        "type": "string",
+        "description": "차수를 넘어 같은 항목을 가리키는 고정 식별자 — sourceMapping.fingerprint의 SHA-1 해시 앞 8자리에 SK- 접두. 벤더 검출 ID는 차수마다 바뀌므로 증적·소통에는 이 값을 사용한다."
+      }
+    },
+    "additionalProperties": true
+  },
+  "$defs": {
+    "severity": {
+      "type": "object",
+      "required": [
+        "level",
+        "label",
+        "rank"
+      ],
+      "properties": {
+        "level": {
+          "enum": [
+            "critical",
+            "very-high",
+            "high",
+            "medium",
+            "low",
+            "info",
+            "unknown"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

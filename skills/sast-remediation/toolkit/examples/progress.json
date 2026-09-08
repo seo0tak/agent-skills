@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0",
+  "workspaceId": "sample-workspace",
+  "updatedAt": "2026-01-01T01:00:00Z",
+  "items": {
+    "SAMPLE-001": {
+      "workflowStatus": "verified",
+      "conclusion": "fix",
+      "note": "Required input validation and targeted verification completed.",
+      "updatedAt": "2026-01-01T01:00:00Z"
+    }
+  }
+}

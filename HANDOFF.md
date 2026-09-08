@@ -1,7 +1,7 @@
 # HANDOFF — 개발 세션 인수인계 (2026-09-08 기준, v1.10.0)
 
 새 세션은 이 문서와 저장소 루트 README.md를 읽으면 이어서 작업할 수 있다.
-원리는 `plugins/sast-remediation/skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
+원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
 ## 현재 상태

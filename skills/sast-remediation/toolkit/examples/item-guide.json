@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0",
+  "id": "SAMPLE-001",
+  "sequence": 1,
+  "title": "Validate an optional input before use",
+  "sourceMapping": "exact",
+  "summary": "The reported value is used without an explicit policy for missing input.",
+  "applicability": "The report guidance applies after the project decides whether the input is required.",
+  "steps": [
+    "Confirm the input contract at the service boundary.",
+    "Add the smallest validation or fallback consistent with that contract."
+  ],
+  "checkpoints": [
+    "Do not convert a required value into an empty default.",
+    "Check all callers before changing the function contract."
+  ],
+  "impact": ["Input error behavior may change."],
+  "testPlan": ["Verify missing and valid input behavior."],
+  "duplicateGroup": "",
+  "relatedIds": [],
+  "policyQuestions": ["Is the input required or optional?"],
+  "evidence": [
+    {
+      "source": "source",
+      "detail": "The current function dereferences the input before validation."
+    },
+    {
+      "source": "report",
+      "detail": "The checker recommends validation before use."
+    }
+  ]
+}

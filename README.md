@@ -4,8 +4,8 @@ Claude Code용 개인 스킬 마켓플레이스입니다. 지금은 두 개가 �
 
 | 플러그인 | 무엇을 하나 | 버전 |
 |---|---|---|
-| **sast-remediation** | 이미 받은 SAST 결과(벤더 PDF+스프레드시트 또는 SARIF)를 조치·오탐검토·검증·증적까지 관리하는 파일 기반 워크플로우. 게이트, 차수 이월, 모델 티어링, 중단 내성 포함 | 1.10.0 |
-| **skill-architect** | 스킬을 프로덕션 품질 기준(10범주 체크리스트)으로 감사하고, 새 스킬을 설계 | 0.2.0 |
+| **sast-remediation** | 이미 받은 SAST 결과(벤더 PDF+스프레드시트 또는 SARIF)를 조치·오탐검토·검증·증적까지 관리하는 파일 기반 워크플로우. 게이트, 차수 이월, 모델 티어링, 중단 내성 포함 | 1.10.1 |
+| **skill-architect** | 스킬을 프로덕션 품질 기준(10범주 체크리스트)으로 감사하고, 새 스킬을 설계 | 0.2.1 |
 
 버전 정본은 각 플러그인의 `.claude-plugin/plugin.json`입니다. 위 표는 요약이므로
 버전을 올릴 때 함께 갱신합니다.
@@ -48,21 +48,21 @@ sast-remediation은 스캐너가 아닙니다. 스캐너가 뱉은 수천 건을
    묻고, "모르겠다"가 정식 답이며, 모를 때는 동작을 보존하는 쪽을 택해
    현실이 답을 알려주게 합니다.
 
-자세한 원리는 [HOW_IT_WORKS](plugins/sast-remediation/skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md)에
+자세한 원리는 [HOW_IT_WORKS](skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md)에
 있습니다. skill-architect의 체크리스트는 이 스킬을 운영하며 도출된 기준입니다.
 
 ## 문서
 
 | 문서 | 내용 |
 |---|---|
-| [USAGE.md](plugins/sast-remediation/skills/sast-remediation/toolkit/USAGE.md) | 단계별 사용법, AI에게 말하는 법, 명령어 치트시트, 자주 겪는 상황 |
-| [HOW_IT_WORKS.md](plugins/sast-remediation/skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md) | 왜 이렇게 움직이는지 — 핵심 원리 10가지 |
-| [SECURITY_GRILL_GUIDE.md](plugins/sast-remediation/skills/sast-remediation/toolkit/SECURITY_GRILL_GUIDE.md) | 정책 질문을 어떻게 묻는가 (답하는 사람이 모를 때 포함) |
-| [VERSIONING.md](plugins/sast-remediation/skills/sast-remediation/toolkit/docs/VERSIONING.md) | 버전·호환 정책, 진행 중 차수 업그레이드, 마이그레이션 기록 |
-| [ARCHITECTURE_CHECKLIST.md](plugins/skill-architect/skills/skill-architect/ARCHITECTURE_CHECKLIST.md) | 스킬 품질 기준 10범주 |
+| [USAGE.md](skills/sast-remediation/toolkit/USAGE.md) | 단계별 사용법, AI에게 말하는 법, 명령어 치트시트, 자주 겪는 상황 |
+| [HOW_IT_WORKS.md](skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md) | 왜 이렇게 움직이는지 — 핵심 원리 10가지 |
+| [SECURITY_GRILL_GUIDE.md](skills/sast-remediation/toolkit/SECURITY_GRILL_GUIDE.md) | 정책 질문을 어떻게 묻는가 (답하는 사람이 모를 때 포함) |
+| [VERSIONING.md](skills/sast-remediation/toolkit/docs/VERSIONING.md) | 버전·호환 정책, 진행 중 차수 업그레이드, 마이그레이션 기록 |
+| [ARCHITECTURE_CHECKLIST.md](skills/skill-architect/ARCHITECTURE_CHECKLIST.md) | 스킬 품질 기준 10범주 |
 
 툴킷은 스킬 없이도 씁니다 — `toolkit/` 디렉터리를 프로젝트에 복사하고
-[toolkit/README.md](plugins/sast-remediation/skills/sast-remediation/toolkit/README.md)의
+[toolkit/README.md](skills/sast-remediation/toolkit/README.md)의
 빠른 시작을 따르면 됩니다.
 
 ## 업데이트 배포
@@ -108,4 +108,4 @@ State lives in files, rules are enforced by a validator rather than by
 prose, and policy questions are designed for people who don't know the
 codebase or security well. **skill-architect** audits and designs skills
 against a 10-category production-quality checklist derived from running
-the former. See [HOW_IT_WORKS](plugins/sast-remediation/skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md).
+the former. See [HOW_IT_WORKS](skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md).

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "1.0",
+  "status": "ready",
+  "checkedAt": "2026-01-01T00:00:00Z",
+  "project": {
+    "root": "..",
+    "identity": "Sample Application",
+    "identityEvidence": [
+      "프로젝트 선언 파일의 애플리케이션 이름",
+      "주요 소스 루트"
+    ]
+  },
+  "inputs": {
+    "pdf": {
+      "path": "input/sample-report.pdf",
+      "size": 1024,
+      "format": "pdf",
+      "formatValid": true,
+      "evidence": "PDF 파일 시그니처 확인"
+    },
+    "spreadsheet": {
+      "path": "input/sample-findings.xlsx",
+      "size": 1024,
+      "format": "xlsx",
+      "formatValid": true,
+      "evidence": "스프레드시트 컨테이너와 워크북 확인"
+    }
+  },
+  "checks": [
+    {
+      "code": "SOURCE_PRESENT",
+      "status": "pass",
+      "summary": "현재 프로젝트 소스를 확인했습니다.",
+      "evidence": ["src/application/example.ext"]
+    },
+    {
+      "code": "INPUT_COUNT",
+      "status": "pass",
+      "summary": "PDF와 스프레드시트가 각각 하나입니다.",
+      "evidence": ["input/sample-report.pdf", "input/sample-findings.xlsx"]
+    },
+    {
+      "code": "REPORT_CONTENT_READABLE",
+      "status": "pass",
+      "summary": "PDF 가이드와 스프레드시트 검출 목록을 읽을 수 있습니다.",
+      "evidence": ["체커 설명과 검출 목록 필수 열 확인"]
+    },
+    {
+      "code": "SEMANTIC_MATCH",
+      "status": "pass",
+      "summary": "현재 소스와 두 보고서의 식별정보가 일치합니다.",
+      "evidence": ["프로젝트명, 분석 번호, 검출 건수와 소스 경로 대조"]
+    }
+  ],
+  "matching": {
+    "sameProject": true,
+    "sameRun": true,
+    "findingCountConsistent": true,
+    "sourceScopeCompatible": true,
+    "reason": "프로젝트 식별정보, 검사 식별정보, 검출 건수와 소스 범위가 일치합니다."
+  },
+  "blockers": [],
+  "notes": []
+}
