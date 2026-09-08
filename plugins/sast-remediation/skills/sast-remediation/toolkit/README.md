@@ -1,5 +1,16 @@
 # Universal SAST Remediation Toolkit
 
+> **English summary** — This is not a scanner. It is a remediation
+> management workflow for SAST results you already have: an input
+> readiness gate, source-to-report mapping, one-question-at-a-time
+> policy resolution, remediation waves with verification, cross-round
+> carry-over of false-positive decisions (fingerprint-matched), a
+> file-based dashboard, and submission-ready evidence workbooks.
+> Inputs: a vendor PDF + findings spreadsheet, **or a standard SARIF
+> file** (Semgrep, CodeQL, SonarQube, ...). Pair it with a scanning
+> skill or CI SAST job: they find issues, this toolkit manages what
+> happens next. Docs are currently in Korean.
+
 현재 프로젝트 소스와 최신 SAST PDF 및 스프레드시트만으로 취약점
 분석, 정책 확인, 소스 조치, 검증, 증적 정리를 반복 수행하기 위한
 범용 패키지입니다.
@@ -11,11 +22,22 @@
 ## 매번 준비할 입력
 
 1. 현재 프로젝트 소스
-2. 최신 SAST 상세 보고서 PDF 1개
-3. 최신 SAST 검출 목록 스프레드시트 1개
+2. 최신 SAST 검출 자료 — 다음 중 한 조합을 `input/`에 넣습니다.
+   - **벤더 모드**: 상세 보고서 PDF 1개 이상(대용량 분할 허용) + 검출 스프레드시트 1개
+   - **SARIF 모드**: 표준 `.sarif` 파일 1개 (Semgrep, CodeQL,
+     SonarQube 등의 출력. PDF 선택)
 
-PDF와 스프레드시트는 `input/`에 넣습니다. 파일명은 자유롭지만 같은
-검사 차수의 자료여야 합니다.
+파일명은 자유롭지만 같은 검사 차수의 자료여야 합니다.
+
+리포트가 여러 벌이면(도구별·차수별) `input/` 바로 아래가 아니라
+`input/<세트명>/` 폴더로 나눠 보관할 수 있습니다. 세트가 하나면 자동
+선택되고, 여러 개면 `preflight --input-set <세트명>`으로 지정합니다.
+한 차수에는 한 세트만 사용하며 세트 간 병합은 지원하지 않습니다.
+
+이 툴킷은 **스캐너가 아닙니다**. 취약점을 찾는 도구가 아니라, 이미
+받은 SAST 결과를 조치·오탐검토·검증·증적까지 관리하는 워크플로우입니다.
+스캔 자체는 Semgrep 같은 도구나 스캔용 Claude 스킬로 수행하고, 그
+출력(SARIF)을 이 툴킷의 입력으로 사용하면 됩니다.
 
 실제 차수를 처리하는 순서별 상세 절차, 명령어 치트시트, 자주 겪는
 상황은 `USAGE.md` 또는 브라우저용 `USAGE.html`을 참고합니다.

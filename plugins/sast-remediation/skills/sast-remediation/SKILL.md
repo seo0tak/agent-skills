@@ -1,6 +1,6 @@
 ---
 name: sast-remediation
-description: SAST(정적분석) 취약점 조치 워크플로우를 수행한다. 사용자가 SAST 결과 조치, 취약점 조치/검토, 시큐어코딩 점검 결과 처리, 오탐 검토, 취약점 증적 작성을 요청하거나 SAST PDF·검출 스프레드시트를 언급하면 이 스킬을 사용한다. 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성까지의 전체 절차와 도구를 포함한다.
+description: Manage and remediate SAST findings you already have — input gate, source-to-report mapping, false-positive review, remediation waves with verification, cross-round carry-over, and submission-ready evidence. Accepts vendor PDF+spreadsheet reports or standard SARIF files (Semgrep, CodeQL, SonarQube). Use when the user asks to remediate/triage SAST results, review false positives, process a security scan report, or produce remediation evidence. | SAST(정적분석) 취약점 조치 워크플로우. 사용자가 SAST 결과 조치, 취약점 조치/검토, 시큐어코딩 점검 결과 처리, 오탐 검토, 취약점 증적 작성을 요청하거나 SAST PDF·검출 스프레드시트·SARIF 파일을 언급하면 사용. 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성 절차 포함.
 argument-hint: [단계 또는 요청]
 ---
 
@@ -15,8 +15,8 @@ argument-hint: [단계 또는 요청]
 
 - **없으면**: `${CLAUDE_SKILL_DIR}/toolkit/`을 프로젝트 루트에
   `sast-remediation-toolkit/` 이름으로 복사한다. 복사 후 사용자에게
-  `input/`에 이번 차수의 SAST PDF 1개와 검출 스프레드시트 1개를 넣어
-  달라고 요청하고 멈춘다.
+  `input/`에 이번 차수의 SAST 자료를 넣어 달라고 요청하고 멈춘다.
+  (벤더 PDF 1개+스프레드시트 1개, 또는 표준 SARIF 파일 1개)
 - **있으면**: 기존 것을 그대로 사용한다. 진행 중인 차수의 산출물을
   덮어쓰지 않는다. 스킬의 toolkit이 더 최신이라도 사용자가 명시적으로
   업그레이드를 요청할 때만 고정 자산(assets, prompts, schemas, tools,

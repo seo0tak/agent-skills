@@ -16,31 +16,69 @@
     "notes"
   ],
   "properties": {
-    "schemaVersion": { "const": "1.0" },
-    "status": {
-      "enum": ["unreviewed", "mechanical-ready", "ready", "blocked"]
+    "schemaVersion": {
+      "const": "1.0"
     },
-    "checkedAt": { "type": ["string", "null"] },
+    "status": {
+      "enum": [
+        "unreviewed",
+        "mechanical-ready",
+        "ready",
+        "blocked"
+      ]
+    },
+    "checkedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "project": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root", "identity", "identityEvidence"],
+      "required": [
+        "root",
+        "identity",
+        "identityEvidence"
+      ],
       "properties": {
-        "root": { "type": "string" },
-        "identity": { "type": "string" },
+        "root": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
         "identityEvidence": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
     "inputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pdf", "spreadsheet"],
+      "required": [
+        "pdf",
+        "spreadsheet"
+      ],
       "properties": {
-        "pdf": { "$ref": "#/$defs/inputFile" },
-        "spreadsheet": { "$ref": "#/$defs/inputFile" }
+        "set": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pdf": {
+          "$ref": "#/$defs/inputFile"
+        },
+        "spreadsheet": {
+          "$ref": "#/$defs/inputFile"
+        },
+        "sarif": {
+          "$ref": "#/$defs/inputFile"
+        }
       }
     },
     "checks": {
@@ -48,14 +86,32 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["code", "status", "summary", "evidence"],
+        "required": [
+          "code",
+          "status",
+          "summary",
+          "evidence"
+        ],
         "properties": {
-          "code": { "type": "string", "minLength": 1 },
-          "status": { "enum": ["pass", "fail", "manual"] },
-          "summary": { "type": "string" },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "manual"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
           "evidence": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           }
         }
       }
@@ -71,33 +127,79 @@
         "reason"
       ],
       "properties": {
-        "sameProject": { "type": ["boolean", "null"] },
-        "sameRun": { "type": ["boolean", "null"] },
-        "findingCountConsistent": { "type": ["boolean", "null"] },
-        "sourceScopeCompatible": { "type": ["boolean", "null"] },
-        "reason": { "type": "string" }
+        "sameProject": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sameRun": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "findingCountConsistent": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sourceScopeCompatible": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
       }
     },
     "blockers": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "notes": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     }
   },
   "$defs": {
     "inputFile": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "additionalProperties": false,
-      "required": ["path", "size", "format", "formatValid", "evidence"],
+      "required": [
+        "path",
+        "size",
+        "format",
+        "formatValid",
+        "evidence"
+      ],
       "properties": {
-        "path": { "type": "string" },
-        "size": { "type": "integer", "minimum": 0 },
-        "format": { "type": "string" },
-        "formatValid": { "type": "boolean" },
-        "evidence": { "type": "string" }
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "format": {
+          "type": "string"
+        },
+        "formatValid": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "string"
+        }
       }
     }
   }

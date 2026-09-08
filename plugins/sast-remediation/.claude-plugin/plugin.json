@@ -1,5 +1,5 @@
 {
   "name": "sast-remediation",
-  "description": "SAST 취약점 조치 워크플로우 툴킷",
-  "version": "1.0.0"
+  "description": "SAST remediation workflow toolkit (vendor report or SARIF input)",
+  "version": "1.2.0"
 }

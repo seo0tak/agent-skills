@@ -71,6 +71,7 @@ INPUT_VALIDATION_VALUES = {
 }
 CHECK_VALUES = {"pass", "fail", "manual"}
 SPREADSHEET_SUFFIXES = {".xls", ".xlsx", ".xlsm", ".csv", ".tsv"}
+SARIF_SUFFIXES = {".sarif"}
 SOURCE_SUFFIXES = {
     ".c",
     ".cc",
@@ -366,20 +367,76 @@ def utc_now() -> str:
     )
 
 
-def input_files() -> tuple[list[Path], list[Path]]:
-    if not INPUT_DIR.is_dir():
-        return [], []
+def candidate_files(base: Path) -> tuple[list[Path], list[Path], list[Path]]:
+    if not base.is_dir():
+        return [], [], []
     pdf_files = [
         path
-        for path in INPUT_DIR.iterdir()
+        for path in base.iterdir()
         if path.is_file() and path.suffix.lower() == ".pdf"
     ]
     spreadsheet_files = [
         path
-        for path in INPUT_DIR.iterdir()
+        for path in base.iterdir()
         if path.is_file() and path.suffix.lower() in SPREADSHEET_SUFFIXES
     ]
-    return sorted(pdf_files), sorted(spreadsheet_files)
+    sarif_files = [
+        path
+        for path in base.iterdir()
+        if path.is_file() and path.suffix.lower() in SARIF_SUFFIXES
+    ]
+    return sorted(pdf_files), sorted(spreadsheet_files), sorted(sarif_files)
+
+
+def discover_input_sets() -> dict[str, tuple[list[Path], list[Path], list[Path]]]:
+    """input/의 하위 폴더 중 후보 파일이 있는 것을 리포트 세트로 본다."""
+    sets: dict[str, tuple[list[Path], list[Path], list[Path]]] = {}
+    if not INPUT_DIR.is_dir():
+        return sets
+    for entry in sorted(INPUT_DIR.iterdir()):
+        if entry.is_dir():
+            files = candidate_files(entry)
+            if any(files):
+                sets[entry.name] = files
+    return sets
+
+
+def resolve_input_set(
+    input_set: str | None,
+) -> tuple[str | None, tuple[list[Path], list[Path], list[Path]], list[str]]:
+    """활성 세트 선택. 반환: (세트명 또는 None=루트, 파일들, 차단 사유들)"""
+    root_files = candidate_files(INPUT_DIR)
+    sets = discover_input_sets()
+    if input_set:
+        if input_set not in sets:
+            return input_set, ([], [], []), [
+                f"입력 세트 '{input_set}' 폴더가 input/ 아래에 없거나 비어 있습니다. "
+                f"사용 가능한 세트: {', '.join(sets) if sets else '없음'}"
+            ]
+        return input_set, sets[input_set], []
+    if any(root_files):
+        if sets:
+            return None, root_files, [
+                "input/ 루트 파일과 세트 폴더가 혼재합니다. 루트 파일을 세트 폴더로 "
+                f"옮기거나 하나만 남기세요. 세트: {', '.join(sets)}"
+            ]
+        return None, root_files, []
+    if len(sets) == 1:
+        name = next(iter(sets))
+        return name, sets[name], []
+    if len(sets) > 1:
+        return None, ([], [], []), [
+            "입력 세트가 여러 개입니다. --input-set <이름>으로 이번 차수에 사용할 "
+            f"세트를 지정하세요. 세트: {', '.join(sets)}"
+        ]
+    return None, ([], [], []), []
+
+
+def input_files(
+    input_set: str | None = None,
+) -> tuple[list[Path], list[Path], list[Path]]:
+    _, files, _ = resolve_input_set(input_set)
+    return files
 
 
 def display_path(path: Path, base: Path = ROOT) -> str:
@@ -490,6 +547,43 @@ def inspect_spreadsheet(path: Path) -> dict[str, Any]:
     }
 
 
+def inspect_sarif(path: Path) -> dict[str, Any]:
+    try:
+        size = path.stat().st_size
+    except OSError as error:
+        return {
+            "path": display_path(path),
+            "size": 0,
+            "format": "sarif",
+            "formatValid": False,
+            "evidence": f"SARIF를 읽을 수 없습니다: {error}",
+        }
+    valid = False
+    evidence = "SARIF 구조를 확인할 수 없습니다."
+    try:
+        record = json.loads(path.read_text(encoding="utf-8-sig"))
+        valid = (
+            isinstance(record, dict)
+            and isinstance(record.get("version"), str)
+            and isinstance(record.get("runs"), list)
+            and len(record["runs"]) > 0
+        )
+        evidence = (
+            f"SARIF version {record.get('version')} / runs {len(record.get('runs', []))}개 확인"
+            if valid
+            else "확장자는 .sarif이지만 version 또는 runs 구조가 없습니다."
+        )
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as error:
+        evidence = f"SARIF를 파싱할 수 없습니다: {error}"
+    return {
+        "path": display_path(path),
+        "size": size,
+        "format": "sarif",
+        "formatValid": valid,
+        "evidence": evidence,
+    }
+
+
 def discover_project_evidence(project_root: Path) -> tuple[list[str], list[str]]:
     source_files: list[str] = []
     marker_files: list[str] = []
@@ -533,7 +627,7 @@ def check_record(code: str, status: str, summary: str, evidence: list[str]) -> d
     }
 
 
-def build_preflight_record(project_root: Path) -> dict[str, Any]:
+def build_preflight_record(project_root: Path, input_set: str | None = None) -> dict[str, Any]:
     blockers: list[str] = []
     checks: list[dict[str, Any]] = []
     marker_files: list[str] = []
@@ -579,35 +673,76 @@ def build_preflight_record(project_root: Path) -> dict[str, Any]:
                 )
             )
 
-    pdf_files, spreadsheet_files = input_files()
-    count_ok = len(pdf_files) == 1 and len(spreadsheet_files) == 1
-    count_evidence = [display_path(path) for path in pdf_files + spreadsheet_files]
+    selected_set, (pdf_files, spreadsheet_files, sarif_files), set_blockers = (
+        resolve_input_set(input_set)
+    )
+    for blocker in set_blockers:
+        blockers.append(blocker)
+        checks.append(check_record("INPUT_SET", "fail", blocker, []))
+    if selected_set and not set_blockers:
+        checks.append(
+            check_record(
+                "INPUT_SET",
+                "pass",
+                f"입력 세트 '{selected_set}'을 사용합니다.",
+                [f"input/{selected_set}/"],
+            )
+        )
+    # 입력 모드: vendor(PDF 1개 이상 + 스프레드시트 1) 또는 sarif(SARIF 1, PDF 선택)
+    # PDF 다건은 벤더가 대용량 보고서를 _01, _02로 분할 내보내는 경우이며,
+    # 같은 분석 차수인지는 의미 대조 단계에서 분석 ID로 확인한다.
+    vendor_mode = len(spreadsheet_files) == 1 and len(sarif_files) == 0
+    sarif_mode = len(sarif_files) == 1 and len(spreadsheet_files) == 0
+    count_ok = (
+        (vendor_mode and len(pdf_files) >= 1)
+        or (sarif_mode and len(pdf_files) <= 1)
+    )
+    count_evidence = [
+        display_path(path) for path in pdf_files + spreadsheet_files + sarif_files
+    ]
     checks.append(
         check_record(
             "INPUT_COUNT",
             "pass" if count_ok else "fail",
             (
-                "PDF와 스프레드시트가 각각 하나입니다."
+                (
+                    f"PDF {len(pdf_files)}개와 스프레드시트 하나입니다."
+                    if vendor_mode
+                    else "SARIF 하나를 확인했습니다."
+                )
                 if count_ok
-                else f"PDF {len(pdf_files)}개, 스프레드시트 {len(spreadsheet_files)}개를 확인했습니다."
+                else (
+                    f"PDF {len(pdf_files)}개, 스프레드시트 {len(spreadsheet_files)}개, "
+                    f"SARIF {len(sarif_files)}개를 확인했습니다."
+                )
             ),
             count_evidence,
         )
     )
-    if len(pdf_files) != 1:
-        blockers.append(f"PDF가 정확히 하나여야 합니다. 현재 {len(pdf_files)}개입니다.")
-    if len(spreadsheet_files) != 1:
+    if not count_ok:
         blockers.append(
-            "스프레드시트가 정확히 하나여야 합니다. "
-            f"현재 {len(spreadsheet_files)}개입니다."
+            "입력은 'PDF 1개 이상 + 스프레드시트 1개' 또는 'SARIF 1개(PDF 선택)' 조합이어야 합니다. "
+            f"현재 PDF {len(pdf_files)}개, 스프레드시트 {len(spreadsheet_files)}개, "
+            f"SARIF {len(sarif_files)}개입니다."
         )
 
-    pdf_info = inspect_pdf(pdf_files[0]) if len(pdf_files) == 1 else None
+    pdf_info = None
+    if pdf_files:
+        pdf_reports = [inspect_pdf(path) for path in pdf_files]
+        pdf_info = dict(pdf_reports[0])
+        pdf_info["size"] = sum(item["size"] for item in pdf_reports)
+        pdf_info["formatValid"] = all(item["formatValid"] for item in pdf_reports)
+        if len(pdf_reports) > 1:
+            pdf_info["evidence"] = (
+                f"분할 PDF {len(pdf_reports)}개(크기 합계 기준). "
+                + "; ".join(item["evidence"] for item in pdf_reports[:3])
+            )
     sheet_info = (
         inspect_spreadsheet(spreadsheet_files[0])
         if len(spreadsheet_files) == 1
         else None
     )
+    sarif_info = inspect_sarif(sarif_files[0]) if len(sarif_files) == 1 else None
     if pdf_info:
         checks.append(
             check_record(
@@ -630,6 +765,17 @@ def build_preflight_record(project_root: Path) -> dict[str, Any]:
         )
         if not sheet_info["formatValid"]:
             blockers.append("스프레드시트 파일 형식이 유효하지 않습니다.")
+    if sarif_info:
+        checks.append(
+            check_record(
+                "SARIF_FORMAT",
+                "pass" if sarif_info["formatValid"] else "fail",
+                sarif_info["evidence"],
+                [sarif_info["path"], f"{sarif_info['size']} bytes"],
+            )
+        )
+        if not sarif_info["formatValid"]:
+            blockers.append("SARIF 파일 형식이 유효하지 않습니다.")
 
     if not blockers:
         checks.append(
@@ -658,7 +804,12 @@ def build_preflight_record(project_root: Path) -> dict[str, Any]:
             "identity": project_root.name if source_files else "",
             "identityEvidence": marker_files + source_files,
         },
-        "inputs": {"pdf": pdf_info, "spreadsheet": sheet_info},
+        "inputs": {
+            "set": selected_set,
+            "pdf": pdf_info,
+            "spreadsheet": sheet_info,
+            "sarif": sarif_info,
+        },
         "checks": checks,
         "matching": {
             "sameProject": None,
@@ -672,19 +823,19 @@ def build_preflight_record(project_root: Path) -> dict[str, Any]:
     }
 
 
-def run_preflight(project_root: Path) -> int:
+def run_preflight(project_root: Path, input_set: str | None = None) -> int:
     target = PROJECT_DIR / "INPUT_VALIDATION.md"
     template = PROJECT_DIR / "INPUT_VALIDATION.template.md"
     if not target.exists():
         shutil.copyfile(template, target)
-    record = build_preflight_record(project_root)
+    record = build_preflight_record(project_root, input_set)
     (DATA_DIR / "input-validation.json").write_text(
         json_text(record), encoding="utf-8"
     )
     sync_data()
     print(f"PREFLIGHT: {record['status'].upper()}")
     print(f"Project candidate: {record['project']['identity'] or 'not detected'}")
-    for input_type in ("pdf", "spreadsheet"):
+    for input_type in ("pdf", "spreadsheet", "sarif"):
         input_value = record["inputs"][input_type]
         print(
             f"{input_type}: "
@@ -755,6 +906,17 @@ def validate_input_validation(
 
     inputs = require_mapping(report, record.get("inputs"), "input validation inputs")
     inputs_required = strict or status in {"mechanical-ready", "ready"}
+    sarif = validate_input_file_record(
+        report, inputs.get("sarif"), "input validation inputs.sarif", False
+    )
+    sarif_present = bool(sarif)
+    if sarif_present:
+        # SARIF 모드: 스프레드시트는 없어야 하고 PDF는 선택
+        inputs_required = False
+        if inputs.get("spreadsheet") is not None:
+            report.error(
+                "input validation cannot combine sarif and spreadsheet inputs"
+            )
     pdf = validate_input_file_record(
         report, inputs.get("pdf"), "input validation inputs.pdf", inputs_required
     )
@@ -860,18 +1022,39 @@ def validate_dashboard(report: ValidationReport) -> None:
 
 
 def validate_inputs(report: ValidationReport, strict: bool) -> None:
-    pdf_files, sheet_files = input_files()
-    if len(pdf_files) != 1:
-        message = f"input must contain exactly one PDF; found {len(pdf_files)}"
+    recorded_set = None
+    try:
+        recorded_set = (
+            load_json(DATA_DIR / "input-validation.json")
+            .get("inputs", {})
+            .get("set")
+        )
+    except (OSError, json.JSONDecodeError, AttributeError):
+        recorded_set = None
+    pdf_files, sheet_files, sarif_files = input_files(recorded_set)
+    vendor_mode = len(sheet_files) == 1 and len(sarif_files) == 0
+    sarif_mode = len(sarif_files) == 1 and len(sheet_files) == 0
+    count_ok = (
+        (vendor_mode and len(pdf_files) >= 1)
+        or (sarif_mode and len(pdf_files) <= 1)
+    )
+    if not count_ok:
+        message = (
+            "input must be one or more PDFs plus one spreadsheet, "
+            "or exactly one SARIF (PDF optional); found "
+            f"{len(pdf_files)} PDF, {len(sheet_files)} spreadsheet, "
+            f"{len(sarif_files)} SARIF"
+        )
         report.error(message) if strict else report.warn(message)
-    if len(sheet_files) != 1:
-        message = f"input must contain exactly one spreadsheet; found {len(sheet_files)}"
-        report.error(message) if strict else report.warn(message)
-    if len(pdf_files) == 1 and not inspect_pdf(pdf_files[0])["formatValid"]:
-        message = "input PDF format is invalid"
-        report.error(message) if strict else report.warn(message)
+    for pdf_path in pdf_files:
+        if not inspect_pdf(pdf_path)["formatValid"]:
+            message = f"input PDF format is invalid: {display_path(pdf_path)}"
+            report.error(message) if strict else report.warn(message)
     if len(sheet_files) == 1 and not inspect_spreadsheet(sheet_files[0])["formatValid"]:
         message = "input spreadsheet format is invalid"
+        report.error(message) if strict else report.warn(message)
+    if len(sarif_files) == 1 and not inspect_sarif(sarif_files[0])["formatValid"]:
+        message = "input SARIF format is invalid"
         report.error(message) if strict else report.warn(message)
 
 
@@ -898,12 +1081,16 @@ def validate_profile(
             f"but findings.json contains {len(findings)} item(s)"
         )
     if strict and report_meta.get("inputsMatch") is not True:
-        report.error("project profile does not confirm that PDF and spreadsheet match")
+        report.error(
+            "project profile does not confirm that the gated inputs match "
+            "the current source"
+        )
     if strict:
         validated_inputs = input_validation.get("inputs", {})
         for profile_field, input_type in (
             ("pdf", "pdf"),
             ("spreadsheet", "spreadsheet"),
+            ("sarif", "sarif"),
         ):
             input_record = validated_inputs.get(input_type)
             if isinstance(input_record, dict) and report_meta.get(
@@ -1131,10 +1318,23 @@ def compare_current_preflight(
         report.error("input validation project root differs from current project root")
     current_inputs = mechanical.get("inputs", {})
     recorded_inputs = recorded.get("inputs", {})
-    for input_type in ("pdf", "spreadsheet"):
+    if recorded_inputs.get("set") != current_inputs.get("set"):
+        report.error(
+            "input validation set differs from the current input set "
+            f"(recorded={recorded_inputs.get('set')}, current={current_inputs.get('set')})"
+        )
+    for input_type in ("pdf", "spreadsheet", "sarif"):
         current = current_inputs.get(input_type)
         recorded_input = recorded_inputs.get(input_type)
-        if not current or not isinstance(recorded_input, dict):
+        recorded_present = isinstance(recorded_input, dict) and bool(recorded_input)
+        if bool(current) != recorded_present:
+            report.error(
+                f"recorded {input_type} presence differs from the current input "
+                f"(recorded={'present' if recorded_present else 'absent'}, "
+                f"current={'present' if current else 'absent'})"
+            )
+            continue
+        if not current:
             continue
         for field in ("path", "size", "format", "formatValid"):
             if recorded_input.get(field) != current.get(field):
@@ -1145,7 +1345,16 @@ def compare_current_preflight(
 
 def run_gate(project_root: Path) -> int:
     report = ValidationReport()
-    mechanical = build_preflight_record(project_root)
+    recorded_set = None
+    try:
+        recorded_set = (
+            load_json(DATA_DIR / "input-validation.json")
+            .get("inputs", {})
+            .get("set")
+        )
+    except (OSError, json.JSONDecodeError, AttributeError):
+        recorded_set = None
+    mechanical = build_preflight_record(project_root, recorded_set)
     for blocker in mechanical["blockers"]:
         report.error(f"mechanical preflight failed: {blocker}")
     try:
@@ -1233,7 +1442,10 @@ def validate_all(strict: bool, project_root: Path) -> int:
         input_validation = load_json(DATA_DIR / "input-validation.json")
         validated_input = validate_input_validation(report, input_validation, strict)
         if strict:
-            mechanical = build_preflight_record(project_root)
+            mechanical = build_preflight_record(
+                project_root,
+                validated_input.get("inputs", {}).get("set"),
+            )
             for blocker in mechanical["blockers"]:
                 report.error(f"mechanical preflight failed: {blocker}")
             compare_current_preflight(report, validated_input, mechanical)
@@ -1273,6 +1485,10 @@ def parse_args() -> argparse.Namespace:
         help="Project root to inspect. Defaults to the toolkit parent directory.",
     )
     parser.add_argument(
+        "--input-set",
+        help="Report set folder under input/ to use when multiple sets exist.",
+    )
+    parser.add_argument(
         "--strict",
         action="store_true",
         help="Treat uninitialized project inputs and metadata as errors.",
@@ -1288,7 +1504,7 @@ def main() -> int:
         else ROOT.parent.resolve()
     )
     if args.command == "preflight":
-        return run_preflight(project_root)
+        return run_preflight(project_root, args.input_set)
     if args.command == "gate":
         return run_gate(project_root)
     if args.command == "init":
@@ -1300,4 +1516,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except BrokenPipeError:
+        sys.exit(0)
