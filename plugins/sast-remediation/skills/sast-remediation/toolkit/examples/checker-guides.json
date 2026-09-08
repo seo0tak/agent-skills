@@ -3,13 +3,21 @@
     "code": "EXAMPLE_CHECKER",
     "name": "Example checker",
     "description": "Example checker description extracted from the report.",
-    "cwe": ["CWE-000"],
+    "plainDescription": "값이 없을 수도 있는데 확인 없이 쓰는 코드입니다. 값이 비어 들어오면 그 요청이 서버 오류로 끝납니다.",
+    "cwe": [
+      "CWE-000"
+    ],
     "reportGuidance": "Validate the value before using it.",
     "vulnerableExample": "value.use()",
     "solutionExample": "if (value != null) { value.use(); }",
     "reviewNotes": "Confirm whether the value is required before choosing an exception or fallback.",
-    "verificationFocus": ["missing value", "valid value"],
-    "sourcePages": [1],
+    "verificationFocus": [
+      "missing value",
+      "valid value"
+    ],
+    "sourcePages": [
+      1
+    ],
     "sourceType": "report"
   }
 }

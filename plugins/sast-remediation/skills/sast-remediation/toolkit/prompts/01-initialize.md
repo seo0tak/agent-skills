@@ -63,6 +63,9 @@ prompts/00-preflight.md 절차로 돌아가 차단 원인을 보고하세요.
    - SARIF 모드: 각 rule의 shortDescription, fullDescription, help에서
      추출. 내용이 부족한 체커는 일반 보안 지식으로 보완하되 출처를
      구분해 기록
+   - 모든 체커에 plainDescription(쉽게 말하면)을 한두 줄 씁니다. 보안을
+     모르는 담당자가 읽는 글이므로 CWE 용어 대신 "무엇이 비면 무슨 일이
+     나는지"를 업무 언어로 씁니다.
 5. 모든 검출 파일, 함수, 라인과 검출 코드를 현재 소스에 대조합니다.
    fingerprint가 기록된 항목에는 stableKey를 함께 부여합니다:
    SK- + sha1(fingerprint) 앞 8자리. 이 값이 차수를 넘는 고정

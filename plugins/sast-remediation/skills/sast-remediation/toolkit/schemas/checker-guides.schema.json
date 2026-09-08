@@ -10,6 +10,10 @@
       "code": { "type": "string", "minLength": 1 },
       "name": { "type": "string" },
       "description": { "type": "string" },
+      "plainDescription": {
+        "type": "string",
+        "description": "보안을 모르는 담당자용 한두 줄 설명. 검출이 왜 문제인지, 방치하면 무슨 일이 나는지를 업무 언어로 쓴다. 정책 질문과 대시보드에 '쉽게 말하면'으로 표시된다."
+      },
       "cwe": { "type": "array", "items": { "type": "string" } },
       "reportGuidance": { "type": "string" },
       "vulnerableExample": { "type": "string" },

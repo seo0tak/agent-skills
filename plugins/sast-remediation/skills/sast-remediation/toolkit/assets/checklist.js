@@ -620,6 +620,7 @@
     if (!guide) return "PDF에서 추출된 체커 공통 가이드가 없습니다.";
     var parts = [];
     if (guide.name) parts.push(guide.code + " - " + guide.name);
+    if (guide.plainDescription) parts.push("쉽게 말하면:\n" + guide.plainDescription);
     if (guide.description) parts.push(guide.description);
     if (Array.isArray(guide.cwe) && guide.cwe.length) parts.push("관련 분류: " + guide.cwe.join(", "));
     if (guide.reportGuidance) parts.push("보고서 해결 가이드:\n" + guide.reportGuidance);

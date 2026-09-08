@@ -361,9 +361,14 @@ td code { white-space: nowrap; }
 
 <section id="policy">
   <h2>4. 정책 질문 답변 — prompts/02</h2>
-  <p>AI는 소스와 보고서로 판단할 수 없는 것만, 한 번에 하나씩, 추천 답변과 함께
-  질문합니다. 답변은 <code>project/PROJECT_SECURITY_POLICY.md</code>와
-  <code>project/DECISION_LOG.md</code>에 누적되어 같은 질문이 반복되지 않습니다.</p>
+  <p>AI는 소스와 소스 밖 증거(데이터·설정·프론트·로그)로 판단할 수 없는 것만,
+  한 번에 하나씩, 보안 용어가 아니라 업무 사실로 질문합니다. 선택지에는 실제 동작
+  차이와 틀렸을 때의 결과가 적혀 있고, "모르겠다"도 정식 답입니다 — 모르면 동작을
+  보존하는 기본안을 미확인으로 적용하고 관찰 로그를 붙입니다. 답변은
+  <code>project/PROJECT_SECURITY_POLICY.md</code>와
+  <code>project/DECISION_LOG.md</code>에 결정 주체와 함께 누적되어 같은 질문이
+  반복되지 않습니다. 이 프로젝트나 보안을 잘 몰라도 답할 수 있게 설계되어
+  있습니다(<code>docs/HOW_IT_WORKS.md</code> 9번).</p>
 </section>
 
 <section id="human">
