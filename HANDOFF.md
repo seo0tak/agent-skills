@@ -33,7 +33,7 @@
 마켓플레이스 name `0tak`, 정본을 루트 `skills/`로 승격하고 `plugins/*/skills`는
 `scripts/sync-plugins.sh` 사본(Codex가 심링크를 빈 디렉터리로 복사해 심링크 불가),
 Codex 카탈로그 `.agents/plugins/marketplace.json` + `.codex-plugin/plugin.json`,
-SKILL.md 중립화. 저장소는 `seo0tak/agent-skills`로 개명 예정 — 규약은 CLAUDE.md.
+SKILL.md 중립화. 저장소는 `seo0tak/agent-skills`로 개명 완료(2026-09-08), GitHub 소스 설치를 Claude·Codex 양쪽에서 실기 확인 — 규약은 CLAUDE.md.
 
 ## 핵심 설계 원칙 (변경 시 지킬 것)
 
