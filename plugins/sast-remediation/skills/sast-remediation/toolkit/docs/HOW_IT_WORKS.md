@@ -147,6 +147,9 @@ title·description·timestamp·tags 권장)로 생성되고, `project/index.md`�
 프로젝트별 SAST 정책·결정 지식을 조직 지식 카탈로그나 다른 에이전트가
 그대로 수집할 수 있습니다.
 
+버전·호환 정책(하위호환 원칙, 진행 중 차수 업그레이드 규칙, breaking
+변경 절차)은 `docs/VERSIONING.md`에 있습니다.
+
 ## 무엇이 이걸 지키게 하나
 
 규칙은 문서가 아니라 도구가 강제합니다. `validate`가 잡는 것:

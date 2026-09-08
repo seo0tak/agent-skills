@@ -21,7 +21,10 @@ argument-hint: [단계 또는 요청]
   덮어쓰지 않는다. 스킬의 toolkit이 더 최신이라도 사용자가 명시적으로
   업그레이드를 요청할 때만 고정 자산(assets, prompts, schemas, tools,
   루트 가이드 문서)만 교체하고 `data/`, `project/`, `security-*`,
-  `evidence/`, `input/`은 보존한다.
+  `evidence/`, `input/`은 보존한다. 교체 후 validate를 실행한다 —
+  하위호환(패치·마이너) 업그레이드는 그대로 통과하고, schemaVersion
+  에러가 나면 breaking 업그레이드이므로 toolkit의
+  `docs/VERSIONING.md` 마이그레이션 절차를 따른다.
 
 ## 2. 워크플로우 수행
 

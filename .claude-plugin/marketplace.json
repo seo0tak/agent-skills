@@ -7,8 +7,12 @@
     {
       "name": "sast-remediation",
       "source": "./plugins/sast-remediation",
-      "description": "SAST 취약점 조치 워크플로우 — 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성",
-      "version": "1.0.0"
+      "description": "SAST 취약점 조치 워크플로우 — 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성"
+    },
+    {
+      "name": "skill-architect",
+      "source": "./plugins/skill-architect",
+      "description": "스킬 아키텍처 감사·설계 — 상태 설계, 중단 내성, 게이트, 토큰 티어링, HITL, OKF, 배포까지 스킬 품질 기준을 점검하고 개선한다"
     }
   ]
 }
