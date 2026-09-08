@@ -25,6 +25,14 @@ claude plugin install skill-architect@0tak
 
 세션 안에서는 `/plugin marketplace add`, `/plugin install`로 동일하게 가능합니다.
 
+Codex CLI는 같은 저장소의 `.agents/plugins/marketplace.json`을 읽습니다.
+
+```bash
+codex plugin marketplace add seo0tak/claude-skills
+codex plugin add sast-remediation@0tak
+codex plugin add skill-architect@0tak
+```
+
 설치 후 프로젝트 안에서 이렇게 말하면 시작됩니다.
 
 | 상황 | 이렇게 |

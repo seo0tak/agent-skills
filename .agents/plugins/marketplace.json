@@ -1,0 +1,20 @@
+{
+  "name": "0tak",
+  "interface": {
+    "displayName": "0tak skills"
+  },
+  "plugins": [
+    {
+      "name": "sast-remediation",
+      "source": { "source": "local", "path": "./plugins/sast-remediation" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Security"
+    },
+    {
+      "name": "skill-architect",
+      "source": { "source": "local", "path": "./plugins/skill-architect" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Development"
+    }
+  ]
+}

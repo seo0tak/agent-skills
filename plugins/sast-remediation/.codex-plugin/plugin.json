@@ -1,0 +1,6 @@
+{
+  "name": "sast-remediation",
+  "version": "1.10.1",
+  "description": "SAST remediation workflow toolkit (vendor report or SARIF input)",
+  "skills": "./skills"
+}
