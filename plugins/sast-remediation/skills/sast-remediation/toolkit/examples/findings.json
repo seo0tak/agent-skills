@@ -28,7 +28,10 @@
       "description": "Example report description.",
       "detectedCode": "42. value.use()",
       "detectedAt": "2026-01-01T00:00:00Z",
-      "section": "Example section"
+      "section": "Example section",
+      "vendorAttributes": {
+        "A.S": "N"
+      }
     },
     "sourceMapping": {
       "status": "exact",
@@ -41,11 +44,15 @@
     "grouping": {
       "duplicateGroup": "",
       "workGroup": "WG-001",
-      "conflictFiles": ["src/application/ExampleService.ext"],
+      "conflictFiles": [
+        "src/application/ExampleService.ext"
+      ],
       "relatedIds": []
     },
     "suggestedConclusion": "needs-review",
     "suggestedReason": "The source matches, but the required input policy is not yet confirmed.",
-    "policyDependencies": ["input-null-policy"]
+    "policyDependencies": [
+      "input-null-policy"
+    ]
   }
 ]
