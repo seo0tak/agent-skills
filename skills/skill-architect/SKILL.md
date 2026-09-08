@@ -1,6 +1,6 @@
 ---
 name: skill-architect
-description: Audit and architect Claude skills against production-quality criteria — state design, interruption resilience, input gates, token/model tiering, human-in-the-loop design, machine-enforced validation, OKF knowledge output, and marketplace deployment. Use when the user asks to review/audit/improve a skill's design, asks "is this skill well made", wants to design a new non-trivial skill, or mentions skill quality, 스킬 검토, 스킬 설계, 스킬 감사, 스킬 품질. For scaffolding, evals, and description optimization, delegates to the skill-creator skill when available.
+description: Audit and architect agent skills (SKILL.md format — Claude Code, Codex, Cursor, Grok and others) against production-quality criteria — state design, interruption resilience, input gates, token/model tiering, human-in-the-loop design, machine-enforced validation, OKF knowledge output, and marketplace deployment. Use when the user asks to review/audit/improve a skill's design, asks "is this skill well made", wants to design a new non-trivial skill, or mentions skill quality, 스킬 검토, 스킬 설계, 스킬 감사, 스킬 품질. For scaffolding, evals, and description optimization, delegates to the skill-creator skill when available.
 ---
 
 # Skill Architect

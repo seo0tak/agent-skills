@@ -13,8 +13,8 @@ argument-hint: [단계 또는 요청]
 
 프로젝트 루트에 `sast-remediation-toolkit/` 디렉터리가 있는지 확인한다.
 
-- **없으면**: `${CLAUDE_SKILL_DIR}/toolkit/`을 프로젝트 루트에
-  `sast-remediation-toolkit/` 이름으로 복사한다. 복사 후 사용자에게
+- **없으면**: 이 스킬 디렉터리(이 SKILL.md가 있는 곳)의 `toolkit/`을
+  프로젝트 루트에 `sast-remediation-toolkit/` 이름으로 복사한다. 복사 후 사용자에게
   `input/`에 이번 차수의 SAST 자료를 넣어 달라고 요청하고 멈춘다.
   (벤더 PDF 1개+스프레드시트 1개, 또는 표준 SARIF 파일 1개)
 - **있으면**: 기존 것을 그대로 사용한다. 진행 중인 차수의 산출물을
@@ -49,10 +49,12 @@ argument-hint: [단계 또는 요청]
 
 ## 2-1. 모델 티어 위임
 
-sast-bulk-worker, sast-remediator 서브에이전트가 사용 가능하면
+실행 환경이 서브에이전트 위임을 지원하고 sast-bulk-worker,
+sast-remediator가 등록돼 있으면(Claude Code 플러그인 설치 시 동봉)
 prompts/03의 위임 규칙을 따른다: 기계적 대량 작업은 bulk-worker,
 승인된 가이드 범위의 소스 수정은 remediator, 결론 판정·정책·verified
-승격은 메인 세션이 직접. 서브에이전트가 없으면 전부 직접 수행한다.
+승격은 메인 세션이 직접. 그 외 환경(Codex, Cursor, Grok 등)이나
+서브에이전트가 없으면 전부 직접 수행한다 — 기능은 같고 비용만 다르다.
 
 ## 3. 핵심 규칙 (툴킷 문서와 동일, 요약)
 
