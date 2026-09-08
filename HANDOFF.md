@@ -1,13 +1,18 @@
-# HANDOFF — 개발 세션 인수인계 (2026-09-08 기준, v1.10.0)
+# HANDOFF — 개발 세션 인수인계 (2026-09-08 기준, v1.10.1)
 
-새 세션은 이 문서와 저장소 루트 README.md를 읽으면 이어서 작업할 수 있다.
-원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
+새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
+이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
 ## 현재 상태
 
-- sast-remediation **v1.10.0**, skill-architect **v0.2.0** — `955b527`까지 push 완료,
+- sast-remediation **v1.10.1**, skill-architect **v0.2.1** — `827bd89`까지 push 완료,
   working tree clean
+- 저장소는 **`seo0tak/agent-skills`** (claude-skills에서 개명, 로컬 디렉터리도
+  `~/Project/Source/seo0tak/agent-skills`). 마켓플레이스 name **`0tak`**.
+  이 PC에는 Claude Code·Codex 양쪽에 `sast-remediation@0tak`,
+  `skill-architect@0tak`이 GitHub 소스로 설치돼 있다. 기설치자는 없어서
+  마이그레이션 절차는 두지 않는다
 - 실물 Sparrow 산출물로 검증된 마지막 버전은 **1.6.x**. 1.7~1.10은 단위 테스트(22건)와
   오류 주입으로만 검증했고 실물 차수는 아직 안 돌렸다 (아래 미결 3)
 - 실물 파일 위치: `~/Downloads/issues_lheep-comn-frontend-master_1903.xls`(2,361건),
@@ -27,13 +32,15 @@
 | 1.8.0 | **모르는 사람이 써도 안전한 Grill** — 소스 밖 증거 수집, 업무 사실 질문, "모르겠다" 선택지, 미확인 시 동작 보존 기본값+관찰 장치, 결정 주체, checker plainDescription (원리 9) |
 | 1.9.0 | skill-architect 감사 결과 적용 — `data/decisions.json` 정본+DECISION_LOG.md 생성, validate가 미확인 결정의 관찰 장치 강제, `query` 명령(원리 10), `tools/test_toolkit.py` 22건, USAGE.html을 USAGE.md에서 생성 |
 | 1.10.0 | `report.vendorAttributes` — 정의 모르는 벤더 컬럼 원문 보존, A.S 조사 결과 반영 |
+| 1.10.1 / 0.2.1 | 멀티 에이전트 재편(기능 무변경, 패치) — 정본 `skills/` 승격, SKILL.md 중립화(`${CLAUDE_SKILL_DIR}` 제거) |
 
 저장소 쪽: marketplace.json에 skill-architect 등록(이전엔 설치 불가였음), version 필드 제거
 (plugin.json이 정본), 루트 README 관문화. 이후 **멀티 에이전트 재편**(TASK-multi-agent):
 마켓플레이스 name `0tak`, 정본을 루트 `skills/`로 승격하고 `plugins/*/skills`는
 `scripts/sync-plugins.sh` 사본(Codex가 심링크를 빈 디렉터리로 복사해 심링크 불가),
 Codex 카탈로그 `.agents/plugins/marketplace.json` + `.codex-plugin/plugin.json`,
-SKILL.md 중립화. 저장소는 `seo0tak/agent-skills`로 개명 완료(2026-09-08), GitHub 소스 설치를 Claude·Codex 양쪽에서 실기 확인 — 규약은 CLAUDE.md.
+SKILL.md 중립화. 실측: `npx skills add ./`로 두 스킬 발견·설치(`~/.agents/skills/`),
+Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 
 ## 핵심 설계 원칙 (변경 시 지킬 것)
 
@@ -65,7 +72,12 @@ SKILL.md 중립화. 저장소는 `seo0tak/agent-skills`로 개명 완료(2026-09
    흐름(decisions.json → sync → DECISION_LOG.md), 미확인 결정 validate 에러, 1.8 이전 손으로
    쓴 DECISION_LOG.md 마이그레이션 경고
 4. 결정 로그 대시보드 표시 — `data/decisions.js` 미러는 생성되지만 대시보드는 아직 안 읽는다
-5. (아이디어) README 전체 영문판, SARIF 샘플 examples
+5. **툴킷 내부 문서의 "Claude Code" 전제** — USAGE.md(스킬 설치 절), HOW_IT_WORKS,
+   USAGE.html에 남아 있음. 재편 범위(포장·배치·이름) 밖이라 그대로 둠. Codex·Cursor·Grok
+   사용자가 생기면 중립화
+6. 서브에이전트 없는 하네스(Codex 등)에서 sast-remediation 실전 1회 — 기능은 같고 비용만
+   다르다고 적어 뒀지만 실측은 안 함
+7. (아이디어) README 전체 영문판, SARIF 샘플 examples
 
 ## 검증 습관
 
@@ -75,6 +87,10 @@ SKILL.md 중립화. 저장소는 `seo0tak/agent-skills`로 개명 완료(2026-09
   `node --check assets/checklist.js`
 - USAGE.md·decisions.json 수정 후 반드시 `sync` — 안 하면 validate가 생성물 드리프트 에러
 - 실물 파일 재현 테스트 (위 xls/pdf)
+- 저장소 레벨: `scripts/sync-plugins.sh --check`(정본↔사본), `scripts/check-versions.sh`
+  (claude·codex 매니페스트·README 표) — 커밋 전 둘 다 통과
+- 설치 경로 검증: `claude plugin marketplace add ./` / `codex plugin marketplace add ./` /
+  `npx skills add ./ --list` — 테스트 후 반드시 원복(uninstall·remove·캐시 삭제)
 
 ## 이 세션에서 배운 주의점
 
@@ -84,13 +100,20 @@ SKILL.md 중립화. 저장소는 `seo0tak/agent-skills`로 개명 완료(2026-09
 - 설계 논의 결과는 HOW_IT_WORKS(왜)와 해당 가이드(어떻게)에 반드시 적는다 — 이유 없는 규칙은
   다음 사람이 형식으로 보고 지운다
 - skill-architect는 이 세션 스킬 목록에 없으면 SKILL.md와 ARCHITECTURE_CHECKLIST.md를 직접 읽고
-  절차대로 수행하면 된다
+  절차대로 수행하면 된다 (지금은 플러그인으로 설치돼 있어 스킬 목록에 뜬다)
+- 스킬 편집은 `skills/`에서만. `plugins/*/skills`를 고치면 다음 sync에 덮인다
+- 심링크 금지 — Codex CLI가 빈 디렉터리로 복사한다. Claude만 보고 판단하면 틀린다
+- `.codex-plugin/plugin.json`에도 version이 있다. 올릴 때 check-versions.sh
+- Claude Code 메모리 디렉터리는 경로 키라 디렉터리를 옮기면 `~/.claude/projects/<경로키>/memory`도 옮긴다
 
 ## 배포
 
 ```bash
+scripts/sync-plugins.sh --check && scripts/check-versions.sh
 git push origin main
-claude plugin marketplace update 0tak   # 각 PC
+claude plugin marketplace update 0tak     # Claude Code
+codex plugin marketplace upgrade          # Codex
+npx skills add seo0tak/agent-skills       # 범용 (재실행)
 ```
 
 진행 중인 차수가 있는 프로젝트는 업그레이드 후 `validate`를 돌리고 **경고까지** 읽는다.
