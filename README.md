@@ -19,8 +19,8 @@ claude plugin marketplace add seo0tak/claude-skills
 # claude plugin marketplace add git@github.com:seo0tak/claude-skills.git
 
 # 플러그인 설치
-claude plugin install sast-remediation@seo0tak-skills
-claude plugin install skill-architect@seo0tak-skills
+claude plugin install sast-remediation@0tak
+claude plugin install skill-architect@0tak
 ```
 
 세션 안에서는 `/plugin marketplace add`, `/plugin install`로 동일하게 가능합니다.
@@ -70,7 +70,21 @@ sast-remediation은 스캐너가 아닙니다. 스캐너가 뱉은 수천 건을
 이 저장소에 커밋·푸시하면 사용자 쪽에서는 다음으로 반영됩니다.
 
 ```bash
-claude plugin marketplace update seo0tak-skills
+claude plugin marketplace update 0tak
+```
+
+### 1회성 마이그레이션 — 마켓플레이스 이름이 `seo0tak-skills` → `0tak`으로 바뀜
+
+예전 이름으로 등록해 둔 PC는 한 번만 다시 등록합니다. 설치된 플러그인의
+프로젝트 산출물(`sast-remediation-toolkit/`)은 영향받지 않습니다.
+
+```bash
+claude plugin uninstall sast-remediation@seo0tak-skills
+claude plugin uninstall skill-architect@seo0tak-skills   # 설치했다면
+claude plugin marketplace remove seo0tak-skills
+claude plugin marketplace add seo0tak/claude-skills
+claude plugin install sast-remediation@0tak
+claude plugin install skill-architect@0tak
 ```
 
 진행 중인 차수가 있는 프로젝트는 업그레이드 후 `validate`를 돌리고 경고까지

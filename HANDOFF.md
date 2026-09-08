@@ -86,7 +86,7 @@
 
 ```bash
 git push origin main
-claude plugin marketplace update seo0tak-skills   # 각 PC
+claude plugin marketplace update 0tak   # 각 PC
 ```
 
 진행 중인 차수가 있는 프로젝트는 업그레이드 후 `validate`를 돌리고 **경고까지** 읽는다.
