@@ -350,8 +350,8 @@ def load_json_or_exit(path: Path) -> Any:
     except (OSError, json.JSONDecodeError) as error:
         print(f"SYNC ERROR: cannot read {display_path(path)}: {error}")
         print(
-            "The file is likely half-written from an interrupted session. "
-            "Restore or rewrite this file, then run sync again. "
+            "The file may be incomplete or malformed. Preserve the original and "
+            "inspect the reported error before restoring or rewriting it, then run sync again. "
             "For data/progress.json, preview tools/sast_state.py recover-progress "
             "before applying recovery; results alone cannot restore provisional notes."
         )
@@ -428,7 +428,7 @@ def flat_text(value: Any) -> str:
 
 
 def render_decision_log(record: dict[str, Any]) -> str:
-    """data/decisions.json → project/DECISION_LOG.md (OKF log 규약: 날짜 그룹, 최신 우선)."""
+    """정책 결정 데이터를 날짜별로 묶어 최신 기록부터 Markdown으로 표시한다."""
     decisions = [d for d in (record.get("decisions") or []) if isinstance(d, dict)]
     decisions.sort(
         key=lambda d: (str(d.get("decidedAt", "")), str(d.get("id", ""))),
@@ -437,8 +437,8 @@ def render_decision_log(record: dict[str, Any]) -> str:
     lines = [
         "---",
         "type: sast/decision-log",
-        "title: Security Decision Log",
-        "description: 정책 질문과 답, 결정 주체, 근거, 관찰 장치와 재검토 조건의 시간순 기록",
+        "title: 정책 결정 기록",
+        "description: 정책 질문과 답, 결정 주체, 근거, 관찰 방법과 재검토 조건의 시간순 기록",
         f"timestamp: {record.get('updatedAt') or ''}",
         "tags: [sast, decisions]",
         "---",
@@ -446,11 +446,13 @@ def render_decision_log(record: dict[str, Any]) -> str:
         GENERATED_MARKER + " from data/decisions.json. 직접 편집하지 말고 "
         "data/decisions.json을 고친 뒤 sync를 실행한다. -->",
         "",
-        "# Security Decision Log",
+        "# 정책 결정 기록",
         "",
-        "정본은 `data/decisions.json`입니다. 이 파일은 `sync`가 생성하며 최신 결정이 "
-        "위에 옵니다. `결정 주체`가 \"기본안 적용(미확인)\"인 항목은 관찰 장치와 "
-        "재검토 조건을 반드시 가지며, validate가 이를 강제합니다.",
+        "정본은 `data/decisions.json`입니다. 이 문서는 `sync`가 생성하며 최신 결정부터 표시합니다.",
+        "",
+        "`결정 주체`가 \"기본안 적용(미확인)\"인 항목에는 관찰 방법과 재검토 조건을 "
+        "기록해야 합니다. `validate`는 필요한 기록을 검사하며, 실제 관찰 방법의 동작이나 "
+        "사용자 승인을 인증하지는 않습니다.",
         "",
     ]
     if not decisions:
@@ -467,15 +469,15 @@ def render_decision_log(record: dict[str, Any]) -> str:
             ("결정 주체", DECIDED_BY_LABELS.get(by, by)),
             ("질문", flat_text(d.get("question"))),
             ("추천안", flat_text(d.get("recommendation"))),
-            ("확정 결정", flat_text(d.get("decision"))),
+            ("결정 내용", flat_text(d.get("decision"))),
             ("적용 범위", flat_text(d.get("scope"))),
             ("근거", flat_text(d.get("rationale"))),
             ("확인한 소스·명세·증거", flat_text(d.get("evidence"))),
             ("영향받는 체커", ", ".join(str(c) for c in d.get("checkers") or [])),
             ("관련 검출", ", ".join(str(c) for c in d.get("findingIds") or [])),
-            ("답할 사람", flat_text(d.get("answerableBy"))),
+            ("확인 담당자", flat_text(d.get("answerableBy"))),
             ("예외", flat_text(d.get("exceptions"))),
-            ("관찰 장치", flat_text(d.get("observation"))),
+            ("관찰 방법", flat_text(d.get("observation"))),
             ("재검토 조건", flat_text(d.get("reviewTrigger"))),
         )
         for label, value in rows:
@@ -499,8 +501,9 @@ def sync_decisions() -> None:
         if GENERATED_MARKER not in existing:
             print(
                 "Note: project/DECISION_LOG.md is hand-written and was left "
-                "untouched. Migrate its entries into data/decisions.json and "
-                "delete the file so sync can regenerate it (docs/VERSIONING.md)."
+                "untouched. Back up the original, verify each entry's provenance, "
+                "then migrate it into data/decisions.json. Move the old Markdown out "
+                "of this generated path before sync (docs/VERSIONING.md)."
             )
             return
     write_text_atomic(DECISION_LOG_FILE, render_decision_log(record))
@@ -1038,7 +1041,7 @@ def build_preflight_record(project_root: Path, input_set: str | None = None) -> 
             check_record(
                 "REPORT_CONTENT_READABLE",
                 "manual",
-                "PDF 가이드와 스프레드시트 검출 목록을 실제로 읽을 수 있는지 확인해야 합니다.",
+                "선택한 입력 자료의 검출 목록과 제공된 가이드 내용을 실제로 읽을 수 있는지 확인해야 합니다.",
                 [],
             )
         )
@@ -1046,7 +1049,7 @@ def build_preflight_record(project_root: Path, input_set: str | None = None) -> 
             check_record(
                 "SEMANTIC_MATCH",
                 "manual",
-                "현재 소스와 두 보고서의 프로젝트 및 검사 차수 대조가 필요합니다.",
+                "현재 소스와 선택한 입력 자료가 같은 프로젝트·검사 차수에 해당하는지 대조해야 합니다.",
                 [],
             )
         )
@@ -1863,11 +1866,11 @@ def validate_decisions(
     workspace_id: str,
     finding_ids: set[str],
 ) -> None:
-    """결정 로그의 감사 장치를 기계로 강제한다.
+    """미확인 기본안과 확인된 정책 결정을 구분할 기록을 검사한다.
 
-    핵심은 '기본안 적용(미확인)' 결정에 관찰 장치와 트리거 가능한 재검토
-    조건이 반드시 붙어 있는지다. 이것이 없으면 모르는 사람이 추천을 그냥
-    누른 결정이 확정 결정처럼 남는다 (docs/HOW_IT_WORKS.md 원리 9).
+    '기본안 적용(미확인)' 결정에는 관찰 방법과 재검토 조건의 기록이 필요하다.
+    필드 검사는 실제 관찰 방법의 동작이나 사용자 권한을 인증하지 않는다.
+    관련 원리는 docs/HOW_IT_WORKS.md의 정책 확인 절을 참고한다.
     """
     if not DECISIONS_FILE.exists():
         report.warn(
@@ -1880,7 +1883,7 @@ def validate_decisions(
     except (OSError, json.JSONDecodeError) as error:
         report.error(
             f"cannot read data/decisions.json: {error} "
-            "(likely half-written from an interrupted session)"
+            "(the file may be incomplete or malformed; preserve it before recovery)"
         )
         return
     record = require_mapping(report, value, "decisions")
@@ -1923,14 +1926,15 @@ def validate_decisions(
             if not observation:
                 report.error(
                     f"{context} was applied unconfirmed (baseline-default) but has no "
-                    "observation; record where the WARN log or other signal was put so "
-                    "reality can answer the open question"
+                    "observation; record the observation method, its location, "
+                    "and where its results will be checked"
                 )
             if not trigger:
                 report.error(
                     f"{context} was applied unconfirmed (baseline-default) but has no "
-                    "reviewTrigger; write a triggerable condition such as "
-                    "'if the log fires within 2 weeks, confirm optional'"
+                    "reviewTrigger; record an actionable review condition, for example: "
+                    "if a matching WARN event occurs within 2 weeks, ask the policy owner "
+                    "to review the event and confirm the policy"
                 )
         elif decided_by == "deferred" and not trigger:
             report.error(
@@ -1945,9 +1949,10 @@ def validate_decisions(
         existing = DECISION_LOG_FILE.read_text(encoding="utf-8")
         if GENERATED_MARKER not in existing:
             report.warn(
-                "project/DECISION_LOG.md is hand-written (pre-1.9 format); migrate its "
-                "entries into data/decisions.json and delete the file so sync "
-                "regenerates it (docs/VERSIONING.md)"
+                "project/DECISION_LOG.md is hand-written (pre-1.9 format); back up the "
+                "original, verify provenance, migrate entries into data/decisions.json, "
+                "and move the old Markdown out of this generated path before sync "
+                "(docs/VERSIONING.md)"
             )
         elif existing != render_decision_log(record):
             report.error("project/DECISION_LOG.md is out of date; run sync")
@@ -2091,7 +2096,7 @@ def validate_all(strict: bool, project_root: Path) -> int:
         except (OSError, json.JSONDecodeError) as error:
             report.error(
                 f"cannot read data/{relative}: {error} "
-                "(likely half-written from an interrupted session)"
+                "(the file may be incomplete or malformed; preserve it before recovery)"
             )
             return None
 

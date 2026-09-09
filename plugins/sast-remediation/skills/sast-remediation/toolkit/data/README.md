@@ -1,7 +1,8 @@
 # 프로젝트 데이터
 
-이 디렉터리의 JSON은 프로젝트별 정규화 데이터이며 JavaScript 파일은 로컬
-HTML 실행용 미러입니다.
+JSON에는 보고서와 프로젝트 정보를 공통 형식으로 정리해 저장합니다.
+JavaScript 파일은 이 JSON 내용을 로컬 HTML에서 읽을 수 있게 생성한
+사본(미러)입니다.
 
 - `input-validation.json`: 프로젝트와 입력 보고서의 적합성 및 시작 게이트
 - `project-profile.json`: 프로젝트 구조와 보고서 메타데이터
@@ -12,7 +13,8 @@ HTML 실행용 미러입니다.
 - `resume-state.json`: 필요할 때 생성되는 중단 지점·파일 스냅샷(화면 미러 없음)
 - `progress.recovery-*.bak`: 복구 적용 전 원본; 프로젝트 상태로 보존
 
-JSON을 변경한 뒤 다음 명령으로 JavaScript 미러를 갱신합니다.
+JSON을 변경한 작성자는 툴킷 루트 디렉터리에서 다음 명령을 실행해 JavaScript
+미러를 갱신하고 검사합니다.
 
 ```text
 python3 tools/sast_toolkit.py sync

@@ -13,10 +13,10 @@
 
   var WORKFLOW = {
     "todo": "미착수",
-    "in-progress": "진행중",
-    "analyzed": "분석완료",
-    "change-complete": "변경완료",
-    "verified": "검증완료",
+    "in-progress": "진행 중",
+    "analyzed": "분석 완료",
+    "change-complete": "변경 완료",
+    "verified": "검증 완료",
     "deferred": "보류"
   };
   var WORKFLOW_RANK = {
@@ -32,7 +32,7 @@
     "fix": "수정",
     "false-positive": "오탐",
     "operations": "운영 설정",
-    "exception": "예외처리",
+    "exception": "예외 처리",
     "needs-review": "추가 검토"
   };
   var MAPPING = {
@@ -41,7 +41,7 @@
     "relocated": "위치 이동",
     "changed": "코드 변경",
     "not-found": "미발견",
-    "generated-or-external": "생성/외부"
+    "generated-or-external": "생성 코드/외부 코드"
   };
   var MAPPING_PRIORITY = {
     "exact": 0,
@@ -55,7 +55,7 @@
     "unreviewed": {
       title: "작업 시작 조건 확인 전",
       badge: "사전 점검 전",
-      message: "현재 프로젝트와 입력 보고서의 적합성을 먼저 확인해야 합니다.",
+      message: "현재 프로젝트와 입력 자료의 적합성을 먼저 확인해야 합니다.",
       className: ""
     },
     "mechanical-ready": {
@@ -67,7 +67,7 @@
     "ready": {
       title: "작업 시작 가능",
       badge: "입력 검증 완료",
-      message: "현재 프로젝트와 두 보고서의 적합성이 확인되었습니다.",
+      message: "현재 프로젝트와 선택한 입력 자료의 적합성이 확인되었습니다.",
       className: "ready"
     },
     "blocked": {
@@ -96,8 +96,8 @@
   function findingById(id) { return findings.find(function (item) { return asString(item.id) === asString(id); }) || null; }
   function sourceMapping(item) { return item && item.sourceMapping ? item.sourceMapping : {}; }
   function reportedLocation(item) { return item && item.location ? item.location : {}; }
-  function risk(item) { return item && item.risk ? item.risk : { level: "unknown", label: "Unknown", rank: 0 }; }
-  function impact(item) { return item && item.impact ? item.impact : { level: "unknown", label: "Unknown", rank: 0 }; }
+  function risk(item) { return item && item.risk ? item.risk : { level: "unknown", label: "미확인", rank: 0 }; }
+  function impact(item) { return item && item.impact ? item.impact : { level: "unknown", label: "미확인", rank: 0 }; }
   function checker(item) { return item && item.checker ? item.checker : { code: "", name: "", category: "" }; }
   function gateReady() { return inputValidation.status === "ready"; }
 
@@ -168,7 +168,7 @@
 
   function validateDraftResults(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new Error("백업 draftResults는 항목 ID를 키로 갖는 객체여야 합니다.");
+      throw new Error("백업의 상세 결과 초안(draftResults) 형식이 올바르지 않습니다. 항목 ID를 키로 갖는 객체인지 확인하세요.");
     }
     Object.keys(value).forEach(function (id) {
       var draft = value[id];
@@ -187,16 +187,16 @@
     if (!data || typeof data !== "object" || Array.isArray(data)
       || !Object.prototype.hasOwnProperty.call(data, "schemaVersion")
       || !Object.prototype.hasOwnProperty.call(data, "workspaceId")) {
-      throw new Error("workspaceId와 schemaVersion이 없는 이전 백업입니다. 04 대조 절차에서 원래 프로젝트·차수를 확인한 뒤 변환하세요.");
+      throw new Error("이 백업은 이 화면에서 바로 불러올 수 없는 이전 형식입니다(workspaceId/schemaVersion 없음). 원본을 보존하고 사용 가이드의 ‘7. 결과 대조와 제출(04)’ 절차에서 프로젝트와 검사 차수를 확인하세요.");
     }
     if (data.schemaVersion !== "1.0") {
-      throw new Error("지원하지 않는 백업 schemaVersion입니다: " + asString(data.schemaVersion));
+      throw new Error("이 화면에서 지원하지 않는 백업 버전입니다(schemaVersion: " + asString(data.schemaVersion) + "). 원본을 보존하고 사용 가이드의 백업 형식을 확인하세요.");
     }
     if (data.workspaceId !== workspaceId) {
-      throw new Error("백업 workspaceId가 현재 프로젝트·차수와 다릅니다. 다른 차수는 06 이월 절차를 사용하세요.");
+      throw new Error("이 백업은 현재 작업공간과 다릅니다(workspaceId 불일치). 다른 검사 차수라면 사용 가이드의 ‘8. 재점검과 다음 검사 차수 이월(06)’ 절차를 사용하세요.");
     }
     if (!data.items || typeof data.items !== "object" || Array.isArray(data.items)) {
-      throw new Error("백업 items는 항목 ID를 키로 갖는 객체여야 합니다.");
+      throw new Error("백업의 진행상태 항목(items) 형식이 올바르지 않습니다. 항목 ID를 키로 갖는 객체인지 확인하세요.");
     }
     Object.keys(data.items).forEach(function (id) {
       var value = data.items[id];
@@ -238,7 +238,7 @@
       try {
         localStorage.setItem(storageKey, JSON.stringify(parsed));
       } catch (error) {
-        storageWarnings.push("기존 진행상태를 읽었지만 새 저장 키로 복사하지 못했습니다. 상태 백업을 내려받으세요.");
+        storageWarnings.push("기존 진행상태를 읽었지만 새 저장 키로 복사하지 못했습니다. “상태+결과 백업”을 내려받으세요.");
       }
       // Keep the original recoverable; its old key may also be used by another
       // dashboard version. Only matching, identified payloads are migrated.
@@ -353,7 +353,7 @@
     if (!notice) { return; }
     var messages = storageWarnings.slice();
     if (rejectedStorageRaw !== null) {
-      messages.push("읽지 못한 기존 저장본의 자동 덮어쓰기를 차단했습니다. 유효한 백업을 불러오기 전에 [읽지 못한 저장본 백업]으로 원문 다운로드를 요청하고 파일이 저장되었는지 확인하세요.");
+      messages.push("읽지 못한 기존 저장본의 자동 교체를 차단했습니다. 먼저 “읽지 못한 저장본 백업”으로 원문 다운로드를 요청하고 파일이 저장되었는지 확인하세요. 그다음 확인한 같은 작업공간의 상태+결과 백업만 불러오세요. 불러오기가 완료되면 보호 중인 브라우저 저장 항목은 새 내용으로 교체됩니다.");
     }
     if (mergeConflicts.baseNewer > 0) {
       messages.push(
@@ -364,7 +364,7 @@
     if (mergeConflicts.incomingNewer > 0) {
       messages.push(
         "브라우저에만 있는 변경 " + mergeConflicts.incomingNewer
-        + "건이 파일에 반영되지 않았습니다. [상태 백업]으로 내려받아 data/progress.json을 갱신하세요."
+        + "건이 파일에 반영되지 않았습니다. “상태+결과 백업”을 내려받아 data/progress.json을 갱신하세요."
       );
     }
     if (messages.length === 0) {
@@ -392,8 +392,8 @@
 
   function persistProgress(nextState, nextDraftResults, allowRecovery) {
     if (storageWriteBlocked && !allowRecovery) {
-      setMessage("localSaveStatus", "거부된 기존 브라우저 저장본을 복구할 수 있도록 원문 그대로 유지합니다. 확인한 상태 백업을 불러오기 전까지 새 변경은 현재 화면에만 남습니다.", "warning");
-      showToast("거부된 기존 저장본을 유지하고 있습니다. 확인한 백업을 불러와 복구하세요.", "warning");
+      setMessage("localSaveStatus", "읽지 못한 기존 브라우저 저장본을 원문 그대로 보호하고 있습니다. 원본을 먼저 백업한 뒤 확인한 상태+결과 백업을 불러오기 전까지 새 변경은 현재 화면에만 남습니다.", "warning");
+      showToast("읽지 못한 기존 저장본을 보호하고 있습니다. 원본을 먼저 백업한 뒤 확인한 상태+결과 백업을 불러오세요.", "warning");
       return false;
     }
     try {
@@ -450,13 +450,13 @@
   function initializeHeader() {
     var report = profile.report || {};
     var projectName = profile.projectName || "프로젝트 미분석";
-    var reportId = report.id || "리포트 미등록";
+    var reportId = report.id || "보고서 미등록";
     byId("projectBadge").textContent = projectName;
     byId("reportBadge").textContent = reportId;
     var readiness = READINESS[inputValidation.status] || READINESS.unreviewed;
     byId("inputBadge").textContent = readiness.badge;
     updateRejectedStorageAction();
-    document.title = projectName && reportId ? projectName + " SAST 체크리스트" : "SAST 취약점 체크리스트";
+    document.title = projectName && reportId ? projectName + " SAST 검출 항목 체크리스트" : "SAST 검출 항목 체크리스트";
   }
 
   function updateRejectedStorageAction() {
@@ -479,7 +479,7 @@
     var blockerList = byId("readinessBlockers");
     blockerList.textContent = "";
     if (!gateReady() && !blockers.length) {
-      blockers = ["프로젝트와 보고서 내용을 대조해 최종 게이트를 통과해야 합니다."];
+      blockers = ["프로젝트와 입력 자료를 대조해 최종 게이트를 통과해야 합니다."];
     }
     blockers.forEach(function (message) {
       var item = document.createElement("li");
@@ -641,6 +641,8 @@
       button.textContent = labels[entry.key] || entry.key;
       button.dataset.filterType = filterType;
       button.dataset.filterValue = entry.key;
+      button.setAttribute("aria-label", button.textContent + " " + entry.count + "개로 목록 필터링");
+      button.title = button.textContent + "으로 목록 필터링";
       var track = document.createElement("div");
       track.className = "stat-track";
       var fill = document.createElement("div");
@@ -691,7 +693,7 @@
     container.textContent = "";
     if (!candidates.length) {
       var empty = document.createElement("p");
-      empty.textContent = "추천할 미처리 항목이 없습니다.";
+      empty.textContent = "추천할 진행 대상이 없습니다. 검출 항목이 없거나 모든 항목이 검증 완료·보류 상태인지 확인하세요.";
       container.appendChild(empty);
       return;
     }
@@ -828,7 +830,7 @@
   }
 
   function formatCheckerGuide(guide) {
-    if (!guide) return "PDF에서 추출된 체커 공통 가이드가 없습니다.";
+    if (!guide) return "등록된 체커 공통 가이드가 없습니다. PDF를 사용하지 않은 입력에서는 비어 있을 수 있습니다.";
     var parts = [];
     if (guide.name) parts.push(guide.code + " - " + guide.name);
     if (guide.plainDescription) parts.push("쉽게 말하면:\n" + guide.plainDescription);
@@ -868,10 +870,18 @@
     if (result.resultGuideComparison) parts.push("공통 가이드 부합 여부:\n" + result.resultGuideComparison);
     if (Array.isArray(result.impact) && result.impact.length) parts.push("영향 범위:\n- " + result.impact.join("\n- "));
     if (result.verification) {
-      var verificationParts = ["상태: " + (result.verification.status || "not-run")];
+      var verificationLabels = {
+        "not-run": "미실행",
+        "passed": "통과",
+        "failed": "실패",
+        "partial": "일부 완료",
+        "manual-required": "수동 확인 필요"
+      };
+      var verificationStatus = result.verification.status || "not-run";
+      var verificationParts = ["상태: " + (verificationLabels[verificationStatus] || "미확인") + " (" + verificationStatus + ")"];
       if (Array.isArray(result.verification.commands) && result.verification.commands.length) verificationParts.push("명령:\n- " + result.verification.commands.join("\n- "));
       if (Array.isArray(result.verification.results) && result.verification.results.length) verificationParts.push("결과:\n- " + result.verification.results.join("\n- "));
-      if (Array.isArray(result.verification.limitations) && result.verification.limitations.length) verificationParts.push("제한:\n- " + result.verification.limitations.join("\n- "));
+      if (Array.isArray(result.verification.limitations) && result.verification.limitations.length) verificationParts.push("검증 한계:\n- " + result.verification.limitations.join("\n- "));
       parts.push("검증:\n" + verificationParts.join("\n"));
     }
     if (Array.isArray(result.duplicates) && result.duplicates.length) parts.push("중복 처리 항목: " + result.duplicates.join(", "));
@@ -883,27 +893,27 @@
     var draft = draftResults[id] || null;
     var fileResult = canonicalResultCache[id] || null;
     if (!draft && !fileResult) {
-      return { storage: "처리 결과 없음", file: "정본 파일 결과 없음" };
+      return { storage: "화면 결과: 없음", file: "정본 대조: 결과 없음" };
     }
     if (!draft) {
-      return { storage: "정본 파일에서 읽음", file: "정본 파일 결과" };
+      return { storage: "화면 결과: 정본 파일에서 읽음", file: "정본 대조: 브라우저 초안 없음" };
     }
     if (!persistedDraftResults[id] || !sameResult(persistedDraftResults[id], draft)) {
       return {
-        storage: "현재 화면에만 있음 · 저장 실패",
-        file: fileResult && sameResult(fileResult, draft.result) ? "정본 파일과 일치 확인됨" : "정본 파일 반영 대기"
+        storage: "브라우저 초안: 현재 화면에만 있음 · 저장 실패",
+        file: fileResult && sameResult(fileResult, draft.result) ? "정본 대조: 내용 일치" : "정본 대조: 반영 대기"
       };
     }
     if (!fileResult) {
-      return { storage: "브라우저 초안 저장됨", file: "정본 파일 반영 대기" };
+      return { storage: "브라우저 초안: 저장됨", file: "정본 대조: 반영 대기" };
     }
     if (sameResult(fileResult, draft.result)) {
-      return { storage: "브라우저 초안 보관됨", file: "정본 파일과 일치 확인됨" };
+      return { storage: "브라우저 초안: 저장됨", file: "정본 대조: 내용 일치" };
     }
     if (selectedResult(id) === draft.result) {
-      return { storage: "브라우저 초안 저장됨", file: "정본 파일 반영 대기" };
+      return { storage: "브라우저 초안: 저장됨", file: "정본 대조: 반영 대기" };
     }
-    return { storage: "브라우저 초안도 보관됨", file: "정본 파일이 더 최신" };
+    return { storage: "브라우저 초안: 저장됨", file: "정본 대조: 정본이 더 최신" };
   }
 
   function verificationLabel(result) {
@@ -915,7 +925,7 @@
       "manual-required": "수동 확인 필요"
     };
     var status = result && result.verification ? result.verification.status : "not-run";
-    return "검증 상태: " + (labels[status] || status) + " — 브라우저 초안이나 다운로드만으로 검증완료가 되지 않습니다.";
+    return "검증 상태: " + (labels[status] || status) + " — 브라우저 초안이나 다운로드만으로 검증 완료가 되지 않습니다.";
   }
 
   function renderCurrentDetail() {
@@ -979,7 +989,7 @@
     byId("taskPrompt").value = "";
     setMessage(
       "taskMessage",
-      gateReady() ? "" : "입력 검증 게이트가 READY인 경우에만 처리 요청을 시작할 수 있습니다.",
+      gateReady() ? "" : "입력 검증이 완료되지 않았습니다. 상단 ‘작업 시작 조건’을 확인하세요(GATE: READY 필요).",
       gateReady() ? "" : "warning"
     );
     setMessage("answerMessage", "", "");
@@ -1108,7 +1118,7 @@
     return applied;
   }
 
-  async function loadItemResult(id, force) {
+  async function loadItemResult(id, force, outcome) {
     var key = asString(id);
     if (!force && (canonicalResultCache[key] || window.SAST_ITEM_RESULTS[key])) {
       var cached = canonicalResultCache[key] || window.SAST_ITEM_RESULTS[key];
@@ -1118,7 +1128,8 @@
       if (currentFindingId === key) renderCurrentDetail();
       return cached;
     }
-    await loadScript("security-results/" + encodeURIComponent(key) + ".js");
+    var loaded = await loadScript("security-results/" + encodeURIComponent(key) + ".js");
+    if (outcome) outcome.loaded = loaded;
     var result = window.SAST_ITEM_RESULTS[key] || null;
     if (result) {
       applyResult(result, true);
@@ -1140,7 +1151,12 @@
       render();
       if (currentFindingId) renderCurrentDetail();
     }
-    showToast(loaded ? count + "개 처리 결과를 갱신했습니다." : "처리 결과 인덱스를 읽지 못했습니다.", loaded ? "success" : "warning");
+    showToast(
+      loaded
+        ? "처리 결과 인덱스를 다시 읽었습니다. 진행상태 반영 대상: " + count + "개(동일 내용 포함)."
+        : "처리 결과 인덱스를 읽지 못했습니다.",
+      loaded ? "success" : "warning"
+    );
   }
 
   function buildTaskPrompt(item) {
@@ -1152,9 +1168,9 @@
     var itemGuide = itemGuideCache[item.id] || window.SAST_ITEM_GUIDES[item.id] || null;
     var reportMeta = profile.report || {};
     return [
-      "[SAST 취약점 처리 요청]",
+      "[SAST 검출 항목 처리 요청]",
       "프로젝트: " + (profile.projectName || "현재 프로젝트"),
-      "리포트: " + (reportMeta.id || "최신 리포트"),
+      "보고서: " + (reportMeta.id || "최신 보고서"),
       "순번: " + item.sequence,
       "ID: " + item.id,
       "위험도: " + risk(item).label,
@@ -1171,14 +1187,15 @@
       "현재 조치 결론: " + CONCLUSION[itemState.conclusion],
       "",
       "요청:",
-      "1. 현재 소스와 호출부를 확인하고 리포트 검출 코드가 실제로 존재하는지 다시 대조합니다.",
-      "2. PDF 체커 가이드는 공통 참고자료이므로 실제 타입과 코드 흐름에 맞는지 검토합니다.",
-      "3. 수정, 오탐, 운영 설정, 예외처리, 추가 검토 중 하나로 결론을 남깁니다.",
-      "4. 수정한다면 운영 동작을 유지하는 최소 변경을 적용하고 가능한 검증을 실행합니다.",
+      "1. 현재 소스와 호출부를 확인하고 보고서 검출 코드가 실제로 존재하는지 다시 대조합니다.",
+      "2. 제공된 체커 공통 가이드가 있으면 공통 참고자료로만 보고, 실제 타입과 코드 흐름에 맞는지 검토합니다.",
+      "3. 수정, 오탐, 운영 설정, 예외 처리, 추가 검토 중 하나로 결론을 남깁니다.",
+      "4. 수정한다면 운영 동작을 유지하는 최소 변경을 적용하고, 현재 요청에서 승인된 범위의 검증을 실행합니다.",
       "5. 같은 원인으로 함께 처리할 수 있는 항목과 충돌 파일을 확인합니다.",
       "6. 프로젝트 정책으로 확정되지 않은 중요한 결정은 임의로 정하지 말고 질문 하나를 남깁니다.",
       "7. security-results/" + item.id + ".json과 data/progress.json을 갱신합니다.",
       "",
+      "아래 라벨과 콜론은 결과 추출에 사용하므로 그대로 유지하세요. 설명란에는 확인하지 못한 내용과 사유를 적으세요. 조치 결론과 검증 상태는 정해진 값 중 실제 근거에 맞는 값으로 기록하고, 코드 비교·파일 경로처럼 원문 보존이 필요한 항목에는 임의의 placeholder를 넣지 마세요.",
       "응답 형식:",
       "조치 결론:",
       "판단 이유:",
@@ -1191,7 +1208,7 @@
       "중복 처리 항목:",
       "체크리스트 비고 문구:",
       "",
-      "리포트 검출 코드:",
+      "보고서 검출 코드:",
       report.detectedCode || "-",
       "",
       "체커 공통 가이드:",
@@ -1301,7 +1318,7 @@
   function parseAnswer() {
     if (!currentFindingId) return;
     if (!gateReady()) {
-      setMessage("answerMessage", "입력 검증 게이트가 READY가 아닙니다.", "warning");
+      setMessage("answerMessage", "입력 검증이 완료되지 않았습니다. 상단 ‘작업 시작 조건’을 확인하세요(GATE: READY 필요).", "warning");
       return;
     }
     var raw = byId("answerInput").value;
@@ -1457,6 +1474,7 @@
     if (!currentFindingId) return;
     var item = findingById(currentFindingId);
     var result = refreshResultSelection(currentFindingId);
+    var synthesized = !result;
     if (!result) {
       var itemState = stateFor(currentFindingId);
       result = {
@@ -1478,6 +1496,12 @@
       };
     }
     downloadJson(currentFindingId + ".json", result);
+    showToast(
+      synthesized
+        ? "처리 결과가 없어 현재 작업 단계·결론·비고로 만든 미검증 JSON 초안의 다운로드를 요청했습니다. 정본 파일 저장이나 검증 완료를 뜻하지 않습니다."
+        : "현재 표시 중인 처리 결과 JSON의 다운로드를 요청했습니다. 정본 파일 저장이나 검증 완료를 뜻하지 않습니다.",
+      synthesized ? "warning" : "success"
+    );
   }
 
   function clearFilters() {
@@ -1573,7 +1597,7 @@
 
     byId("copyTaskPrompt").addEventListener("click", async function () {
       if (!gateReady()) {
-        setMessage("taskMessage", "입력 검증 게이트가 READY가 아닙니다.", "warning");
+        setMessage("taskMessage", "입력 검증이 완료되지 않았습니다. 상단 ‘작업 시작 조건’을 확인하세요(GATE: READY 필요).", "warning");
         return;
       }
       var item = findingById(currentFindingId);
@@ -1593,8 +1617,26 @@
     });
     byId("refreshResult").addEventListener("click", async function () {
       if (!currentFindingId) return;
-      var result = await loadItemResult(currentFindingId, true);
-      showToast(result ? "처리 결과를 갱신했습니다." : "처리 결과 파일을 찾지 못했습니다.", result ? "success" : "warning");
+      var before = stateFor(currentFindingId);
+      var loadOutcome = {};
+      var result = await loadItemResult(currentFindingId, true, loadOutcome);
+      var after = stateFor(currentFindingId);
+      if (loadOutcome.loaded === false) {
+        showToast(
+          result
+            ? "이 항목 파일 결과를 다시 읽지 못했습니다. 이전에 읽은 결과를 유지합니다."
+            : "이 항목 파일 결과를 읽지 못했습니다. 파일 경로와 sync 결과를 확인하세요.",
+          "warning"
+        );
+        return;
+      }
+      showToast(
+        result
+          ? "이 항목 파일 결과를 다시 읽었습니다. "
+            + (stateRecordsEqual(before, after) ? "진행상태에 새로 반영된 내용은 없습니다." : "진행상태에 파일 내용을 반영했습니다.")
+          : "처리 결과 파일을 찾지 못했습니다.",
+        result ? "success" : "warning"
+      );
     });
     byId("refreshResults").addEventListener("click", refreshAllResults);
     byId("parseAnswer").addEventListener("click", parseAnswer);
@@ -1619,7 +1661,7 @@
             "success"
           );
         } catch (error) {
-          showToast(error.message || "진행상태 JSON을 읽지 못했습니다.", "warning");
+          showToast(error.message || "상태+결과 백업 JSON을 읽지 못했습니다.", "warning");
         }
         event.target.value = "";
       };

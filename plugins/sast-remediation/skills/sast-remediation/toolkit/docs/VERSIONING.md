@@ -6,7 +6,7 @@
 |---|---|---|
 | 패치 (1.6.x) | 버그 수정, 문서, 대시보드 — 산출물 형식 무변경 | 부팅 반영 수정 |
 | 마이너 (1.x.0) | **하위호환 추가** — 선택 필드·선택 기능·새 프롬프트 | SARIF 모드, stableKey |
-| 메이저 (x.0.0) | 스키마 breaking — 필수 필드 추가·의미 변경·제거 | schemaVersion 상향 동반 |
+| 메이저 (x.0.0) | 기존 산출물과 호환되지 않는 변경(breaking change) — 필수 필드 추가·의미 변경·제거 | schemaVersion 상향 동반 |
 
 ## 하위호환 원칙
 
@@ -40,7 +40,7 @@
 
 `checker-guides.json`은 `code -> guide` 맵이라 최상위에 `schemaVersion`을
 둘 자리가 없다. 넣으려면 `{schemaVersion, guides}`로 감싸야 하는데 이는
-breaking 변경이므로 다음 메이저까지 보류한다.
+비호환 변경이므로 다음 메이저까지 보류한다.
 
 경고 단계 산출물은 업그레이드 후 validate가 **에러 없이 통과하더라도**
 경고를 반드시 읽어야 한다. 경고가 곧 마이그레이션 대상 목록이다.
@@ -50,7 +50,7 @@ breaking 변경이므로 다음 메이저까지 보류한다.
 | 패치 종류 | 차수 진행 중 적용 |
 |---|---|
 | 패치·마이너 (하위호환) | "툴킷 업그레이드해줘"로 아래 자산 정책 적용. 상태를 보존하고 공지된 승인 재확인·검증 수정을 처리한 뒤 validate로 확인 |
-| 메이저 (breaking) | 금지 — 차수 완료 후 다음 차수부터. 부득이하면 마이그레이션 절차를 먼저 수행 |
+| 메이저 (비호환) | 금지 — 차수 완료 후 다음 차수부터. 부득이하면 마이그레이션 절차를 먼저 수행 |
 
 ## 업그레이드 자산 정책
 
@@ -79,17 +79,25 @@ breaking 변경이므로 다음 메이저까지 보류한다.
 5. 교체 파일·보존/병합한 사용자 파일·승인 재확인 여부와 남은 오류/경고를
    보고한다. 제출은 실제 증적 검토와 `validate --strict`가 모두 필요하다.
 
-## breaking 변경 절차 (메이저)
+## 비호환 변경 절차 (메이저)
 
-1. 버전을 **두 곳** 함께 올린다 (예: 1.0 → 2.0)
-   - `tools/sast_toolkit.py`의 `SCHEMA_VERSION` 상수
-   - `schemas/*.json`의 `schemaVersion` const 값
-   한쪽만 올리면 `validate`가 "schema ... const is X but validator
-   SCHEMA_VERSION is Y" 에러로 막는다.
+1. 모든 schemaVersion 생산자와 소비자를 먼저 찾고 함께 올린다
+   (예: 1.0 → 2.0). 현재 목록에는 다음이 포함되며, 변경 시 전체 저장소를
+   다시 검색해 누락 여부를 확인한다.
+   - `tools/sast_toolkit.py`의 `SCHEMA_VERSION`, 하드코딩된 생성 지점,
+     스키마 교차 검사 목록
+   - `tools/sast_state.py`의 상태·결과 검사와 새 레코드 생성 지점
+   - `assets/checklist.js`의 파일 결과·백업 검사와 브라우저 초안·내보내기 생성 지점
+   - `schemas/*.json`의 최상위·중첩 `schemaVersion` const 값
+   - 배포용 빈 데이터, 예시와 Python·JavaScript 테스트 픽스처
+   JSON에서 파생되는 `.js` 미러는 손으로 바꾸지 않고 갱신된 정본에서
+   `sync`로 다시 만든다. 일부만 올리면 런타임마다 서로 다른 버전을
+   허용하거나 생성할 수 있다.
 2. 경고 단계인 검사를 에러로 올린다
    (`report.schema_version(..., "warn")` → `"error"`)
 3. 구버전 산출물 → 신버전 변환 규칙을 이 문서에 기록한다
-4. 업그레이드 직후 validate를 돌린다. 에러 + 경고를 합쳐서 읽으면
+4. Python 상태 도구와 브라우저의 구버전 읽기·신버전 생성·거부 동작을
+   교차 런타임 테스트한 뒤 `validate`를 실행한다. 에러 + 경고를 합쳐서 읽으면
    마이그레이션 대상이 드러난다 — 위 검사 수준 표대로 레코드류는
    경고로만 나오므로 에러 0건을 통과로 오해하면 안 된다
 
@@ -130,7 +138,7 @@ breaking 변경이므로 다음 메이저까지 보류한다.
 - `change-complete`, `verified` 상태 또는
   `fix/false-positive/operations/exception` 결론에는 결과 레코드가 필요하다.
   완료 progress만 있고 결과를 잃었다면 해당 항목을 복구·재검토한다.
-  초기 `todo/in-progress`와 `unreviewed/needs-review` 조합, 분석·정책 파킹인
+  초기 `todo/in-progress`와 `unreviewed/needs-review` 조합, 분석·정책 확인 보류인
   `analyzed/needs-review`, `deferred/unreviewed`, `deferred/needs-review`는
   결과 없이 가능하다.
 - `verification.method`와 레코드 `schemaVersion`의 기존 경고 정책은 유지한다.
@@ -145,13 +153,22 @@ breaking 변경이므로 다음 메이저까지 보류한다.
 - `project/DECISION_LOG.md`를 손으로 쓰던 방식에서 `data/decisions.json`
   정본 + sync 생성으로 바뀌었다. 하위호환: 손으로 쓴 DECISION_LOG.md는
   sync가 덮어쓰지 않고, validate가 경고만 낸다.
-- 옮기는 법: 기존 md의 결정마다 `decisions.json`에 항목을 추가한다
-  (`schemas/decisions.schema.json`). `결정 주체`가 없던 옛 결정은
-  실제로 사용자가 확인했으면 `user`, 추천을 그대로 적용했으면
-  `baseline-default`로 두고 관찰 장치·재검토 조건을 채운다. 옮긴 뒤 md를
-  지우고 `sync`.
-- `data/decisions.json`이 없으면 `init`이 만든다(다른 산출물은 건드리지
-  않음).
+- 옮기는 법: 기존 md 원본을 먼저 백업한 뒤 결정마다 `decisions.json`에
+  항목을 추가한다(`schemas/decisions.schema.json`). 당시 기록으로 실제
+  사용자 확인이 입증될 때만 `user`로 분류한다. 추천 적용의 주체·관찰
+  근거가 입증될 때만 `baseline-default`로 분류하고 당시 근거에 맞는
+  observation·reviewTrigger를 기록한다. 출처가 불명확하면 원문과 위치를
+  rationale·evidence에 보존하고 `deferred`와 현재 다시 확인할 구체적
+  reviewTrigger로 옮긴다. 확인되지 않은 관찰 근거나 사용자 결정을 새로
+  만들지 않는다. 이관 결과를 검토한 뒤 md 원본을 생성 경로 밖으로 옮겨
+  보존한다. `project/DECISION_LOG.md`에 수기 원본이 남아 있지 않은지 확인한
+  다음 `sync`로 새 결정 로그를 생성한다.
+- `data/decisions.json`이 없으면 READY 게이트 뒤 `init`으로 만들 수 있다.
+  다만 `init`은 결정 파일 전용 마이그레이션이 아니다. 없는
+  `INPUT_VALIDATION.md`, `PROJECT_ANALYSIS.md`, `PROJECT_SECURITY_POLICY.md`,
+  `WORK_GROUPS.md`를 각 템플릿에서 만들고, 이어서 데이터 JS 미러·항목별
+  index·`DECISION_LOG.md`·`USAGE.html`을 `sync`로 갱신한다. 기존 프로젝트
+  문서 템플릿은 덮어쓰지 않는다. 이 영향을 확인하고 보존한 정본으로 실행한다.
 
 ## 배포·롤백
 

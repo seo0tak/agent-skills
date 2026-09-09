@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SAST 취약점 체크리스트</title>
+  <title>SAST 검출 항목 체크리스트</title>
   <link rel="stylesheet" href="assets/checklist.css">
   <script src="data/input-validation.js"></script>
   <script src="data/project-profile.js"></script>
@@ -19,17 +19,17 @@
   <header id="appHeader" class="app-header">
     <div class="title-row">
       <div>
-        <h1 id="pageTitle">SAST 취약점 체크리스트</h1>
+        <h1 id="pageTitle">SAST 검출 항목 체크리스트</h1>
         <div class="meta-row">
           <span class="badge" id="projectBadge">프로젝트 미분석</span>
-          <span class="badge" id="reportBadge">리포트 미등록</span>
+          <span class="badge" id="reportBadge">보고서 미등록</span>
           <span class="badge" id="inputBadge">입력 확인 전</span>
         </div>
       </div>
       <div class="header-actions">
-        <button id="refreshResults" type="button" title="파일에 저장된 처리 결과를 다시 읽습니다. 브라우저 변경을 파일에 저장하는 버튼이 아닙니다.">전체 결과 갱신</button>
-        <button id="exportRejectedStorage" class="recovery-button" type="button" title="읽지 못한 브라우저 저장본의 원문을 변경 없이 내려받습니다. 다운로드 파일이 저장되었는지 확인한 뒤 유효한 상태 백업을 불러오세요." hidden>읽지 못한 저장본 백업</button>
-        <button id="importProgress" type="button">상태 불러오기</button>
+        <button id="refreshResults" type="button" title="파일에 저장된 처리 결과 인덱스를 다시 읽습니다. 브라우저 변경을 파일에 저장하는 버튼이 아닙니다.">파일 결과 다시 읽기</button>
+        <button id="exportRejectedStorage" class="recovery-button" type="button" title="읽지 못한 브라우저 저장본의 원문을 변경 없이 내려받습니다. 다운로드 파일이 저장되었는지 확인한 뒤 유효한 상태+결과 백업을 불러오세요." hidden>읽지 못한 저장본 백업</button>
+        <button id="importProgress" type="button" title="같은 작업공간 백업의 진행상태와 브라우저 결과 초안을 항목별로 병합합니다. 더 최신인 현재 값은 유지됩니다. 읽지 못한 저장본을 보호 중이면 먼저 원문을 별도 백업하세요.">상태+결과 불러오기</button>
         <button id="exportProgress" class="primary" type="button" title="브라우저 진행상태와 추출한 처리 결과 초안을 함께 내려받습니다. 다운로드만으로 정본 파일에 반영되지는 않습니다.">상태+결과 백업</button>
         <input id="progressFile" class="hidden" type="file" accept="application/json,.json">
       </div>
@@ -63,36 +63,36 @@
     <section id="readinessPanel" class="readiness-band" aria-live="polite">
       <div>
         <strong id="readinessTitle">작업 시작 조건 확인 전</strong>
-        <p id="readinessMessage">현재 프로젝트와 입력 보고서의 적합성을 먼저 확인해야 합니다.</p>
+        <p id="readinessMessage">현재 프로젝트와 입력 자료의 적합성을 먼저 확인해야 합니다.</p>
       </div>
       <ul id="readinessBlockers"></ul>
     </section>
 
     <p class="scope-note">현황 숫자는 전체 항목의 현재 단계별 스냅샷이며 서로 누적되지 않습니다. <strong>필터 결과</strong>와 아래 목록에만 선택한 조건이 적용됩니다.</p>
     <section class="summary" aria-label="전체 항목 처리 현황">
-      <button class="metric-card active" type="button" data-dashboard-filter="all">
+      <button class="metric-card active" type="button" data-dashboard-filter="all" title="전체 항목으로 목록 필터링">
         <strong id="totalCount">0</strong><span>전체 항목</span>
       </button>
       <div class="metric-card neutral">
         <strong id="shownCount">0</strong><span>필터 결과</span>
       </div>
-      <button class="metric-card danger" type="button" data-dashboard-filter="high-pending">
+      <button class="metric-card danger" type="button" data-dashboard-filter="high-pending" title="높음 이상 대기 항목으로 목록 필터링">
         <strong id="highPendingCount">0</strong><span>높음 이상 대기</span>
       </button>
-      <button class="metric-card info" type="button" data-dashboard-filter="analyzed">
-        <strong id="analyzedCount">0</strong><span>현재 분석완료</span>
+      <button class="metric-card info" type="button" data-dashboard-filter="analyzed" title="분석 완료 항목으로 목록 필터링">
+        <strong id="analyzedCount">0</strong><span>현재 분석 완료</span>
       </button>
-      <button class="metric-card warn" type="button" data-dashboard-filter="change-complete">
-        <strong id="changeCompleteCount">0</strong><span>현재 변경완료</span>
+      <button class="metric-card warn" type="button" data-dashboard-filter="change-complete" title="변경 완료 항목으로 목록 필터링">
+        <strong id="changeCompleteCount">0</strong><span>현재 변경 완료</span>
       </button>
-      <button class="metric-card good" type="button" data-dashboard-filter="verified">
-        <strong id="verifiedCount">0</strong><span>현재 검증완료</span>
+      <button class="metric-card good" type="button" data-dashboard-filter="verified" title="검증 완료 항목으로 목록 필터링">
+        <strong id="verifiedCount">0</strong><span>현재 검증 완료</span>
       </button>
-      <button class="metric-card neutral" type="button" data-dashboard-filter="false-positive">
+      <button class="metric-card neutral" type="button" data-dashboard-filter="false-positive" title="오탐 결론 항목으로 목록 필터링">
         <strong id="falsePositiveCount">0</strong><span>오탐 결론</span>
       </button>
-      <div class="metric-card progress-card">
-        <strong id="verificationRate">0%</strong><span>검증률</span>
+      <div class="metric-card progress-card" title="작업 단계가 ‘검증 완료’인 항목 비율입니다. 소스·근거 신선도는 sast_state.py status에서 별도로 확인하세요.">
+        <strong id="verificationRate">0%</strong><span>검증 완료 상태 비율</span>
         <div class="progress-track"><div id="verificationBar" class="progress-bar"></div></div>
       </div>
     </section>
@@ -116,7 +116,7 @@
         <div class="panel-head recommendation-head">
           <div>
             <h2>추천 작업 순서</h2>
-            <p>검증완료와 보류를 제외하고 위험도, 영향도, 소스 매핑 순으로 정렬합니다.</p>
+            <p>검증 완료와 보류를 제외하고 위험도, 영향도, 소스 매핑 순으로 정렬합니다.</p>
           </div>
           <select id="recommendationLimit" aria-label="추천 작업 표시 개수">
             <option value="5">5개</option>
@@ -157,9 +157,9 @@
       </div>
       <div id="pager" class="pager">
         <span id="pageInfo" role="status" aria-live="polite"></span>
-        <button id="prevPage" type="button">이전</button>
-        <button id="nextPage" type="button">다음</button>
-        <select id="pageSize" aria-label="표시 개수">
+        <button id="prevPage" type="button" aria-label="이전 페이지">이전</button>
+        <button id="nextPage" type="button" aria-label="다음 페이지">다음</button>
+        <select id="pageSize" aria-label="페이지당 표시 항목 수">
           <option value="100">100개씩</option>
           <option value="200" selected>200개씩</option>
           <option value="500">500개씩</option>
@@ -167,7 +167,7 @@
         </select>
       </div>
       <div id="emptyState" class="empty-state hidden" role="status">
-        현재 조건에 맞는 항목이 없습니다.
+        표시할 검출 항목이 없습니다. 입력이 아직 반영되지 않았거나 현재 필터와 일치하는 항목이 없는지 확인하세요.
       </div>
     </section>
   </main>
@@ -186,7 +186,7 @@
       <section id="detailMeta" class="detail-meta"></section>
 
       <section class="action-grid">
-        <p class="wide edit-help">아래 변경은 이 브라우저에 저장됩니다. 정본 파일을 바꾸려면 <strong>상태 백업 → AI 대조·반영 → sync·validate</strong>가 필요합니다. 상태 선택만으로 검증 증거가 만들어지지는 않습니다.</p>
+        <p class="wide edit-help">아래 변경은 이 브라우저에 저장됩니다. 정본 파일에 반영하려면 <strong>“상태+결과 백업”을 내려받아 AI에게 대조·반영을 요청한 뒤 sync와 validate를 실행</strong>해야 합니다. 상태 선택만으로 검증 증거가 만들어지지는 않습니다.</p>
         <label>
           <span>작업 단계</span>
           <select id="detailWorkflow"></select>
@@ -212,7 +212,7 @@
       </section>
 
       <section>
-        <h3>리포트 검출 코드</h3>
+        <h3>보고서 검출 코드</h3>
         <pre id="detectedCode" class="code-block"></pre>
       </section>
 
@@ -238,15 +238,15 @@
         <div class="section-head">
           <h3>처리 결과 기록</h3>
           <div class="section-actions">
-            <button id="refreshResult" type="button">결과 갱신</button>
-            <button id="exportResult" type="button" title="저장된 처리 결과 또는 추출한 결과를 내보냅니다. 위 작업 단계·비고의 브라우저 변경은 상태 백업을 사용하세요.">결과 JSON</button>
+            <button id="refreshResult" type="button" title="이 항목의 파일 결과를 다시 읽습니다. 파일을 읽지 못하면 이전에 읽은 결과를 유지합니다. 브라우저 변경을 파일에 저장하는 버튼이 아닙니다.">이 항목 파일 결과 다시 읽기</button>
+            <button id="exportResult" type="button" title="현재 표시 중인 처리 결과를 내려받습니다. 처리 결과가 없으면 현재 작업 단계·결론·비고를 바탕으로 검증 미실행 JSON 초안을 만듭니다. 정본 파일 저장이나 검증 완료를 뜻하지 않습니다.">현재 결과 JSON 내보내기</button>
           </div>
         </div>
         <div class="result-status" aria-label="처리 결과 저장 및 파일 반영 상태">
-          <span id="resultStorageStatus" class="status-pill">처리 결과 없음</span>
-          <span id="resultFileStatus" class="status-pill">정본 파일 결과 없음</span>
+          <span id="resultStorageStatus" class="status-pill">화면 결과: 없음</span>
+          <span id="resultFileStatus" class="status-pill">정본 대조: 결과 없음</span>
         </div>
-        <p id="resultVerificationStatus" class="scope-note" role="status">검증 상태: 미실행 — 브라우저 초안이나 다운로드만으로 검증완료가 되지 않습니다.</p>
+        <p id="resultVerificationStatus" class="scope-note" role="status">검증 상태: 미실행 — 브라우저 초안이나 다운로드만으로 검증 완료가 되지 않습니다.</p>
         <h4 class="result-heading">판단·적용·검증 내용</h4>
         <div id="resultView" class="text-panel result-panel empty-panel">저장된 처리 결과가 없습니다.</div>
         <div id="resultCodeSection" hidden>
@@ -256,8 +256,8 @@
       </section>
 
       <section class="answer-panel">
-        <h3>AI 답변 반영</h3>
-        <textarea id="answerInput" rows="9" aria-label="AI 처리 답변" placeholder="항목별 처리 답변을 붙여넣으세요."></textarea>
+        <h3>AI 답변에서 브라우저 초안 만들기</h3>
+        <textarea id="answerInput" rows="9" aria-label="AI 처리 답변" placeholder="정해진 응답 형식의 항목별 답변을 붙여넣으세요."></textarea>
         <button id="parseAnswer" type="button">답변에서 결과 추출</button>
         <p id="answerMessage" class="message"></p>
       </section>

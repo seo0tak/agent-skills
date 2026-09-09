@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/sast/result.schema.json",
-  "title": "SAST Item Result",
+  "title": "SAST 항목별 조치 결과",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -126,7 +126,7 @@
         },
         "sourceSnapshot": {
           "type": "object",
-          "description": "Optional source/evidence binding created by sast_state.py seal-verification. Missing means unbound legacy evidence, never implicitly fresh. Only the listed files are covered.",
+          "description": "sast_state.py seal-verification이 생성하는 선택적 소스·검증 근거 연결 정보. 이 정보가 없는 옛 검증 근거는 unbound이며 자동으로 fresh로 간주하지 않는다. 기록된 파일만 연결 범위에 포함된다.",
           "required": ["schemaVersion", "workspaceId", "projectRoot", "id", "capturedAt", "files", "sealedAt", "evidenceDigest"],
           "properties": {
             "schemaVersion": {"const": "1.0"},

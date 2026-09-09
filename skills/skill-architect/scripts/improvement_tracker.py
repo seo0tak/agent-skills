@@ -28,7 +28,7 @@ def require(condition, message):
 
 
 def shape(value, fields):
-    require(isinstance(value, dict), "Expected an object")
+    require(isinstance(value, dict), "Expected a JSON object")
     require(set(value) == set(fields.split()), "Expected exactly these fields: " + fields)
 
 
@@ -40,7 +40,7 @@ def strings(value, fields):
 
 def sha(value):
     require(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None,
-            "Expected a lowercase SHA256 digest")
+            "Expected a SHA256 value of 64 lowercase hexadecimal characters")
 
 
 def digest(value):
@@ -69,7 +69,9 @@ def proposal(data):
 
 def bound(data, current):
     sha(data["binding"])
-    require(data["binding"] == current["binding"], "Candidate/target binding changed; renew evaluation and authority")
+    require(data["binding"] == current["binding"],
+            "Candidate/target binding changed; re-evaluate the current proposal and record "
+            "the applicable user authority reference. Reuse existing permission only if it covers this change.")
 
 
 def checkpoint(data):

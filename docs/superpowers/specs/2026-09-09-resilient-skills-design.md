@@ -1,5 +1,9 @@
 # Resilient skills: approved implementation scope
 
+Historical design for the 1.12.0 / 0.4.0 implementation. Later commit, merge and
+release status is recorded in [HANDOFF.md](../../../HANDOFF.md). Reading this
+document does not request another implementation run.
+
 The user approved implementing phases 1 and 2 of the 2026-09-09 recommendation: reliable manual resumption plus approval-scoped improvement. Automatic wake-up, background monitoring, autonomous deployment and expanded execution authority are excluded.
 
 ## Requirements

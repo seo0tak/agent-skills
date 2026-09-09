@@ -15,7 +15,7 @@
    과거 파일 기록만으로 연속 실행·배포·추가 소스 변경 권한을 추정하지 않습니다.
    동일한 승인 범위가 확인되면 세션이 바뀌었다는 이유만으로 다시 묻지 않습니다.
 
-2. 집계를 믿기 전에 원본 상태를 검사합니다.
+2. 집계를 사용하기 전에 정본 상태를 검사합니다.
    python3 tools/sast_state.py status
    python3 tools/sast_toolkit.py validate
    두 명령의 오류, resumeCandidates, pendingCheckpoints와
@@ -43,7 +43,8 @@
    stale은 연결된 소스 또는 근거가 바뀐 상태, unbound는 옛 검증에 소스 연결이
    없는 상태입니다. 두 경우 모두 현재 소스 검증을 다시 하기 전에는 완료로 신뢰하지
    않습니다. 과거의 passed나 verifiedAt만 복사해 새 연결을 만들지 않습니다.
-   fresh도 지정한 파일과 기록의 일치를 뜻할 뿐 외부 정책·운영 환경의 정답은 아닙니다.
+   fresh는 지정한 파일과 기록이 연결 시점의 내용과 일치한다는 뜻입니다.
+   외부 정책이나 운영 환경의 타당성까지 확인한 결과는 아닙니다.
 
 5. 원본이 정리된 뒤 sync, validate, query --summary 순서로 현황을 봅니다.
    project/WORK_GROUPS.md와 새 security-results/index.json을 대조하고,

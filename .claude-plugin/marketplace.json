@@ -7,12 +7,12 @@
     {
       "name": "sast-remediation",
       "source": "./plugins/sast-remediation",
-      "description": "SAST 취약점 조치 워크플로우 — 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성"
+      "description": "기존 SAST 보고서와 소스를 대조하고 검토·조치·검증 근거를 관리합니다. 저장된 작업의 수동 재개와 결과 초안 백업을 지원합니다."
     },
     {
       "name": "skill-architect",
       "source": "./plugins/skill-architect",
-      "description": "스킬 아키텍처 감사·설계 — 목적에 필요한 입력·상태·복구·검증·사람 판단을 근거 수준별로 검토하고, 선택적으로 승인 범위의 개선 이력을 관리"
+      "description": "에이전트 스킬의 설계와 품질을 근거에 따라 검토합니다. 요청 시 승인된 개선 범위와 평가·적용·재개 이력을 기록합니다."
     }
   ]
 }

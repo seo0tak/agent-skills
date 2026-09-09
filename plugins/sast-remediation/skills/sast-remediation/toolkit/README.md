@@ -1,19 +1,19 @@
 # Universal SAST Remediation Toolkit
 
 > **English summary** — This is not a scanner. It is a remediation
-> management workflow for SAST results you already have: an input
-> readiness gate, source-to-report mapping, one-question-at-a-time
-> policy resolution, remediation waves with verification, cross-round
-> carry-over of false-positive decisions (fingerprint-matched), a
-> file-based dashboard, and submission-ready evidence workbooks.
+> management workflow for SAST results you already have through an
+> input-readiness gate, source-to-report mapping, one-question-at-a-time
+> policy clarification, remediation execution with recorded verification,
+> current-code review of prior false-positive and exception decisions, a
+> file-based dashboard, and evidence workbooks prepared for submission review.
 > Inputs: a vendor PDF + findings spreadsheet, **or a standard SARIF
 > file** (Semgrep, CodeQL, SonarQube, ...). Pair it with a scanning
 > skill or CI SAST job: they find issues, this toolkit manages what
 > happens next. Docs are currently in Korean.
 
-현재 프로젝트 소스와 선택 보고서(PDF·스프레드시트 또는 SARIF)로 취약점
-분석, 정책 확인, 소스 조치, 검증, 증적 정리를 반복 수행하기 위한
-범용 패키지입니다.
+대상 프로젝트의 현재 작업 사본(이하 "현재 소스")과 선택 보고서
+(PDF·스프레드시트 또는 SARIF)로 취약점 분석, 정책 확인, 소스 조치,
+검증, 증적 정리를 반복 수행하는 파일 기반 툴킷입니다.
 
 이 패키지의 고정 파일에는 특정 조직, 프로젝트, 분석 번호, 패키지명,
 프레임워크 또는 빌드 도구를 넣지 않습니다. 프로젝트마다 달라지는
@@ -21,7 +21,7 @@
 
 ## 매번 준비할 입력
 
-1. 현재 프로젝트 소스
+1. 현재 소스
 2. 최신 SAST 검출 자료 — 다음 중 한 조합을 `input/`에 넣습니다.
    - **벤더 모드**: 상세 보고서 PDF 1개 이상(대용량 분할 허용) + 검출 스프레드시트 1개
    - **SARIF 모드**: 표준 `.sarif` 파일 1개 (Semgrep, CodeQL,
@@ -96,7 +96,7 @@ sast-remediation-toolkit/
 ├── prompts/                     # 단계별 재사용 요청문
 ├── schemas/                     # 표준 데이터 계약
 ├── examples/                    # 중립적인 작성 예시
-├── assets/                      # 범용 대시보드 코드와 스타일
+├── assets/                      # 재사용 대시보드 코드와 스타일
 ├── tools/                       # 동기화·검증·수동 재개
 └── docs/                        # 설계와 유지보수 문서
 ```
@@ -140,9 +140,9 @@ sast-remediation-toolkit/
 PDF의 해결 예시는 특정 코드에 그대로 적용하는 패치가 아닙니다.
 항목별 실제 파일, 함수, 타입, 호출부와 맞는지 먼저 검토합니다.
 
-정책 질문은 답하는 사람이 보안이나 이 프로젝트를 잘 모른다는 전제로
-설계되어 있습니다. 접근이 허용된 증거를 확인한 뒤 업무 사실만 묻습니다.
-관찰 장치를 추가할 때도 실제 사용자 선택과 변경 범위가 필요합니다.
+정책 질문은 보안 용어나 프로젝트 배경지식 없이도 답할 수 있도록 업무에서
+관찰할 수 있는 사실을 묻습니다. 접근이 허용된 증거를 먼저 확인합니다.
+관찰 수단을 추가할 때도 실제 사용자 선택과 변경 범위가 필요합니다.
 원리는 `docs/HOW_IT_WORKS.md`, 규칙은 `SECURITY_GRILL_GUIDE.md`를 따릅니다.
 
 ## 대시보드 실행
@@ -150,15 +150,16 @@ PDF의 해결 예시는 특정 코드에 그대로 적용하는 패치가 아닙
 `SECURITY_CHECKLIST.html`을 브라우저에서 직접 엽니다. 프로젝트별 데이터는
 `data/*.js`로 읽기 때문에 별도 서버가 없어도 기본 기능이 동작합니다.
 
-대시보드는 열릴 때 `security-results/`의 항목별 결과를 자동으로
-반영합니다(상태의 기준). `전체 결과 갱신`은 페이지를 새로고침하지 않고
-파일 결과를 다시 읽을 때 사용합니다.
+대시보드는 열릴 때 `sync`가 만든 `security-results/index.js`의 항목별
+결과를 반영합니다(상태의 기준). JSON 정본을 바꾼 뒤에는 먼저 `sync`로
+미러와 인덱스를 갱신하고, 화면에서 `파일 결과 다시 읽기`를 선택합니다.
+이 버튼은 생성된 인덱스를 다시 읽을 뿐 `sync`를 실행하지 않습니다.
 
 진행상태는 브라우저에도 임시 저장됩니다. 파일 상태와 브라우저 저장본이
 다르면 항목별 `updatedAt`이 최신인 쪽을 반영하고, 충돌이 있으면 화면
 상단에 경고 배너로 건수를 표시합니다. 브라우저에만 있는 변경은 반드시
 `상태+결과 백업`으로 내려받아 04에서 출처·상태·상세 초안을 대조합니다. AI가 파일
-기반 상태를 갱신하면 `전체 결과 갱신`으로 다시 읽을 수 있습니다.
+기반 상태를 갱신하고 `sync`를 마치면 `파일 결과 다시 읽기`로 읽을 수 있습니다.
 
 ## 중단과 재개
 

@@ -15,14 +15,17 @@ SAST 처리 규칙을 적용할 수 있습니다. 기존 프로젝트 지침을 
   `sast-remediation-toolkit/SECURITY_POLICY_BASELINE.md`를 따른다.
 - 코드로 확인할 수 없는 정책만
   `sast-remediation-toolkit/SECURITY_GRILL_GUIDE.md`에 따라 질문한다.
-- 선택 보고서(PDF 1개 이상+스프레드시트 1개 또는 SARIF 1개)와 현재 소스를 대조한다.
+- 선택 보고서(PDF 1개 이상+스프레드시트 1개 또는 SARIF 1개)와 대상
+  프로젝트의 현재 작업 사본(이하 "현재 소스")을 대조한다.
 - 보고서 라인 번호가 달라졌으면 현재 소스에서 실제 검출 구문을 다시 찾는다.
-- 초기 분석 승인 전에는 운영 소스를 수정하지 않는다.
+- 초기 분석 승인 전에는 현재 소스 파일을 수정하지 않는다.
 - 수정 전·후 `tools/sast_state.py checkpoint`로 메모·대상·다음 작업을 저장한다.
 - 검증 직전에 snapshot을 만들고 실제 빌드·테스트를 실행한 뒤 결과를
-  seal-verification으로 연결한다. 도구가 테스트·권한을 대신 만들지 않는다.
+  seal-verification으로 연결한다. `seal-verification`은 테스트를 실행하지
+  않는다. 저장된 상태나 검증 기록을 소스 변경 권한으로 해석하지 않는다.
 - 중단 시 07 재개 절차로 원본·체크포인트·현재 소스부터 검사한다.
-  복구는 미리보기 후 --apply로 반영하며 자동 재시작하지 않는다.
+  복구 내용은 미리보기로 확인한 뒤 --apply로 반영한다. 도구는 세션이나
+  작업을 자동으로 다시 시작하지 않는다.
 - 결과 정본은 `security-results/`다. progress는 결과와 일치해야 하며
   결과가 없는 임시 상태·비고도 보존한다. 공용 정본은 한 작성자가 갱신한다.
 - sync·validate·sast_state.py status를 확인한다. stale/unbound를 검증 완료로

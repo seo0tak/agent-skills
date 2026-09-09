@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/sast/input-validation.schema.json",
-  "title": "SAST Input Validation",
+  "title": "SAST 입력 검증",
   "type": "object",
   "additionalProperties": false,
   "required": [

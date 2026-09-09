@@ -15,6 +15,8 @@ tags: [sast]
 - 판정 주체:
 
 허용 상태는 `UNREVIEWED`, `MECHANICAL_READY`, `READY`, `BLOCKED`입니다.
+`UNREVIEWED`는 미검토, `MECHANICAL_READY`는 파일 점검 통과·내용 대조 전,
+`READY`는 필수 점검·내용 대조 통과, `BLOCKED`는 시작 조건 미충족입니다.
 실제 분석과 조치는 `READY`에서만 시작합니다.
 
 ## 현재 프로젝트

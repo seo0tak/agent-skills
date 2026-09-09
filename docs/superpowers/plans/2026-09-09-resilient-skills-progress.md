@@ -1,4 +1,8 @@
-# SDD ledger — plan: /Users/0tak/Project/Source/seo0tak/agent-skills/docs/superpowers/plans/2026-09-09-resilient-skills.md
+# SDD ledger — historical 1.12.0 / 0.4.0 implementation
+
+Plan: [Resilient Skills Implementation Plan](2026-09-09-resilient-skills.md).
+These are results at the end of that implementation stage. Subsequent Git and
+release state belongs in [HANDOFF.md](../../../HANDOFF.md).
 
 Baseline: HEAD dcf3d35a37b06ac85170ccffb569bf6506f078bc; existing uncommitted 1.11.0/0.3.0 changes preserved. Work branch codex/resilient-skill-workflows created from current checkout; no clean-tree replacement.
 

@@ -1,11 +1,11 @@
 ---
 name: sast-remediation
-description: Manage and remediate SAST findings you already have — input gate, source-to-report mapping, false-positive review, remediation waves with verification, cross-round carry-over, and submission-ready evidence. Accepts vendor PDF+spreadsheet reports or standard SARIF files (Semgrep, CodeQL, SonarQube). Use when the user asks to remediate/triage SAST results, review false positives, process a security scan report, or produce remediation evidence. | SAST(정적분석) 취약점 조치 워크플로우. 사용자가 SAST 결과 조치, 취약점 조치/검토, 시큐어코딩 점검 결과 처리, 오탐 검토, 취약점 증적 작성을 요청하거나 SAST PDF·검출 스프레드시트·SARIF 파일을 언급하면 사용. 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성 절차 포함.
+description: Manage and remediate SAST findings you already have — input gate, source-to-report mapping, false-positive review, remediation execution with verification, current-code review of prior decisions, and evidence prepared for submission review. Accepts vendor PDF+spreadsheet reports or standard SARIF files (Semgrep, CodeQL, SonarQube). Use when the user asks to remediate/triage SAST results, review false positives, process a security scan report, or produce remediation evidence. | SAST(정적분석) 취약점 조치 워크플로우. 사용자가 SAST 결과 조치, 취약점 조치/검토, 시큐어코딩 점검 결과 처리, 오탐 검토, 취약점 증적 작성을 요청하거나 SAST PDF·검출 스프레드시트·SARIF 파일을 언급하면 사용. 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성 절차 포함.
 ---
 
 # SAST 취약점 조치
 
-이 스킬 디렉터리의 `toolkit/`에 범용 SAST 취약점 조치 툴킷 전체가
+이 스킬 디렉터리의 `toolkit/`에 여러 프로젝트에 복사해 사용하는 파일 기반 SAST 조치 툴킷이
 동봉되어 있다. 아래 절차를 따른다.
 
 ## 1. 툴킷 배치
@@ -26,7 +26,8 @@ description: Manage and remediate SAST findings you already have — input gate,
   갱신한 뒤 sync와 validate를 실행해 **에러와 경고 모두** 확인한다.
   구버전 입력 승인에 내용 해시가 없으면 00 사전 점검과 의미 대조를 다시
   수행한다. 필드/버전 경고마다 새 문서의 처리 규칙을 따르며, 경고 하나를
-  일괄적으로 breaking 변경이라고 판단하거나 에러 0건만으로 완료하지 않는다.
+  일괄적으로 기존 산출물과 호환되지 않는 변경(breaking change)이라고 판단하거나
+  에러 0건만으로 완료하지 않는다.
 
 ## 2. 워크플로우 수행
 
@@ -37,16 +38,19 @@ description: Manage and remediate SAST findings you already have — input gate,
    게이트가 READY가 아니면 어떤 분석·조치도 시작하지 않는다.
 3. 이후 단계는 사용자의 요청에 맞는 프롬프트 파일을 따른다:
    01 초기 분석 → (06 차수 이월, 이전 차수 산출물이 있을 때) →
-   02 정책 질문(상시) → 03 조치 웨이브 → 04 대시보드 변경 흡수 →
+   02 정책 질문(필요할 때마다) → 03 조치 실행 → 04 대시보드 변경 흡수 →
    05 증적 생성. 새 세션에서 이어서 하면 07 재개.
 4. 사용자가 "연속으로", "끝까지", "N개 그룹" 등 범위를 주면
-   prompts/03의 연속 실행 모드로 진행한다: 그룹 사이에 확인을 묻지
-   않고, 정책 질문은 파킹 후 병합 제시하며, 명시된 중단 조건에서만
+   prompts/03의 연속 실행 모드로 진행한다. 작업 그룹은
+   `grouping.workGroup`으로 묶은 분류 단위이고, 조치 실행은 이번 요청에서
+   처리하도록 승인된 범위로 하나 이상의 작업 그룹을 포함할 수 있다. 작업
+   그룹 사이에 확인을 묻지 않고, 정책 확인이 필요한 항목만 `needs-review`로
+   보류해 `policyQuestions`에 기록한 뒤 병합 제시하며, 명시된 중단 조건에서만
    멈춘다.
-5. 사용자가 특정 단계를 지정하면("웨이브 진행", "증적 만들어줘" 등)
+5. 사용자가 특정 단계를 지정하면("조치 실행", "증적 만들어줘" 등)
    해당 프롬프트로 바로 진행하되, 게이트 READY 전제는 항상 지킨다.
 
-## 선택: 모델 티어 위임
+## 선택: 등록된 작업 에이전트에 역할 분담
 
 실행 환경이 서브에이전트 위임을 지원하고 sast-bulk-worker,
 sast-remediator가 등록돼 있으면(Claude Code 플러그인 설치 시 동봉)
@@ -58,15 +62,16 @@ prompts/03의 위임 규칙을 따른다: 기계적 대량 작업은 bulk-worker
 ## 3. 핵심 규칙 (툴킷 문서와 동일, 요약)
 
 - `tools/sast_toolkit.py gate`가 READY를 반환하기 전에는 초기 분석이나
-  운영 소스 수정을 시작하지 않는다.
-- 현재 소스가 동작의 기준이다. 보고서 라인이 어긋나면 현재 소스에서
+  현재 소스 파일 수정을 시작하지 않는다.
+- 대상 프로젝트의 현재 작업 사본(이하 "현재 소스")이 동작의 기준이다.
+  보고서 라인이 어긋나면 현재 소스에서
   검출 구문을 다시 찾는다.
 - 코드와 소스 밖 증거(데이터·설정·프론트·로그)로 확인할 수 없는 정책만
   SECURITY_GRILL_GUIDE.md에 따라 한 번에 하나씩, 보안 용어가 아니라
   업무 사실로 질문한다. 관찰 방법이 적힌 미확인 기본안을 사용자가
   선택했고 변경 권한이 있을 때만 적용한다. 답변이나 권한이 없으면
   해당 항목을 보류한다. 결정은 `data/decisions.json`에 decidedBy와 함께
-  기록하고 sync한다 — 미확인 결정에 관찰 장치가 없으면 validate 에러.
+  기록하고 sync한다 — 미확인 기본안에 관찰 방법이 기록되지 않으면 validate 오류.
 - 큰 findings.json은 읽지 않는다. `tools/sast_toolkit.py query`로 그룹·
   상태별 항목만 받고, 현황은 `query --summary`로 본다.
 - 결과 정본은 `security-results/`다. `data/progress.json`은 결과와 일치해야

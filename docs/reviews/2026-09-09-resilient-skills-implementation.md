@@ -2,6 +2,9 @@
 
 2026-09-09 · 작업 브랜치 `codex/resilient-skill-workflows`
 
+이 문서는 1.12.0 / 0.4.0 구현 단계의 범위와 결과를 기록합니다.
+이후 커밋·병합·배포 상태는 [HANDOFF.md](../../HANDOFF.md)의 최신 확인 내용을 참고하세요.
+
 ## 결론과 범위
 
 합의한 두 단계, **중단 후 수동 재개**와 **승인 범위의 개선 기록**을 구현했습니다.
@@ -99,12 +102,10 @@ SAST 작업 트리 버전은 1.12.0, skill-architect는 0.4.0입니다.
 
 ## 검증 실행 기록
 
-독립 리뷰 원문(초기 발견과 종결 확인을 함께 보존):
-
-- [상태·IO 리뷰](/Users/0tak/.codex/visualizations/2026/09/08/01a0802b-c6c1-7fe1-ace6-e293adc250c9/review-durable-state.md)
-- [브라우저·가이드 렌더러 리뷰](/Users/0tak/.codex/visualizations/2026/09/08/01a0802b-c6c1-7fe1-ace6-e293adc250c9/review-browser-renderer.md)
-- [개선 기록 소비자 테스트](/Users/0tak/.codex/visualizations/2026/09/08/01a0802b-c6c1-7fe1-ace6-e293adc250c9/review-improvement-forward.md)
-- [문서 순방향 검토](/Users/0tak/.codex/visualizations/2026/09/08/01a0802b-c6c1-7fe1-ace6-e293adc250c9/review-guidance-forward.md)
+독립 리뷰 원문은 작성자의 로컬 검증 자료로 보존되어 있으며 이 저장소에는
+포함되지 않습니다. 파일명은 `review-durable-state.md`, `review-browser-renderer.md`,
+`review-improvement-forward.md`, `review-guidance-forward.md`입니다.
+공유 저장소에서 확인할 수 있는 실행 명령·결과·한계는 아래에 기록합니다.
 
 최종 정본 자동 테스트는 **151개 모두 통과**했습니다. SAST 82개, Architect 24개,
 브라우저 44개, 패키징 1개입니다. 배포 사본의 브라우저 44개도 별도로 통과했으며

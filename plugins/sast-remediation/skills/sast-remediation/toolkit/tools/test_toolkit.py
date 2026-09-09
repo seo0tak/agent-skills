@@ -119,6 +119,22 @@ class ToolkitCase(unittest.TestCase):
 
 
 class InputManifestTests(ToolkitCase):
+    def test_sarif_only_preflight_does_not_require_two_vendor_reports(self) -> None:
+        self.ready_inputs()
+        proc = self.run_tool("preflight")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        record = read_json(self.data / "input-validation.json")
+        self.assertEqual(record["status"], "mechanical-ready")
+        self.assertIsNone(record["inputs"]["pdf"])
+        self.assertIsNone(record["inputs"]["spreadsheet"])
+        self.assertEqual(record["inputs"]["sarif"]["path"], "input/report.sarif")
+        checks = {check["code"]: check for check in record["checks"]}
+        for code in ("REPORT_CONTENT_READABLE", "SEMANTIC_MATCH"):
+            with self.subTest(check=code):
+                self.assertEqual(checks[code]["status"], "manual")
+                self.assertNotIn("두 보고서", checks[code]["summary"])
+                self.assertNotIn("PDF 가이드와 스프레드시트", checks[code]["summary"])
+
     def test_example_input_record_matches_current_contract(self) -> None:
         self.load_examples()
         shutil.copyfile(self.root / "examples/input-validation.json", self.data / "input-validation.json")
@@ -390,11 +406,15 @@ class BaselineTests(ToolkitCase):
 
 class InterruptionTests(ToolkitCase):
     def test_half_written_progress_is_named(self) -> None:
-        (self.data / "progress.json").write_text('{"schemaVersion": "1.0", "items": {', encoding="utf-8")
+        original = '{"schemaVersion": "1.0", "items": {'
+        path = self.data / "progress.json"
+        path.write_text(original, encoding="utf-8")
         code, out = self.validate()
         self.assertEqual(code, 1)
         self.assert_error(out, "data/progress.json")
-        self.assertIn("half-written", out)
+        self.assertIn("incomplete or malformed", out)
+        self.assertIn("preserve it before recovery", out)
+        self.assertEqual(path.read_text(encoding="utf-8"), original)
 
     def test_half_written_result_record_is_named(self) -> None:
         self.load_examples()
@@ -532,7 +552,7 @@ class DecisionAuditTests(ToolkitCase):
         self.assertTrue(text.startswith("---\ntype: sast/decision-log"))
         self.assertLess(text.index("DEC-002"), text.index("DEC-001"))
         self.assertIn("결정 주체: 기본안 적용(미확인)", text)
-        self.assertIn("관찰 장치: SmsSender.send:88", text)
+        self.assertIn("관찰 방법: SmsSender.send:88", text)
 
     def test_missing_decisions_file_is_warning_and_init_creates_it(self) -> None:
         (self.data / "decisions.json").unlink()

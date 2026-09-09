@@ -75,7 +75,7 @@ def progress_item(item):
     if (not isinstance(item, dict) or not isinstance(item.get("workflowStatus"), str)
             or item["workflowStatus"] not in WORKFLOWS or not isinstance(item.get("conclusion"), str)
             or item["conclusion"] not in CONCLUSIONS or not isinstance(item.get("note"), str)):
-        raise ValueError("unsupported progress item")
+        raise ValueError("invalid progress item: workflowStatus and conclusion must be supported string values; note must be a string")
     if item.get("updatedAt") is not None:
         timestamp(item["updatedAt"])
     return item
@@ -186,7 +186,7 @@ class Workspace:
                     progress_item(item.get("progress"))
                     timestamp(item.get("recordedAt"))
                     if not isinstance(item.get("phase"), str) or item["phase"] not in {"before-edit", "after-edit"} or not isinstance(item.get("note"), str) or not isinstance(item.get("nextAction"), str):
-                        raise ValueError("unsupported checkpoint")
+                        raise ValueError("invalid checkpoint: phase must be before-edit or after-edit; note and nextAction must be strings")
                     if "sourceSnapshot" in item:
                         self.validate_snapshot(item["sourceSnapshot"], key)
                 else:

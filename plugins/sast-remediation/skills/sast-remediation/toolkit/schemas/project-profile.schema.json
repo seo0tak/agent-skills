@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/sast/project-profile.schema.json",
-  "title": "SAST Project Profile",
+  "title": "SAST 프로젝트 프로필",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -213,7 +213,7 @@
           "items": {
             "type": "string"
           },
-          "description": "이 프로젝트에서 사용 가능한 검증 수단 등급 목록 (예: build, lint, unit-test, scanner-recheck, manual-review)"
+          "description": "이 프로젝트에서 사용 가능한 검증 방법 목록 (예: build, lint, unit-test, scanner-recheck, manual-review)"
         }
       },
       "additionalProperties": true

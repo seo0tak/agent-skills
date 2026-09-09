@@ -36,12 +36,16 @@ function draft(resultValue, savedAt = DAY_3) {
   return { source: "browser-answer", savedAt, result: resultValue };
 }
 
-function loadDashboard({ workspaceId = "project-A", fileItems = {}, fileResults = {}, storage = new Map(), findingCount = 1, bootstrap = false } = {}) {
+function loadDashboard({
+  workspaceId = "project-A", fileItems = {}, fileResults = {}, storage = new Map(),
+  findingCount = 1, bootstrap = false, inputStatus = "ready", scriptLoadSucceeds = false,
+} = {}) {
   const elements = new Map();
   const blobs = new Map();
   const downloads = [];
   const selections = new Map();
   const documentListeners = {};
+  const copiedText = [];
   let activeElement;
   let createdCount = 0;
   function element(id) {
@@ -84,7 +88,7 @@ function loadDashboard({ workspaceId = "project-A", fileItems = {}, fileResults 
   }
   const window = {
     SAST_TOOLKIT_DATA: {
-      inputValidation: { status: "ready", blockers: [] },
+      inputValidation: { status: inputStatus, blockers: [] },
       projectProfile: { workspaceId },
       findings: Array.from({ length: findingCount }, (_, index) => ({ id: "F-" + String(index + 1).padStart(3, "0"), sequence: index + 1 })),
       progress: backup(fileItems, workspaceId),
@@ -95,13 +99,13 @@ function loadDashboard({ workspaceId = "project-A", fileItems = {}, fileResults 
     window,
     document: {
       getElementById: element, createElement: (tag) => element("created-" + tag + "-" + createdCount++),
-      body: element("body"), head: { appendChild(script) { script.onerror(); } },
+      body: element("body"), head: { appendChild(script) { scriptLoadSucceeds ? script.onload() : script.onerror(); } },
       querySelectorAll: (selector) => selections.get(selector) || [],
       addEventListener(type, listener) { documentListeners[type] = listener; },
       get activeElement() { return activeElement; },
     },
     localStorage: { getItem: (key) => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
-    navigator: { clipboard: { writeText: async () => {} } },
+    navigator: { clipboard: { writeText: async (text) => { copiedText.push(text); } } },
     Blob: class { constructor(parts) { this.contents = parts.join(""); } },
     URL: {
       createObjectURL(blob) { const url = "blob:" + blobs.size; blobs.set(url, blob.contents); return url; },
@@ -124,14 +128,126 @@ function loadDashboard({ workspaceId = "project-A", fileItems = {}, fileResults 
     window.testApi = { stateFor, updateState, importProgressData, exportProgress,
       parseAnswer, exportCurrentResult, bindEvents, renderSyncNotice, openDetail,
       closeDetail, renderDashboardFilter, updateSortIndicators, renderTable,
-      resultProvenance, importAccounting: function () { return lastImportAccounting; },
+      resultProvenance, formatCheckerGuide, renderStats,
+      importAccounting: function () { return lastImportAccounting; },
       setCurrent: function (id) { currentFindingId = id; } };
     ${bootstrap ? "" : "return;"}
 ${seam}`), context, { filename: scriptPath });
   return { api: window.testApi, element, storage, downloads, documentListeners,
     select: (selector, values) => selections.set(selector, values),
-    active: () => activeElement, useTableRendering: () => { window.renderTableForTest = true; } };
+    active: () => activeElement, copiedText,
+    useTableRendering: () => { window.renderTableForTest = true; } };
 }
+
+test("ready prompt and empty guide stay input-neutral while preserving the parser contract", async () => {
+  const dashboard = loadDashboard({ bootstrap: true });
+  dashboard.api.setCurrent("F-001");
+  await dashboard.element("copyTaskPrompt").listeners.click();
+
+  assert.match(dashboard.element("readinessMessage").textContent, /선택한 입력 자료/);
+  assert.match(dashboard.api.formatCheckerGuide(null), /PDF를 사용하지 않은 입력에서는 비어 있을 수 있습니다/);
+  const prompt = dashboard.copiedText[0];
+  assert.match(prompt, /제공된 체커 공통 가이드가 있으면/);
+  assert.doesNotMatch(prompt, /PDF 체커 가이드/);
+  assert.match(prompt, /라벨과 콜론은 결과 추출에 사용하므로 그대로 유지/);
+  for (const label of [
+    "조치 결론:", "판단 이유:", "실제 변경 파일/위치:", "적용 내용:",
+    "기존/수정 코드 비교:", "공통 가이드 부합 여부:", "영향 범위:", "검증:",
+    "중복 처리 항목:", "체크리스트 비고 문구:",
+  ]) assert.ok(prompt.includes(label), `missing fixed parser label: ${label}`);
+  assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "todo");
+  assert.equal(dashboard.storage.size, 0);
+});
+
+test("result export explains existing and synthesized downloads without promoting state", () => {
+  const existing = loadDashboard({ fileResults: { "F-001": result() } });
+  existing.api.setCurrent("F-001");
+  existing.api.bindEvents();
+  existing.element("exportResult").listeners.click();
+  assert.equal(existing.downloads[0].data.resultCodeDiff, "- old();\n+ checked();\n");
+  assert.match(existing.element("toast").textContent, /현재 표시 중인 처리 결과.*다운로드를 요청/);
+  assert.match(existing.element("toast").textContent, /정본 파일 저장이나 검증 완료를 뜻하지 않습니다/);
+  assert.equal(existing.api.stateFor("F-001").workflowStatus, "todo");
+
+  const synthesized = loadDashboard();
+  synthesized.api.setCurrent("F-001");
+  synthesized.api.bindEvents();
+  synthesized.element("exportResult").listeners.click();
+  assert.equal(synthesized.downloads[0].data.verification.status, "not-run");
+  assert.match(synthesized.element("toast").textContent, /미검증 JSON 초안.*다운로드를 요청/);
+  assert.match(synthesized.element("toast").textContent, /정본 파일 저장이나 검증 완료를 뜻하지 않습니다/);
+  assert.equal(synthesized.api.stateFor("F-001").workflowStatus, "todo");
+  assert.equal(synthesized.storage.size, 0);
+});
+
+test("global result reread reports index loading separately from included state targets", async () => {
+  const dashboard = loadDashboard({
+    fileItems: { "F-001": item("verified", "fix", "newer state", DAY_3) },
+    fileResults: { "F-001": result({ updatedAt: DAY_2 }) },
+    bootstrap: true,
+    scriptLoadSucceeds: true,
+  });
+  await dashboard.element("refreshResults").listeners.click();
+  assert.equal(dashboard.element("toast").textContent, "처리 결과 인덱스를 다시 읽었습니다. 진행상태 반영 대상: 0개(동일 내용 포함).");
+  assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "verified");
+});
+
+test("global reread count identifies an identical existing result as an included target", async () => {
+  const existing = result({ updatedAt: DAY_2 });
+  const dashboard = loadDashboard({
+    fileItems: { "F-001": item("change-complete", "fix", "Review the source file", DAY_2) },
+    fileResults: { "F-001": existing },
+    bootstrap: true,
+    scriptLoadSucceeds: true,
+  });
+  const before = { ...dashboard.api.stateFor("F-001") };
+  await dashboard.element("refreshResults").listeners.click();
+  assert.equal(dashboard.element("toast").textContent, "처리 결과 인덱스를 다시 읽었습니다. 진행상태 반영 대상: 1개(동일 내용 포함).");
+  assert.deepEqual({ ...dashboard.api.stateFor("F-001") }, before);
+});
+
+test("item result reread names the file outcome and preserves newer workflow state", async () => {
+  const dashboard = loadDashboard({
+    fileItems: { "F-001": item("verified", "fix", "newer state", DAY_3) },
+    fileResults: { "F-001": result({ updatedAt: DAY_2 }) },
+    bootstrap: true,
+    scriptLoadSucceeds: true,
+  });
+  dashboard.api.setCurrent("F-001");
+  await dashboard.element("refreshResult").listeners.click();
+  assert.equal(dashboard.element("toast").textContent, "이 항목 파일 결과를 다시 읽었습니다. 진행상태에 새로 반영된 내용은 없습니다.");
+  assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "verified");
+});
+
+test("failed item script load reports failure even when a cached result remains available", async () => {
+  const dashboard = loadDashboard({
+    fileItems: { "F-001": item("verified", "fix", "newer state", DAY_3) },
+    fileResults: { "F-001": result({ updatedAt: DAY_2 }) },
+    bootstrap: true,
+    scriptLoadSucceeds: false,
+  });
+  dashboard.api.setCurrent("F-001");
+  await dashboard.element("refreshResult").listeners.click();
+  assert.equal(dashboard.element("toast").textContent, "이 항목 파일 결과를 다시 읽지 못했습니다. 이전에 읽은 결과를 유지합니다.");
+  assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "verified");
+});
+
+test("failed item script load without a cached result gives recovery guidance", async () => {
+  const dashboard = loadDashboard({ bootstrap: true, scriptLoadSucceeds: false });
+  const before = { ...dashboard.api.stateFor("F-001") };
+  dashboard.api.setCurrent("F-001");
+  await dashboard.element("refreshResult").listeners.click();
+  assert.equal(dashboard.element("toast").textContent, "이 항목 파일 결과를 읽지 못했습니다. 파일 경로와 sync 결과를 확인하세요.");
+  assert.deepEqual({ ...dashboard.api.stateFor("F-001") }, before);
+  assert.equal(dashboard.storage.size, 0);
+});
+
+test("dynamic stat filter names include the displayed count", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.renderStats("riskStats", { high: 3 }, { high: "높음" }, "risk");
+  const button = dashboard.element("riskStats").children[0].children[0];
+  assert.equal(button.getAttribute("aria-label"), "높음 3개로 목록 필터링");
+});
 
 test("a parsed full result survives reload and exports the exact diff bytes", () => {
   const storage = new Map();
@@ -288,7 +404,7 @@ test("a failed browser write leaves the previous complete envelope recoverable",
   assert.equal(first.element("answerMessage").classList.contains("warning"), true);
   assert.deepEqual(
     { ...first.api.resultProvenance("F-001") },
-    { storage: "현재 화면에만 있음 · 저장 실패", file: "정본 파일 반영 대기" },
+    { storage: "브라우저 초안: 현재 화면에만 있음 · 저장 실패", file: "정본 대조: 반영 대기" },
   );
 
   const recovered = loadDashboard({ storage });
@@ -360,7 +476,7 @@ test("result provenance distinguishes browser-only, pending, and matching canoni
   });
   assert.deepEqual(
     { ...browserOnly.api.resultProvenance("F-001") },
-    { storage: "브라우저 초안 저장됨", file: "정본 파일 반영 대기" },
+    { storage: "브라우저 초안: 저장됨", file: "정본 대조: 반영 대기" },
   );
 
   const storage = new Map();
@@ -371,7 +487,7 @@ test("result provenance distinguishes browser-only, pending, and matching canoni
   const matching = loadDashboard({ storage, fileResults: { "F-001": result() } });
   assert.deepEqual(
     { ...matching.api.resultProvenance("F-001") },
-    { storage: "브라우저 초안 보관됨", file: "정본 파일과 일치 확인됨" },
+    { storage: "브라우저 초안: 저장됨", file: "정본 대조: 내용 일치" },
   );
 });
 

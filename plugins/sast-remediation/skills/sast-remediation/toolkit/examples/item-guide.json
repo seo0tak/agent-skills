@@ -2,7 +2,7 @@
   "schemaVersion": "1.0",
   "id": "SAMPLE-001",
   "sequence": 1,
-  "title": "입력 필수 여부를 확인하고 사용 전 검증",
+  "title": "입력의 필수 여부 확인과 사용 전 검증",
   "sourceMapping": "exact",
   "summary": "입력이 없을 때의 정책이 명시되지 않은 채 값을 사용합니다.",
   "applicability": "입력이 필수인지 확인한 뒤 보고서 가이드의 적용 방법을 결정합니다.",

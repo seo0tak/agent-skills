@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/sast/findings.schema.json",
-  "title": "SAST Findings",
+  "title": "SAST 검출 목록",
   "type": "array",
   "items": {
     "type": "object",
@@ -212,7 +212,7 @@
       },
       "stableKey": {
         "type": "string",
-        "description": "차수를 넘어 같은 항목을 가리키는 고정 식별자 — sourceMapping.fingerprint의 SHA-1 해시 앞 8자리에 SK- 접두. 벤더 검출 ID는 차수마다 바뀌므로 증적·소통에는 이 값을 사용한다."
+        "description": "차수를 넘어 같은 항목을 가리키는 고정 식별자 — sourceMapping.fingerprint의 SHA-1 해시 앞 8자리에 SK- 접두. 보고서의 검출 ID는 차수에 따라 바뀔 수 있으므로 증적·소통에는 이 값을 사용한다."
       }
     },
     "additionalProperties": true

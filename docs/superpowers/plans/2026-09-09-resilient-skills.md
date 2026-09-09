@@ -1,11 +1,15 @@
 # Resilient Skills Implementation Plan
 
+Historical, completed implementation plan for 1.12.0 / 0.4.0. The following worker
+instructions describe that execution; reading this document is not a request to
+rerun it. For subsequent repository/release status, see [HANDOFF.md](../../../HANDOFF.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox syntax for tracking.
 
 **Goal:** Reliable SAST resumption and approval-scoped skill improvement, including readable user guidance.
 **Architecture:** File-backed domain-specific checkpoints plus validated browser drafts. Separate optional architect improvement records; no scheduler or self-publishing.
 **Tech Stack:** Python standard library, plain browser JavaScript, unittest, node:test.
-**Spec:** /Users/0tak/Project/Source/seo0tak/agent-skills/docs/superpowers/specs/2026-09-09-resilient-skills-design.md
+**Spec:** [Approved design](../specs/2026-09-09-resilient-skills-design.md)
 
 ## Global Constraints
 
