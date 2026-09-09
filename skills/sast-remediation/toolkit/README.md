@@ -6,8 +6,9 @@
 > policy clarification, remediation execution with recorded verification,
 > current-code review of prior false-positive and exception decisions, a
 > file-based dashboard, and evidence workbooks prepared for submission review.
-> Inputs: a vendor PDF + findings spreadsheet, **or a standard SARIF
-> file** (Semgrep, CodeQL, SonarQube, ...). Pair it with a scanning
+> Inputs: PDF report(s) + a findings spreadsheet, with Sparrow-based
+> guidance where applicable, **or a standard SARIF file** (Semgrep,
+> CodeQL, SonarQube, ...). Pair it with a scanning
 > skill or CI SAST job: they find issues, this toolkit manages what
 > happens next. Docs are currently in Korean.
 
@@ -23,7 +24,8 @@
 
 1. 현재 소스
 2. 최신 SAST 검출 자료 — 다음 중 한 조합을 `input/`에 넣습니다.
-   - **벤더 모드**: 상세 보고서 PDF 1개 이상(대용량 분할 허용) + 검출 스프레드시트 1개
+   - **PDF·스프레드시트 모드**: 상세 보고서 PDF 1개 이상(대용량 분할 허용) + 검출 스프레드시트 1개
+     (Sparrow 보고서 기준 안내 포함)
    - **SARIF 모드**: 표준 `.sarif` 파일 1개 (Semgrep, CodeQL,
      SonarQube 등의 출력. PDF 선택)
 

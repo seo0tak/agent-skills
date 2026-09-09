@@ -1,6 +1,6 @@
 ---
 name: sast-remediation
-description: Manage and remediate SAST findings you already have — input gate, source-to-report mapping, false-positive review, remediation execution with verification, current-code review of prior decisions, and evidence prepared for submission review. Accepts vendor PDF+spreadsheet reports or standard SARIF files (Semgrep, CodeQL, SonarQube). Use when the user asks to remediate/triage SAST results, review false positives, process a security scan report, or produce remediation evidence. | SAST(정적분석) 취약점 조치 워크플로우. 사용자가 SAST 결과 조치, 취약점 조치/검토, 시큐어코딩 점검 결과 처리, 오탐 검토, 취약점 증적 작성을 요청하거나 SAST PDF·검출 스프레드시트·SARIF 파일을 언급하면 사용. 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성 절차 포함.
+description: Manage and remediate SAST findings you already have — input gate, source-to-report mapping, false-positive review, remediation execution with verification, current-code review of prior decisions, and evidence prepared for submission review. Accepts PDF+spreadsheet reports or standard SARIF files (Semgrep, CodeQL, SonarQube). Use when the user asks to remediate/triage SAST results, review false positives, process a security scan report, or produce remediation evidence. | SAST(정적분석) 취약점 조치 워크플로우. 사용자가 SAST 결과 조치, 취약점 조치/검토, 시큐어코딩 점검 결과 처리, 오탐 검토, 취약점 증적 작성을 요청하거나 SAST PDF·검출 스프레드시트·SARIF 파일을 언급하면 사용. 사전 점검 게이트, 소스 대조 분석, 차수 이월, 조치·검증, 증적 생성 절차 포함.
 ---
 
 # SAST 취약점 조치
@@ -15,7 +15,7 @@ description: Manage and remediate SAST findings you already have — input gate,
 - **없으면**: 이 스킬 디렉터리(이 SKILL.md가 있는 곳)의 `toolkit/`을
   프로젝트 루트에 `sast-remediation-toolkit/` 이름으로 복사한다. 복사 후 사용자에게
   `input/`에 이번 차수의 SAST 자료를 넣어 달라고 요청하고 멈춘다.
-  (벤더 PDF 1개 이상+스프레드시트 1개, 또는 표준 SARIF 파일 1개;
+  (PDF 1개 이상+스프레드시트 1개, 또는 표준 SARIF 파일 1개;
   SARIF 모드의 PDF는 선택)
 - **있으면**: 기존 것을 그대로 사용한다. 진행 중인 차수의 산출물을
   덮어쓰지 않는다. 스킬의 toolkit이 더 최신이라도 사용자가 명시적으로
@@ -66,6 +66,11 @@ prompts/03의 위임 규칙을 따른다: 기계적 대량 작업은 bulk-worker
 - 대상 프로젝트의 현재 작업 사본(이하 "현재 소스")이 동작의 기준이다.
   보고서 라인이 어긋나면 현재 소스에서
   검출 구문을 다시 찾는다.
+- 현재 실행 환경에 실제로 노출된 탐색 수단만 사용하고, LSP는 현재 프로젝트의
+  최신 파일을 반영할 때만 우선한다. 경로·텍스트·심볼·이력의 목적별 선택,
+  실패 시 대체 절차, 호출부 확인,
+  수정 후 진단, 재개 시 인덱스 재확인은 `SECURITY_SAST_WORKFLOW.md`의
+  「소스 탐색 계약」을 따른다.
 - 코드와 소스 밖 증거(데이터·설정·프론트·로그)로 확인할 수 없는 정책만
   SECURITY_GRILL_GUIDE.md에 따라 한 번에 하나씩, 보안 용어가 아니라
   업무 사실로 질문한다. 관찰 방법이 적힌 미확인 기본안을 사용자가

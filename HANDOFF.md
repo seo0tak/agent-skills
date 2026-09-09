@@ -1,19 +1,20 @@
-# HANDOFF — 개발 세션 인수인계 (2026-09-09, v1.12.1 / v0.4.1)
+# HANDOFF — 개발 세션 인수인계 (2026-09-09, v1.12.2 / v0.4.2)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-09-09 문구 교정)
+## 최신 작업 기준 (2026-09-09 소스 탐색·용어 정리)
 
-- 배포 파일 버전: sast-remediation **v1.12.1**, skill-architect **v0.4.1**.
-  문구 교정 브랜치: `codex/editorial-copy-polish`.
-  직전 구현 커밋 `0e21db3`은 main에 반영·푸시된 상태에서 시작했다.
-  이번 교정은 사용자 요청에 따라 검증 후 main 반영·푸시하는 범위다.
+- 배포 파일 버전: sast-remediation **v1.12.2**, skill-architect **v0.4.2**.
+  작업 브랜치: `codex/source-navigation-guidance`.
+  직전 문구 교정 커밋 `97daeb7`은 main에 반영·푸시된 상태에서 시작했다.
+  이번 변경은 사용자 요청에 따라 검증 후 main 반영·푸시하는 범위다.
   실제 원격 반영 상태는 `git log`와 `git ls-remote origin refs/heads/main`으로 확인한다.
   설치본 갱신은 별도이며, 마지막 설치 확인 버전 1.10.1/0.2.1과 구분한다.
-- 문구 교정의 변경 범위와 검증 결과:
-  `docs/reviews/2026-09-09-editorial-copy-polish.md`.
+- 이번 변경의 범위·검증 결과·미확인 사항:
+  `docs/reviews/2026-09-09-source-navigation-guidance.md`.
+  이전 문구 교정 기록은 `docs/reviews/2026-09-09-editorial-copy-polish.md`.
   아래 1.12.0/0.4.0 테스트 수는 이전 구현 당시 기록이다.
 - 저장소는 **`seo0tak/agent-skills`** (claude-skills에서 개명, 로컬 디렉터리도
   `~/Project/Source/seo0tak/agent-skills`). 마켓플레이스 name **`0tak`**.
@@ -64,6 +65,7 @@
 | 1.11.0 / 0.3.0 | 전체 입력 SHA-256 manifest, 결과 유실/필수 필드/null 감사/경량 참조 검사, 백업 격리·시각·코드 diff 보존, 목록·키보드·저장 안내 개선. Architect는 근거 수준/미확인/조건별 적용/로컬 지식 규약 보강 |
 | 1.12.0 / 0.4.0 | 수동 재개·소스 검증 연결·상세 초안 보존·가독성 정리. Architect 선택적 승인 범위 개선 기록. 자동 실행·배포 없음 |
 | 1.12.1 / 0.4.1 | 소개·가이드·요청문·UI·CLI 문구 교정. 입력 조건, 저장·검증·권한 설명과 실제 동작 정렬. 데이터 형식·상태 전이 유지 |
+| 1.12.2 / 0.4.2 | 두 스킬의 LSP 가용성·목적별 탐색·대체 절차·참조/진단·재개 시 색인 확인 지침. Sparrow 보고서와 일반 입력 형식의 용어 구분. 데이터 형식·실행 코드 유지 |
 
 저장소 쪽: marketplace.json에 skill-architect 등록(이전엔 설치 불가였음), version 필드 제거
 (plugin.json이 정본), 루트 README를 설치·사용 안내의 시작 문서로 재구성. 이후 **멀티 에이전트 재편**(TASK-multi-agent):
@@ -92,6 +94,9 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 9. 미확인 기본안도 사용자 선택·변경 범위가 필요하다. observation/reviewTrigger
    누락은 validate 오류지만 실제 관찰·권한을 도구가 인증하지는 않는다
 10. 대용량 findings.json은 전체를 대화에 넣지 않고 `sast_toolkit.py query`로 필요한 범위를 조회한다
+11. 의미 기반 소스 탐색은 현재 환경에서 사용 가능한 LSP를 우선한다. 미지원·실패·
+    불완전한 색인·정상 조회 0건을 구분하고, 대체 탐색의 한계와 현재 소스 기준을 남긴다.
+    문구·설정값에는 텍스트 검색을 사용하며 탐색 도구의 진단을 보안 검증 완료로 보지 않는다
 
 ## 미결 사항 (PENDING)
 
