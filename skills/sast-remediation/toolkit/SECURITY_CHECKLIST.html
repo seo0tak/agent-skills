@@ -16,7 +16,7 @@
 </head>
 <body>
   <div id="syncNotice" class="sync-notice" role="alert" hidden></div>
-  <header class="app-header">
+  <header id="appHeader" class="app-header">
     <div class="title-row">
       <div>
         <h1 id="pageTitle">SAST 취약점 체크리스트</h1>
@@ -27,15 +27,16 @@
         </div>
       </div>
       <div class="header-actions">
-        <button id="refreshResults" type="button">전체 결과 갱신</button>
+        <button id="refreshResults" type="button" title="파일에 저장된 처리 결과를 다시 읽습니다. 브라우저 변경을 파일에 저장하는 버튼이 아닙니다.">전체 결과 갱신</button>
+        <button id="exportRejectedStorage" class="recovery-button" type="button" title="읽지 못한 브라우저 저장본의 원문을 변경 없이 내려받습니다. 다운로드 파일이 저장되었는지 확인한 뒤 유효한 상태 백업을 불러오세요." hidden>읽지 못한 저장본 백업</button>
         <button id="importProgress" type="button">상태 불러오기</button>
-        <button id="exportProgress" class="primary" type="button">상태 백업</button>
+        <button id="exportProgress" class="primary" type="button" title="브라우저 진행상태와 추출한 처리 결과 초안을 함께 내려받습니다. 다운로드만으로 정본 파일에 반영되지는 않습니다.">상태+결과 백업</button>
         <input id="progressFile" class="hidden" type="file" accept="application/json,.json">
       </div>
     </div>
 
     <div class="controls" aria-label="검출 항목 필터">
-      <input id="search" type="search" placeholder="ID, 파일, 함수, 체커, 검출 코드 검색">
+      <input id="search" type="search" aria-label="검출 항목 검색" placeholder="ID, 파일, 함수, 체커, 검출 코드 검색">
       <select id="checkerFilter" aria-label="체커 필터">
         <option value="">전체 체커</option>
       </select>
@@ -58,7 +59,7 @@
     </div>
   </header>
 
-  <main>
+  <main id="mainContent">
     <section id="readinessPanel" class="readiness-band" aria-live="polite">
       <div>
         <strong id="readinessTitle">작업 시작 조건 확인 전</strong>
@@ -67,7 +68,8 @@
       <ul id="readinessBlockers"></ul>
     </section>
 
-    <section class="summary" aria-label="처리 현황">
+    <p class="scope-note">현황 숫자는 전체 항목의 현재 단계별 스냅샷이며 서로 누적되지 않습니다. <strong>필터 결과</strong>와 아래 목록에만 선택한 조건이 적용됩니다.</p>
+    <section class="summary" aria-label="전체 항목 처리 현황">
       <button class="metric-card active" type="button" data-dashboard-filter="all">
         <strong id="totalCount">0</strong><span>전체 항목</span>
       </button>
@@ -78,13 +80,13 @@
         <strong id="highPendingCount">0</strong><span>높음 이상 대기</span>
       </button>
       <button class="metric-card info" type="button" data-dashboard-filter="analyzed">
-        <strong id="analyzedCount">0</strong><span>분석 완료</span>
+        <strong id="analyzedCount">0</strong><span>현재 분석완료</span>
       </button>
       <button class="metric-card warn" type="button" data-dashboard-filter="change-complete">
-        <strong id="changeCompleteCount">0</strong><span>변경 완료</span>
+        <strong id="changeCompleteCount">0</strong><span>현재 변경완료</span>
       </button>
       <button class="metric-card good" type="button" data-dashboard-filter="verified">
-        <strong id="verifiedCount">0</strong><span>검증 완료</span>
+        <strong id="verifiedCount">0</strong><span>현재 검증완료</span>
       </button>
       <button class="metric-card neutral" type="button" data-dashboard-filter="false-positive">
         <strong id="falsePositiveCount">0</strong><span>오탐 결론</span>
@@ -95,7 +97,9 @@
       </div>
     </section>
 
-    <section class="insights">
+    <details class="insights-disclosure">
+      <summary>분포 및 추천 작업 보기 <span>분포: 현재 필터 기준 · 추천: 전체 미처리 항목 기준</span></summary>
+    <section class="insights" aria-label="분포 및 추천 작업">
       <article class="panel">
         <div class="panel-head"><h2>위험도</h2></div>
         <div id="riskStats" class="stats-list"></div>
@@ -124,27 +128,35 @@
         <div id="recommendations" class="recommendations"></div>
       </article>
     </section>
+    </details>
 
     <section class="table-shell" aria-label="SAST 검출 목록">
+      <div class="table-toolbar">
+        <h2>검출 목록</h2>
+        <span>좁은 화면에서는 표를 좌우로 스크롤하세요.</span>
+      </div>
+      <div class="table-scroll" role="region" aria-label="검출 목록 표, 좌우 스크롤 가능" tabindex="0">
       <table>
+        <caption class="visually-hidden">검출 항목별 위험도, 파일, 매핑과 처리 상태</caption>
         <thead>
           <tr>
-            <th><button class="sort-button" type="button" data-sort="sequence">순번 <span></span></button></th>
-            <th><button class="sort-button" type="button" data-sort="id">ID <span></span></button></th>
-            <th><button class="sort-button" type="button" data-sort="risk">위험도 <span></span></button></th>
-            <th>영향도</th>
-            <th><button class="sort-button" type="button" data-sort="checker">체커 <span></span></button></th>
-            <th><button class="sort-button" type="button" data-sort="file">파일 <span></span></button></th>
-            <th>소스 매핑</th>
-            <th>작업 단계</th>
-            <th>조치 결론</th>
-            <th>상세</th>
+            <th scope="col"><button class="sort-button" type="button" data-sort="sequence">순번 <span></span></button></th>
+            <th scope="col"><button class="sort-button" type="button" data-sort="id">ID <span></span></button></th>
+            <th scope="col"><button class="sort-button" type="button" data-sort="risk">위험도 <span></span></button></th>
+            <th scope="col">영향도</th>
+            <th scope="col"><button class="sort-button" type="button" data-sort="checker">체커 <span></span></button></th>
+            <th scope="col"><button class="sort-button" type="button" data-sort="file">파일 <span></span></button></th>
+            <th scope="col">소스 매핑</th>
+            <th scope="col">작업 단계</th>
+            <th scope="col">조치 결론</th>
+            <th scope="col">상세</th>
           </tr>
         </thead>
         <tbody id="findingsBody"></tbody>
       </table>
+      </div>
       <div id="pager" class="pager">
-        <span id="pageInfo"></span>
+        <span id="pageInfo" role="status" aria-live="polite"></span>
         <button id="prevPage" type="button">이전</button>
         <button id="nextPage" type="button">다음</button>
         <select id="pageSize" aria-label="표시 개수">
@@ -154,14 +166,14 @@
           <option value="all">전체</option>
         </select>
       </div>
-      <div id="emptyState" class="empty-state hidden">
+      <div id="emptyState" class="empty-state hidden" role="status">
         현재 조건에 맞는 항목이 없습니다.
       </div>
     </section>
   </main>
 
   <div id="overlay" class="overlay"></div>
-  <aside id="detailDrawer" class="drawer" aria-hidden="true">
+  <aside id="detailDrawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="detailTitle" aria-hidden="true" inert>
     <div class="drawer-head">
       <div>
         <p id="detailKicker" class="drawer-kicker"></p>
@@ -174,6 +186,7 @@
       <section id="detailMeta" class="detail-meta"></section>
 
       <section class="action-grid">
+        <p class="wide edit-help">아래 변경은 이 브라우저에 저장됩니다. 정본 파일을 바꾸려면 <strong>상태 백업 → AI 대조·반영 → sync·validate</strong>가 필요합니다. 상태 선택만으로 검증 증거가 만들어지지는 않습니다.</p>
         <label>
           <span>작업 단계</span>
           <select id="detailWorkflow"></select>
@@ -186,6 +199,7 @@
           <span>비고</span>
           <textarea id="detailNote" rows="3"></textarea>
         </label>
+        <p id="localSaveStatus" class="wide message" role="status" aria-live="polite">브라우저 저장 상태</p>
       </section>
 
       <section class="task-panel">
@@ -193,7 +207,7 @@
           <h3>AI 처리 요청</h3>
           <button id="copyTaskPrompt" type="button">요청문 복사</button>
         </div>
-        <textarea id="taskPrompt" class="code-textarea hidden" rows="10" readonly></textarea>
+        <textarea id="taskPrompt" class="code-textarea hidden" rows="10" aria-label="AI 처리 요청문" readonly></textarea>
         <p id="taskMessage" class="message"></p>
       </section>
 
@@ -222,18 +236,28 @@
 
       <section>
         <div class="section-head">
-          <h3>실제 처리 결과</h3>
+          <h3>처리 결과 기록</h3>
           <div class="section-actions">
             <button id="refreshResult" type="button">결과 갱신</button>
-            <button id="exportResult" type="button">결과 JSON</button>
+            <button id="exportResult" type="button" title="저장된 처리 결과 또는 추출한 결과를 내보냅니다. 위 작업 단계·비고의 브라우저 변경은 상태 백업을 사용하세요.">결과 JSON</button>
           </div>
         </div>
-        <div id="resultView" class="text-panel empty-panel">저장된 처리 결과가 없습니다.</div>
+        <div class="result-status" aria-label="처리 결과 저장 및 파일 반영 상태">
+          <span id="resultStorageStatus" class="status-pill">처리 결과 없음</span>
+          <span id="resultFileStatus" class="status-pill">정본 파일 결과 없음</span>
+        </div>
+        <p id="resultVerificationStatus" class="scope-note" role="status">검증 상태: 미실행 — 브라우저 초안이나 다운로드만으로 검증완료가 되지 않습니다.</p>
+        <h4 class="result-heading">판단·적용·검증 내용</h4>
+        <div id="resultView" class="text-panel result-panel empty-panel">저장된 처리 결과가 없습니다.</div>
+        <div id="resultCodeSection" hidden>
+          <h4 class="result-heading">기존/수정 코드 비교</h4>
+          <pre id="resultCodeView" class="code-block result-code-block"></pre>
+        </div>
       </section>
 
       <section class="answer-panel">
         <h3>AI 답변 반영</h3>
-        <textarea id="answerInput" rows="9" placeholder="항목별 처리 답변을 붙여넣으세요."></textarea>
+        <textarea id="answerInput" rows="9" aria-label="AI 처리 답변" placeholder="항목별 처리 답변을 붙여넣으세요."></textarea>
         <button id="parseAnswer" type="button">답변에서 결과 추출</button>
         <p id="answerMessage" class="message"></p>
       </section>

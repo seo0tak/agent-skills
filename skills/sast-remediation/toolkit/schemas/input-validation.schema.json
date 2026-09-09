@@ -78,6 +78,14 @@
         },
         "sarif": {
           "$ref": "#/$defs/inputFile"
+        },
+        "manifest": {
+          "type": "array",
+          "description": "전체 입력 파일의 경로·크기·SHA-256. ready 승인에는 필수이며, 과거 승인에 없으면 preflight와 의미 대조를 다시 수행한다.",
+          "items": {
+            "$ref": "#/$defs/inputFingerprint"
+          },
+          "uniqueItems": true
         }
       }
     },
@@ -170,6 +178,16 @@
     }
   },
   "$defs": {
+    "inputFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "size", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "size": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
     "inputFile": {
       "type": [
         "object",

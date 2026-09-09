@@ -1,26 +1,29 @@
 ---
 type: sast/security-policy
-title: Project Security Policy
+title: 프로젝트 보안 정책
 description: 현재 프로젝트에서 사용자와 함께 확정한 정책 (공통 기준과의 차이)
 timestamp:
 tags: [sast]
 ---
 
-# Project Security Policy
+# 프로젝트 보안 정책
 
 ## 적용 범위
 
 이 문서는 현재 프로젝트에서 사용자와 함께 확정한 정책만 기록합니다. 공통 기준은
 `../SECURITY_POLICY_BASELINE.md`를 참조합니다.
 
+아직 확인하지 않은 영역은 빈 칸을 승인으로 해석하지 않고 “미확인”으로 둡니다.
+결정 정본은 `../data/decisions.json`이며 결정 로그는 sync로 생성합니다.
+
 ## 확정 정책
 
 | 정책 ID | 주제 | 적용 범위 | 결정 | 근거 | 재검토 조건 |
 |---|---|---|---|---|---|
 
-## Null 및 입력 정책
+## 값 없음(null) 및 입력 정책
 
-## 예외 및 Fallback 정책
+## 예외 및 대체 동작(fallback) 정책
 
 ## 로그 및 개인정보 정책
 

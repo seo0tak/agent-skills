@@ -14,7 +14,7 @@ for src in skills/*/; do
   name="$(basename "$src")"
   dst="plugins/$name/skills/$name"
   if [ "$mode" = "--check" ]; then
-    if [ ! -d "$dst" ] || ! diff -rq --exclude=__pycache__ --exclude='*.pyc' "$src" "$dst" >/dev/null; then
+    if [ ! -d "$dst" ] || ! diff -rq --exclude=__pycache__ --exclude='*.pyc' --exclude=.sast-write.lock "$src" "$dst" >/dev/null; then
       echo "OUT OF SYNC: $dst != $src (run scripts/sync-plugins.sh)"
       status=1
     else
@@ -24,8 +24,8 @@ for src in skills/*/; do
   fi
   mkdir -p "plugins/$name/skills"
   rm -rf "$dst"
-  # 캐시 부산물은 포장에 넣지 않는다
-  rsync -a --exclude=__pycache__ --exclude='*.pyc' "$src" "$dst/"
+  # 캐시와 실행 중 생성되는 협조 잠금은 배포하지 않는다. 원본 잠금은 지우지 않는다.
+  rsync -a --exclude=__pycache__ --exclude='*.pyc' --exclude=.sast-write.lock "$src" "$dst/"
   echo "synced: $src -> $dst"
 done
 exit $status

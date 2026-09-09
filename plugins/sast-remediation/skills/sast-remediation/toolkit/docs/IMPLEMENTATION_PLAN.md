@@ -1,4 +1,8 @@
-# Universal SAST Remediation Toolkit 구현 계획
+# 초기 구현 계획 (기록용)
+
+이 문서는 초기 설계 당시의 범위를 남긴 기록입니다. 현재 입력·복구·검증
+계약은 SECURITY_SAST_WORKFLOW.md, USAGE.md, docs/VERSIONING.md가 기준입니다.
+아래의 PDF 1개 등 초기 제약을 현재 필수 조건으로 적용하지 않습니다.
 
 **목표:** 현재 소스 트리, SAST PDF 1개, SAST 스프레드시트 1개를 관리되는
 조치 워크플로우로 전환하는 프로젝트 중립 패키지를 만든다.

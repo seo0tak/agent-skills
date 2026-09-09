@@ -1,5 +1,5 @@
 {
   "name": "sast-remediation",
-  "description": "SAST remediation workflow toolkit (vendor report or SARIF input)",
-  "version": "1.10.1"
+  "description": "SAST 조치 워크플로우 — 벤더 보고서·SARIF 대조, 조치·검증·증적, 수동 재개와 상세 초안 백업",
+  "version": "1.12.0"
 }

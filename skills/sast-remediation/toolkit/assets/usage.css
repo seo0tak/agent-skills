@@ -78,7 +78,11 @@ section h2 {
 }
 section h3 { margin: 16px 0 6px; font-size: 14px; }
 p { margin: 8px 0; }
-ul { margin: 8px 0; padding-left: 20px; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li > p { margin: 4px 0; }
+.table-scroll { overflow-x: auto; }
+a:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+p, li, td { overflow-wrap: anywhere; word-break: keep-all; }
 li { margin: 4px 0; }
 code {
   background: var(--head);

@@ -1,12 +1,12 @@
 ---
 type: sast/work-groups
-title: SAST Work Groups
+title: SAST 작업 그룹
 description: 충돌 없는 조치 묶음과 작업 순서
 timestamp:
 tags: [sast]
 ---
 
-# SAST Work Groups
+# SAST 작업 그룹
 
 ## 그룹 원칙
 
@@ -15,6 +15,9 @@ tags: [sast]
 - 공통 유틸리티와 이를 검증하는 테스트 파일은 같은 그룹에 둡니다.
 - 파일 또는 공유 상태가 겹치는 그룹은 동시에 처리하지 않습니다.
 - 설정 및 운영 항목은 소스 조치 그룹과 분리합니다.
+
+공용 data/와 sync는 지정한 한 작성자가 담당합니다. 그룹 상태만으로 완료를
+판단하지 않고 결과와 체크포인트·검증 신선도를 대조합니다.
 
 ## 작업 그룹
 

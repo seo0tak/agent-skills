@@ -4,7 +4,7 @@
   "checkedAt": "2026-01-01T00:00:00Z",
   "project": {
     "root": "..",
-    "identity": "Sample Application",
+    "identity": "예시 애플리케이션",
     "identityEvidence": [
       "프로젝트 선언 파일의 애플리케이션 이름",
       "주요 소스 루트"
@@ -24,7 +24,19 @@
       "format": "xlsx",
       "formatValid": true,
       "evidence": "스프레드시트 컨테이너와 워크북 확인"
-    }
+    },
+    "manifest": [
+      {
+        "path": "input/sample-findings.xlsx",
+        "size": 1024,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "path": "input/sample-report.pdf",
+        "size": 1024,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ]
   },
   "checks": [
     {
@@ -48,7 +60,7 @@
     {
       "code": "SEMANTIC_MATCH",
       "status": "pass",
-      "summary": "현재 소스와 두 보고서의 식별정보가 일치합니다.",
+      "summary": "현재 소스와 선택한 PDF·스프레드시트의 식별정보가 일치합니다.",
       "evidence": ["프로젝트명, 분석 번호, 검출 건수와 소스 경로 대조"]
     }
   ],
@@ -60,5 +72,7 @@
     "reason": "프로젝트 식별정보, 검사 식별정보, 검출 건수와 소스 범위가 일치합니다."
   },
   "blockers": [],
-  "notes": []
+  "notes": [
+    "형식 예시입니다. 0으로 채운 SHA-256은 자리표시자이며 승인 기록에 복사하지 않습니다. 실제 manifest는 preflight가 전체 입력 내용에서 생성한 값을 사용합니다."
+  ]
 }

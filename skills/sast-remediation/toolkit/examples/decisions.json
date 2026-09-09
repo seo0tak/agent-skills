@@ -8,11 +8,11 @@
       "decidedAt": "2026-01-01T01:00:00Z",
       "topic": "회원가입 전화번호 없이 진행 가능 여부",
       "question": "회원가입 화면에서 전화번호를 안 넣어도 가입이 되나요?",
-      "recommendation": "모르면 B(값 없음으로 처리) — 지금 동작이 유지됩니다",
+      "recommendation": "현재 동작을 유지하는 관찰안을 제안하며 잔여 위험과 로그 영향을 함께 확인합니다",
       "decidedBy": "baseline-default",
       "decision": "값 없음(Optional)으로 처리. 검증 오류로 바꾸지 않음.",
       "scope": "NULL_RETURN_STD 중 UserService.getPhone 호출 경로 12건",
-      "rationale": "담당자가 화면 정책을 모름. 필수값으로 바꾸면 전화번호 없이 가입하던 사용자가 막히므로 동작 보존 쪽을 택함.",
+      "rationale": "담당자가 정책을 확정하지 못했지만 제시한 관찰 방법과 변경 범위를 선택한 합성 예시입니다. 필수값 전환은 추가 근거가 필요합니다.",
       "evidence": [
         "users.phone nullable, 실제 null 3,200행 (12%)",
         "signup.html:41 required 없음",
@@ -23,7 +23,7 @@
       "answerableBy": "developer",
       "exceptions": "",
       "observation": "SmsSender.send:88 phone==null 경로에 WARN 로그 추가 (비밀값 없음)",
-      "reviewTrigger": "운영 2주 내 위 WARN이 찍히면 선택값 확정, 안 찍히면 필수값으로 재검토"
+      "reviewTrigger": "담당자가 2주 후 로그 수집 정상 여부·표본·업무 조건을 확인하고 재검토합니다. 로그 없음만으로 필수값을 확정하지 않습니다."
     },
     {
       "id": "DEC-001",

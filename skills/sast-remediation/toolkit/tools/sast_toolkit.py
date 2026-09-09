@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -11,9 +12,15 @@ import shutil
 import sys
 import zipfile
 from datetime import datetime, timezone
+from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Iterable
+
+try:
+    from .sast_io import writer_lock, write_text_atomic
+except ImportError:
+    from sast_io import writer_lock, write_text_atomic
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -129,6 +136,7 @@ SKIP_PROJECT_DIRS = {
 }
 
 FINGERPRINT_REQUIRED_MAPPINGS = {"exact", "relocated", "changed"}
+RESULT_REQUIRED_WORKFLOWS = {"change-complete", "verified"}
 
 # 산출물 스키마 버전. breaking 변경 시 여기 한 곳만 올리면 검증기 전체가
 # 따라간다. schemas/*.json의 const 값과 반드시 같아야 한다.
@@ -254,6 +262,9 @@ REQUIRED_FILES = (
     "assets/checklist.css",
     "assets/checklist.js",
     "assets/usage.css",
+    "tools/sast_io.py",
+    "tools/sast_state.py",
+    "tools/usage_renderer.py",
     "schemas/decisions.schema.json",
     "data/input-validation.json",
     "data/project-profile.json",
@@ -333,13 +344,6 @@ class DashboardParser(HTMLParser):
             self.assets.add(str(values["href"]))
 
 
-def write_text_atomic(path: Path, content: str) -> None:
-    """중단 시 반쪽 파일이 남지 않도록 임시 파일에 쓴 뒤 교체한다."""
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
-
-
 def load_json_or_exit(path: Path) -> Any:
     try:
         return load_json(path)
@@ -348,8 +352,8 @@ def load_json_or_exit(path: Path) -> Any:
         print(
             "The file is likely half-written from an interrupted session. "
             "Restore or rewrite this file, then run sync again. "
-            "If it is data/progress.json, it can be rebuilt from "
-            "security-results/."
+            "For data/progress.json, preview tools/sast_state.py recover-progress "
+            "before applying recovery; results alone cannot restore provisional notes."
         )
         raise SystemExit(1)
 
@@ -511,154 +515,21 @@ def html_escape(text: str) -> str:
 
 
 def render_inline(text: str) -> str:
-    """인라인 코드, 굵게, 링크만 지원한다. 코드 안은 이스케이프 후 손대지 않는다."""
-    parts = re.split(r"(`[^`]*`)", text)
-    out: list[str] = []
-    for part in parts:
-        if part.startswith("`") and part.endswith("`") and len(part) >= 2:
-            out.append(f"<code>{html_escape(part[1:-1])}</code>")
-            continue
-        piece = html_escape(part)
-        piece = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", piece)
-        piece = re.sub(
-            r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', piece
-        )
-        out.append(piece)
-    return "".join(out)
+    try:
+        from .usage_renderer import render_inline as render
+    except ImportError:
+        from usage_renderer import render_inline as render
+    return render(text)
 
 
 def render_usage_html(markdown: str) -> str:
-    lines = markdown.splitlines()
-    title = "사용 가이드"
-    toc: list[tuple[str, str]] = []
-    body: list[str] = []
-    section_open = False
-    para: list[str] = []
-    list_stack: list[str] = []  # "ul" / "ol"
-
-    def flush_para() -> None:
-        if para:
-            body.append(f"<p>{render_inline(' '.join(para))}</p>")
-            para.clear()
-
-    def close_lists() -> None:
-        while list_stack:
-            body.append(f"</{list_stack.pop()}>")
-
-    def close_block() -> None:
-        flush_para()
-        close_lists()
-
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            close_block()
-            code: list[str] = []
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith("```"):
-                code.append(lines[i])
-                i += 1
-            body.append(f"<pre><code>{html_escape(chr(10).join(code))}</code></pre>")
-            i += 1
-            continue
-        if stripped.startswith("# "):
-            close_block()
-            title = stripped[2:].strip()
-            i += 1
-            continue
-        if stripped.startswith("## "):
-            close_block()
-            if section_open:
-                body.append("</section>")
-            heading = stripped[3:].strip()
-            anchor = f"s{len(toc) + 1}"
-            toc.append((anchor, heading))
-            body.append(f'<section id="{anchor}">')
-            body.append(f"<h2>{render_inline(heading)}</h2>")
-            section_open = True
-            i += 1
-            continue
-        if stripped.startswith("### "):
-            close_block()
-            body.append(f"<h3>{render_inline(stripped[4:].strip())}</h3>")
-            i += 1
-            continue
-        if stripped.startswith("|"):
-            close_block()
-            rows: list[str] = []
-            while i < len(lines) and lines[i].strip().startswith("|"):
-                rows.append(lines[i].strip())
-                i += 1
-            cells = [
-                [c.strip() for c in r.strip("|").split("|")]
-                for r in rows
-                if not re.fullmatch(r"\|?[\s:|-]+\|?", r)
-            ]
-            if cells:
-                body.append("<table>")
-                body.append(
-                    "<tr>" + "".join(f"<th>{render_inline(c)}</th>" for c in cells[0]) + "</tr>"
-                )
-                for row in cells[1:]:
-                    body.append(
-                        "<tr>" + "".join(f"<td>{render_inline(c)}</td>" for c in row) + "</tr>"
-                    )
-                body.append("</table>")
-            continue
-        bullet = re.match(r"^(\s*)([-*]|\d+[.)])\s+(.*)$", line)
-        if bullet:
-            flush_para()
-            kind = "ol" if bullet.group(2)[0].isdigit() else "ul"
-            if not list_stack or list_stack[-1] != kind:
-                close_lists()
-                body.append(f"<{kind}>")
-                list_stack.append(kind)
-            item = [bullet.group(3)]
-            i += 1
-            # 들여쓴 이어지는 줄은 같은 항목의 계속이다.
-            while i < len(lines) and lines[i].startswith(("   ", "\t")) and lines[i].strip():
-                item.append(lines[i].strip())
-                i += 1
-            body.append(f"<li>{render_inline(' '.join(item))}</li>")
-            continue
-        if not stripped:
-            flush_para()
-            if list_stack and (i + 1 >= len(lines) or not re.match(r"^\s*([-*]|\d+[.)])\s+", lines[i + 1])):
-                close_lists()
-            i += 1
-            continue
-        para.append(stripped)
-        i += 1
-    close_block()
-    if section_open:
-        body.append("</section>")
-
-    nav = "\n".join(
-        f'  <a href="#{anchor}">{render_inline(text)}</a>' for anchor, text in toc
-    )
+    try:
+        from .usage_renderer import render_usage_html as render
+    except ImportError:
+        from usage_renderer import render_usage_html as render
     css_path = ROOT / USAGE_CSS
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
-    return (
-        "<!DOCTYPE html>\n"
-        '<html lang="ko">\n<head>\n<meta charset="utf-8">\n'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>{html_escape(title)}</title>\n"
-        # 스타일은 인라인한다. 생성된 페이지는 더블클릭·메일 첨부로 혼자
-        # 열리는 파일이라 상대 경로 자산에 의존하면 안 된다. 원본은 assets/usage.css.
-        f"<style>\n{css}</style>\n"
-        "</head>\n<body>\n"
-        f"{GENERATED_MARKER} from USAGE.md. 직접 편집하지 말고 USAGE.md를 고친 뒤 sync를 실행한다. -->\n"
-        '<div class="layout">\n'
-        f'<nav class="toc" aria-label="목차">\n{nav}\n</nav>\n'
-        "<main>\n"
-        f'<header class="page">\n  <h1>{html_escape(title)}</h1>\n'
-        "  <p>이 페이지는 <code>USAGE.md</code>에서 생성됩니다. 내용 수정은 USAGE.md에.</p>\n"
-        "</header>\n"
-        + "\n".join(body)
-        + "\n</main>\n</div>\n</body>\n</html>\n"
-    )
+    return render(markdown, css=css, generated_marker=GENERATED_MARKER)
 
 
 def sync_usage() -> None:
@@ -669,7 +540,8 @@ def sync_usage() -> None:
     )
 
 
-def sync_all() -> None:
+def sync_all(project_root: Path | None = None) -> None:
+    check_state_before_use(project_root or ROOT.parent.resolve())
     sync_data()
     sync_decisions()
     sync_usage()
@@ -712,7 +584,7 @@ def initialize(project_root: Path) -> int:
         if not target.exists():
             shutil.copyfile(source, target)
             created.append(str(target.relative_to(ROOT)))
-    sync_all()
+    sync_all(project_root)
     if created:
         print("Created project records:")
         for path in created:
@@ -766,6 +638,8 @@ def resolve_input_set(
     input_set: str | None,
 ) -> tuple[str | None, tuple[list[Path], list[Path], list[Path]], list[str]]:
     """활성 세트 선택. 반환: (세트명 또는 None=루트, 파일들, 차단 사유들)"""
+    if input_set is not None and not isinstance(input_set, str):
+        return None, ([], [], []), ["input validation inputs.set must be string or null"]
     root_files = candidate_files(INPUT_DIR)
     sets = discover_input_sets()
     if input_set:
@@ -945,6 +819,20 @@ def inspect_sarif(path: Path) -> dict[str, Any]:
     }
 
 
+def input_manifest(paths: Iterable[Path]) -> list[dict[str, Any]]:
+    """Bind approval to every complete input, including every split PDF."""
+    manifest: list[dict[str, Any]] = []
+    for path in sorted(paths):
+        digest = hashlib.sha256()
+        size = 0
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        manifest.append({"path": display_path(path), "size": size, "sha256": digest.hexdigest()})
+    return manifest
+
+
 def discover_project_evidence(project_root: Path) -> tuple[list[str], list[str]]:
     source_files: list[str] = []
     marker_files: list[str] = []
@@ -1087,6 +975,13 @@ def build_preflight_record(project_root: Path, input_set: str | None = None) -> 
             f"SARIF {len(sarif_files)}개입니다."
         )
 
+    manifest: list[dict[str, Any]] = []
+    try:
+        manifest = input_manifest(pdf_files + spreadsheet_files + sarif_files)
+    except OSError as error:
+        blockers.append(f"입력 파일의 SHA-256 manifest를 만들 수 없습니다: {error}")
+        checks.append(check_record("INPUT_MANIFEST", "fail", blockers[-1], []))
+
     pdf_info = None
     if pdf_files:
         pdf_reports = [inspect_pdf(path) for path in pdf_files]
@@ -1170,6 +1065,7 @@ def build_preflight_record(project_root: Path, input_set: str | None = None) -> 
             "pdf": pdf_info,
             "spreadsheet": sheet_info,
             "sarif": sarif_info,
+            "manifest": manifest,
         },
         "checks": checks,
         "matching": {
@@ -1221,6 +1117,107 @@ def require_list(report: ValidationReport, value: Any, name: str) -> list[Any]:
     return value
 
 
+@lru_cache(maxsize=None)
+def load_schema(name: str) -> dict[str, Any]:
+    return load_json(ROOT / "schemas" / name)
+
+
+def validate_schema_contract(
+    report: ValidationReport,
+    value: Any,
+    schema_name: str,
+    context: str,
+    *,
+    record_version: bool = False,
+) -> bool:
+    """Validate the local schemas' structural contract without dependencies.
+
+    Supports the keywords used by bundled schemas; this is not a general JSON
+    Schema engine. schemaVersion is checked separately so legacy record versions
+    keep their documented warning policy. date-time remains a format annotation.
+    """
+    before = len(report.errors)
+    try:
+        root_schema = load_schema(schema_name)
+    except (OSError, json.JSONDecodeError) as error:
+        report.error(f"cannot read schema {schema_name}: {error}")
+        return False
+
+    def matches_type(item: Any, kind: str) -> bool:
+        return {
+            "object": isinstance(item, dict),
+            "array": isinstance(item, list),
+            "string": isinstance(item, str),
+            "integer": isinstance(item, int) and not isinstance(item, bool),
+            "number": isinstance(item, (int, float)) and not isinstance(item, bool),
+            "boolean": isinstance(item, bool),
+            "null": item is None,
+        }.get(kind, False)
+
+    def walk(item: Any, schema: dict[str, Any], name: str) -> None:
+        if "$ref" in schema:
+            reference = schema["$ref"]
+            if not isinstance(reference, str) or not reference.startswith("#/"):
+                report.error(f"unsupported schema reference: {reference!r}")
+                return
+            target = root_schema
+            for segment in reference[2:].split("/"):
+                target = target.get(segment.replace("~1", "/").replace("~0", "~"), {})
+            if not target:
+                report.error(f"unresolved schema reference: {reference}")
+                return
+            walk(item, target, name)
+        kinds = schema.get("type")
+        if kinds is not None:
+            allowed = kinds if isinstance(kinds, list) else [kinds]
+            if not any(matches_type(item, kind) for kind in allowed):
+                report.error(f"{name} must be {' or '.join(allowed)}")
+                return
+        if "enum" in schema and item not in schema["enum"]:
+            report.error(f"{name} has invalid {name.rsplit('.', 1)[-1]}: {item!r}")
+        if "const" in schema and item != schema["const"]:
+            report.error(f"{name} must equal {schema['const']!r}")
+        if isinstance(item, dict):
+            for field in schema.get("required", []):
+                if field == "schemaVersion" and record_version:
+                    continue
+                if field not in item:
+                    report.error(f"{name}.{field} is required")
+            properties = schema.get("properties", {})
+            additional = schema.get("additionalProperties", True)
+            for field, child in item.items():
+                if field in properties:
+                    if field != "schemaVersion":
+                        walk(child, properties[field], f"{name}.{field}")
+                elif isinstance(additional, dict):
+                    walk(child, additional, f"{name}.{field}")
+                elif additional is False:
+                    report.error(f"{name}.{field} is not allowed by {schema_name}")
+        elif isinstance(item, list):
+            if "items" in schema:
+                for index, child in enumerate(item):
+                    walk(child, schema["items"], f"{name}[{index}]")
+            if schema.get("uniqueItems"):
+                encoded = [json.dumps(child, sort_keys=True) for child in item]
+                if len(encoded) != len(set(encoded)):
+                    report.error(f"{name} must contain unique items")
+            if len(item) < schema.get("minItems", 0):
+                report.error(f"{name} has fewer than {schema['minItems']} items")
+        elif isinstance(item, str):
+            if len(item) < schema.get("minLength", 0):
+                report.error(f"{name} must have at least {schema['minLength']} characters")
+            if "pattern" in schema and not re.search(schema["pattern"], item):
+                report.error(f"{name} does not match {schema['pattern']!r}")
+        elif isinstance(item, (int, float)) and not isinstance(item, bool):
+            if "minimum" in schema and item < schema["minimum"]:
+                report.error(f"{name} must be at least {schema['minimum']}")
+            if "maximum" in schema and item > schema["maximum"]:
+                report.error(f"{name} must be at most {schema['maximum']}")
+
+    walk(value, root_schema, context)
+    return len(report.errors) == before
+
+
 def validate_input_file_record(
     report: ValidationReport, value: Any, name: str, required: bool
 ) -> dict[str, Any]:
@@ -1247,6 +1244,8 @@ def validate_input_validation(
 ) -> dict[str, Any]:
     record = require_mapping(report, value, "input validation")
     report.schema_version(record, "input validation", "error")
+    if not validate_schema_contract(report, value, "input-validation.schema.json", "input validation"):
+        return {}
     status = record.get("status")
     if status not in INPUT_VALIDATION_VALUES:
         report.error(f"input validation has invalid status: {status}")
@@ -1285,6 +1284,11 @@ def validate_input_validation(
         inputs_required,
     )
     if status == "ready":
+        if not inputs.get("manifest"):
+            report.error(
+                "ready input validation has no SHA-256 manifest; rerun preflight, "
+                "compare report/source semantics, and approve again"
+            )
         if pdf and pdf.get("formatValid") is not True:
             report.error("ready input validation has an invalid PDF")
         if spreadsheet and spreadsheet.get("formatValid") is not True:
@@ -1425,6 +1429,8 @@ def validate_profile(
 ) -> str:
     profile_map = require_mapping(report, profile, "project profile")
     report.schema_version(profile_map, "project profile", "error")
+    if not validate_schema_contract(report, profile, "project-profile.schema.json", "project profile"):
+        return ""
     workspace_id = str(profile_map.get("workspaceId", ""))
     if strict and (not workspace_id or workspace_id == "uninitialized"):
         report.error("project profile workspaceId is not initialized")
@@ -1475,11 +1481,14 @@ def validate_severity(report: ValidationReport, value: Any, context: str) -> Non
 
 def validate_findings(report: ValidationReport, findings: Any) -> tuple[list[Any], set[str]]:
     finding_list = require_list(report, findings, "findings")
+    for index, item in enumerate(finding_list):
+        report.schema_version(item, f"findings[{index}]", "warn")
+    if not validate_schema_contract(report, findings, "findings.schema.json", "findings", record_version=True):
+        return [], set()
     ids: set[str] = set()
     sequences: set[int] = set()
     for index, raw in enumerate(finding_list):
         item = require_mapping(report, raw, f"findings[{index}]")
-        report.schema_version(item, f"findings[{index}]", "warn")
         finding_id = str(item.get("id", ""))
         if not finding_id:
             report.error(f"findings[{index}].id is empty")
@@ -1528,6 +1537,8 @@ def validate_findings(report: ValidationReport, findings: Any) -> tuple[list[Any
 
 
 def validate_checker_guides(report: ValidationReport, guides: Any, findings: list[Any]) -> None:
+    if not validate_schema_contract(report, guides, "checker-guides.schema.json", "checker guides"):
+        return
     guide_map = require_mapping(report, guides, "checker guides")
     used_codes = {str(item.get("checker", {}).get("code", "")) for item in findings}
     for key, raw in guide_map.items():
@@ -1557,6 +1568,8 @@ def validate_progress(
 ) -> None:
     progress_map = require_mapping(report, progress, "progress")
     report.schema_version(progress_map, "progress", "error")
+    if not validate_schema_contract(report, progress, "progress.schema.json", "progress"):
+        return
     progress_workspace = str(progress_map.get("workspaceId", ""))
     if workspace_id and progress_workspace != workspace_id:
         report.error("progress workspaceId does not match project profile")
@@ -1605,6 +1618,11 @@ def validate_record_files(
             item, f"{record_type} record {finding_id}", "warn"
         )
         values[finding_id] = item
+        schema_name = "result.schema.json" if record_type == "result" else "item-guide.schema.json"
+        if not validate_schema_contract(
+            report, item, schema_name, f"{record_type} record {finding_id}", record_version=True
+        ):
+            continue
         if record_type == "result":
             workflow = item.get("workflowStatus")
             conclusion = item.get("conclusion")
@@ -1638,9 +1656,31 @@ def validate_record_files(
         else:
             if item.get("sourceMapping") not in MAPPING_VALUES:
                 report.error(f"item guide {finding_id} has invalid sourceMapping")
-            for field in ("steps", "checkpoints", "impact", "testPlan", "policyQuestions"):
-                require_list(report, item.get(field), f"item guide {finding_id}.{field}")
+            if not item.get("groupGuideRef", "").strip():
+                for field in ("steps", "checkpoints", "impact", "testPlan", "policyQuestions"):
+                    require_list(report, item.get(field), f"item guide {finding_id}.{field}")
     return values
+
+
+def validate_guide_references(report: ValidationReport, guides: dict[str, Any]) -> None:
+    """Resolve lightweight guide chains and reject dangling or cyclic refs."""
+    completed: set[str] = set()
+    for finding_id in guides:
+        chain: set[str] = set()
+        current = finding_id
+        while current not in completed:
+            if current in chain:
+                report.error(f"item guide {finding_id}.groupGuideRef has a reference cycle at {current}")
+                break
+            chain.add(current)
+            reference = guides[current].get("groupGuideRef")
+            if not isinstance(reference, str) or not reference.strip():
+                break
+            if reference not in guides:
+                report.error(f"item guide {current}.groupGuideRef references missing guide {reference}")
+                break
+            current = reference
+        completed.update(chain)
 
 
 def validate_mirrors(report: ValidationReport, guide_values: dict[str, Any], result_values: dict[str, Any]) -> None:
@@ -1686,6 +1726,16 @@ def compare_current_preflight(
         report.error("input validation project root differs from current project root")
     current_inputs = mechanical.get("inputs", {})
     recorded_inputs = recorded.get("inputs", {})
+    if not recorded_inputs.get("manifest"):
+        report.error(
+            "input approval has no SHA-256 manifest; rerun preflight, "
+            "compare report/source semantics, and approve again"
+        )
+    elif recorded_inputs["manifest"] != current_inputs.get("manifest"):
+        report.error(
+            "recorded input manifest differs from current files (paths, sizes, or SHA-256); "
+            "rerun preflight and semantic approval"
+        )
     if recorded_inputs.get("set") != current_inputs.get("set"):
         report.error(
             "input validation set differs from the current input set "
@@ -1729,7 +1779,9 @@ def run_gate(project_root: Path) -> int:
         record = load_json(DATA_DIR / "input-validation.json")
         validated = validate_input_validation(report, record, True)
         compare_current_preflight(report, validated, mechanical)
-        sync_data()
+        # Gate answers input readiness; damaged progress is checked/recovered by
+        # the next state step and must not prevent reaching that step.
+        write_text_atomic(DATA_DIR / "input-validation.js", data_mirror_text("inputValidation", record))
     except (OSError, json.JSONDecodeError) as error:
         report.error(f"cannot load input readiness record: {error}")
     report.print()
@@ -1833,6 +1885,8 @@ def validate_decisions(
         return
     record = require_mapping(report, value, "decisions")
     report.schema_version(record, "decisions", "error")
+    if not validate_schema_contract(report, value, "decisions.schema.json", "decisions"):
+        return
     record_workspace = str(record.get("workspaceId", ""))
     if workspace_id and record_workspace != workspace_id:
         report.error("decisions workspaceId does not match project profile")
@@ -1863,8 +1917,8 @@ def validate_decisions(
         for finding_id in item.get("findingIds") or []:
             if str(finding_id) not in finding_ids:
                 report.error(f"{context} references unknown finding id {finding_id}")
-        observation = str(item.get("observation", "")).strip()
-        trigger = str(item.get("reviewTrigger", "")).strip()
+        observation = item.get("observation", "").strip()
+        trigger = item.get("reviewTrigger", "").strip()
         if decided_by == "baseline-default":
             if not observation:
                 report.error(
@@ -1922,6 +1976,19 @@ def validate_progress_result_consistency(
     items = progress_map.get("items")
     if not isinstance(items, dict):
         return
+    for finding_id, progress_item in items.items():
+        if not isinstance(progress_item, dict):
+            continue
+        workflow = progress_item.get("workflowStatus")
+        conclusion = progress_item.get("conclusion")
+        requires_result = (
+            isinstance(workflow, str) and workflow in RESULT_REQUIRED_WORKFLOWS
+        ) or (isinstance(conclusion, str) and conclusion not in {"unreviewed", "needs-review"})
+        if requires_result and finding_id not in result_values:
+            report.error(
+                f"progress item {finding_id} has no result for {workflow}/{conclusion}; "
+                "security-results is canonical, restore or record the result before marking completion"
+            )
     for finding_id, result in result_values.items():
         progress_item = items.get(finding_id)
         if not isinstance(progress_item, dict):
@@ -1937,6 +2004,78 @@ def validate_progress_result_consistency(
                     f"result={result.get(field)}; "
                     "security-results is canonical, update data/progress.json"
                 )
+
+
+def validate_resume_state(report: ValidationReport, project_root: Path,
+                          results: dict[str, Any]) -> None:
+    """Old records stay readable; existing source bindings fail closed."""
+    needs_workspace = (DATA_DIR / "resume-state.json").exists() or any(
+        isinstance(value.get("verification"), dict) and "sourceSnapshot" in value["verification"]
+        for value in results.values()
+    )
+    workspace = None
+    if needs_workspace:
+        try:
+            try:
+                from .sast_state import Workspace
+            except ImportError:
+                from sast_state import Workspace
+            workspace = Workspace(ROOT, project_root)
+            workspace.state()
+        except (OSError, ValueError, TypeError) as error:
+            report.error(f"resume state: {error}")
+            return
+    for finding_id, value in results.items():
+        verification = value.get("verification")
+        if not isinstance(verification, dict):
+            continue
+        if "sourceSnapshot" not in verification:
+            if value.get("workflowStatus") == "verified" or verification.get("status") == "passed":
+                report.warn(f"result {finding_id} verification is unbound; capture a source snapshot and reverify before trusting legacy evidence")
+        elif workspace is not None:
+            status = workspace.verification_status(finding_id, value)
+            if status["status"] != "fresh":
+                report.error(f"result {finding_id} verification is {status['status']}: {status.get('reason', '')}")
+
+
+def check_state_before_use(project_root: Path) -> None:
+    """Read inputs before publishing mirrors or querying a damaged/stale state."""
+    report = ValidationReport()
+    try:
+        try:
+            from .sast_state import safe_record
+        except ImportError:
+            from sast_state import safe_record
+        # Read all mirror inputs first so a malformed late record cannot leave
+        # newly published early mirrors beside an old result index.
+        for name in DATA_MIRRORS:
+            load_json_or_exit(safe_record(ROOT, f"data/{name}.json"))
+        records = {}
+        for directory in (GUIDE_DIR, RESULT_DIR):
+            safe_record(ROOT, str(directory.relative_to(ROOT)))
+            for path in iter_record_json(directory):
+                value = load_json_or_exit(safe_record(ROOT, str(path.relative_to(ROOT))))
+                if not isinstance(value, dict):
+                    raise ValueError(f"record must be an object: {path.name}")
+                if directory == RESULT_DIR:
+                    records[path.stem] = value
+        profile = load_json(DATA_DIR / "project-profile.json")
+        progress = load_json(DATA_DIR / "progress.json")
+        findings = load_json(DATA_DIR / "findings.json")
+        if not isinstance(profile, dict) or not isinstance(findings, list):
+            raise ValueError("profile must be an object and findings a list")
+        finding_ids = {item.get("id") for item in findings if isinstance(item, dict)}
+        validate_progress(report, progress, finding_ids, str(profile.get("workspaceId", "")), False)
+        validate_progress_result_consistency(report, progress, records)
+        validate_resume_state(report, project_root, records)
+    except (OSError, ValueError, TypeError) as error:
+        report.error(f"state cannot be used: {error}")
+    for message in report.errors:
+        print(f"ERROR: {message}", file=sys.stderr)
+    for message in report.warnings:
+        print(f"WARN: {message}", file=sys.stderr)
+    if report.errors:
+        raise SystemExit(1)
 
 
 def validate_all(strict: bool, project_root: Path) -> int:
@@ -1992,9 +2131,11 @@ def validate_all(strict: bool, project_root: Path) -> int:
         guide_values = validate_record_files(
             report, GUIDE_DIR, finding_ids, "guide"
         )
+        validate_guide_references(report, guide_values)
         result_values = validate_record_files(
             report, RESULT_DIR, finding_ids, "result"
         )
+        validate_resume_state(report, project_root, result_values)
         if progress is not None:
             validate_progress_result_consistency(report, progress, result_values)
         validate_mirrors(report, guide_values, result_values)
@@ -2144,16 +2285,18 @@ def main() -> int:
         if args.project_root
         else ROOT.parent.resolve()
     )
-    if args.command == "preflight":
-        return run_preflight(project_root, args.input_set)
-    if args.command == "gate":
-        return run_gate(project_root)
-    if args.command == "init":
-        return initialize(project_root)
-    if args.command == "sync":
-        sync_all()
-        return 0
+    if args.command in {"preflight", "gate", "init", "sync"}:
+        with writer_lock(ROOT):
+            if args.command == "gate":
+                return run_gate(project_root)
+            if args.command == "preflight":
+                return run_preflight(project_root, args.input_set)
+            if args.command == "init":
+                return initialize(project_root)
+            sync_all(project_root)
+            return 0
     if args.command == "query":
+        check_state_before_use(project_root)
         return run_query(args)
     return validate_all(args.strict, project_root)
 

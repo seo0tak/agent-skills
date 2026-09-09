@@ -79,16 +79,18 @@
   };
 
   var currentFindingId = null;
+  var detailReturnFocus = null;
   var dashboardFilter = "all";
   var sortState = { key: "sequence", direction: "asc" };
   var itemGuideCache = Object.assign({}, window.SAST_ITEM_GUIDES);
-  var resultCache = Object.assign({}, window.SAST_ITEM_RESULTS);
+  var canonicalResultCache = Object.assign({}, window.SAST_ITEM_RESULTS);
   var pageIndex = 0;
   var toastTimer = null;
 
   function byId(id) { return document.getElementById(id); }
   function asString(value) { return value == null ? "" : String(value); }
-  function validKey(map, value, fallback) { return Object.prototype.hasOwnProperty.call(map, value) ? value : fallback; }
+  function isEnumKey(map, value) { return typeof value === "string" && Object.prototype.hasOwnProperty.call(map, value); }
+  function validKey(map, value, fallback) { return isEnumKey(map, value) ? value : fallback; }
   function nowIso() { return new Date().toISOString(); }
   function safeFilePart(value) { return asString(value || "workspace").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "workspace"; }
   function findingById(id) { return findings.find(function (item) { return asString(item.id) === asString(id); }) || null; }
@@ -100,7 +102,18 @@
   function gateReady() { return inputValidation.status === "ready"; }
 
   var workspaceId = profile.workspaceId || (profile.report && profile.report.id) || "uninitialized";
-  var storageKey = "sast-toolkit-progress:" + safeFilePart(workspaceId);
+  // Storage IDs must be lossless; filename sanitizing can collapse distinct
+  // Unicode workspace IDs into the same key.
+  var storageKey = "sast-toolkit-progress:v2:" + JSON.stringify(workspaceId);
+  var legacyStorageKey = "sast-toolkit-progress:" + safeFilePart(workspaceId);
+  var storageWarnings = [];
+  var lastImportAccounting = {
+    statesApplied: 0, statesUnchanged: 0, statesRetained: 0,
+    draftsApplied: 0, draftsUnchanged: 0, draftsRetained: 0,
+    ignoredStates: 0
+  };
+  var storageWriteBlocked = false;
+  var rejectedStorageRaw = null;
 
   function normalizeStateItem(item) {
     var value = item && typeof item === "object" ? item : {};
@@ -112,17 +125,133 @@
     };
   }
 
-  function loadLocalProgress() {
-    try {
-      var parsed = JSON.parse(localStorage.getItem(storageKey) || "{}");
-      return parsed && parsed.items && typeof parsed.items === "object" ? parsed : { items: {} };
-    } catch (error) {
-      return { items: {} };
+  function isStringArray(value) {
+    return Array.isArray(value) && value.every(function (item) { return typeof item === "string"; });
+  }
+
+  function validTimestamp(value, nullable) {
+    if (nullable && value === null) return true;
+    return typeof value === "string" && !isNaN(Date.parse(value));
+  }
+
+  function validateResultData(result, expectedId) {
+    var verification = result && result.verification;
+    var verificationStatuses = { "not-run": true, "passed": true, "failed": true, "partial": true, "manual-required": true };
+    if (!result || typeof result !== "object" || Array.isArray(result)
+      || result.schemaVersion !== "1.0"
+      || typeof result.id !== "string" || result.id !== expectedId
+      || !findingById(result.id)
+      || !Number.isInteger(result.sequence) || result.sequence < 1
+      || result.sequence !== findingById(result.id).sequence
+      || !isEnumKey(WORKFLOW, result.workflowStatus)
+      || !isEnumKey(CONCLUSION, result.conclusion)
+      || typeof result.reason !== "string"
+      || !isStringArray(result.resultFiles)
+      || typeof result.resultSummary !== "string"
+      || typeof result.resultCodeDiff !== "string"
+      || typeof result.resultGuideComparison !== "string"
+      || !isStringArray(result.impact)
+      || !verification || typeof verification !== "object" || Array.isArray(verification)
+      || !isEnumKey(verificationStatuses, verification.status)
+      || !isStringArray(verification.commands)
+      || !isStringArray(verification.results)
+      || !isStringArray(verification.limitations)
+      || !validTimestamp(verification.verifiedAt, true)
+      || (verification.method != null && typeof verification.method !== "string")
+      || !isStringArray(result.duplicates)
+      || typeof result.evidenceNote !== "string"
+      || !validTimestamp(result.updatedAt, false)) {
+      throw new Error("브라우저 초안 " + expectedId + "의 전체 처리 결과 형식을 확인하세요.");
     }
+    return result;
+  }
+
+  function validateDraftResults(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("백업 draftResults는 항목 ID를 키로 갖는 객체여야 합니다.");
+    }
+    Object.keys(value).forEach(function (id) {
+      var draft = value[id];
+      if (!findingById(id)) throw new Error("백업 브라우저 초안에 알 수 없는 항목 ID가 있습니다: " + id);
+      if (!draft || typeof draft !== "object" || Array.isArray(draft)
+        || draft.source !== "browser-answer"
+        || !validTimestamp(draft.savedAt, false)) {
+        throw new Error("브라우저 초안 " + id + "의 출처와 저장 시각을 확인하세요.");
+      }
+      validateResultData(draft.result, id);
+    });
+    return value;
+  }
+
+  function validateProgressData(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)
+      || !Object.prototype.hasOwnProperty.call(data, "schemaVersion")
+      || !Object.prototype.hasOwnProperty.call(data, "workspaceId")) {
+      throw new Error("workspaceId와 schemaVersion이 없는 이전 백업입니다. 04 대조 절차에서 원래 프로젝트·차수를 확인한 뒤 변환하세요.");
+    }
+    if (data.schemaVersion !== "1.0") {
+      throw new Error("지원하지 않는 백업 schemaVersion입니다: " + asString(data.schemaVersion));
+    }
+    if (data.workspaceId !== workspaceId) {
+      throw new Error("백업 workspaceId가 현재 프로젝트·차수와 다릅니다. 다른 차수는 06 이월 절차를 사용하세요.");
+    }
+    if (!data.items || typeof data.items !== "object" || Array.isArray(data.items)) {
+      throw new Error("백업 items는 항목 ID를 키로 갖는 객체여야 합니다.");
+    }
+    Object.keys(data.items).forEach(function (id) {
+      var value = data.items[id];
+      if (!value || typeof value !== "object" || Array.isArray(value)
+        || !isEnumKey(WORKFLOW, value.workflowStatus)
+        || !isEnumKey(CONCLUSION, value.conclusion)
+        || typeof value.note !== "string"
+        || (value.updatedAt != null && (typeof value.updatedAt !== "string" || timestampOf(value) === null))) {
+        throw new Error("백업 항목 " + id + "의 진행상태·결론·비고·수정시각을 확인하세요.");
+      }
+    });
+    if (Object.prototype.hasOwnProperty.call(data, "draftResults")) validateDraftResults(data.draftResults);
+    return data;
+  }
+
+  function loadLocalProgress() {
+    var parsed;
+    var fromLegacy = false;
+    var loadedKey = storageKey;
+    var raw = null;
+    try {
+      raw = localStorage.getItem(storageKey);
+      if (raw === null) {
+        loadedKey = legacyStorageKey;
+        raw = localStorage.getItem(legacyStorageKey);
+        fromLegacy = raw !== null;
+      }
+      if (raw === null) return { items: {}, draftResults: {} };
+      parsed = validateProgressData(JSON.parse(raw));
+    } catch (error) {
+      if (raw !== null && loadedKey === storageKey) {
+        storageWriteBlocked = true;
+        rejectedStorageRaw = raw;
+      }
+      storageWarnings.push("브라우저 저장본을 반영하지 않았습니다. " + error.message);
+      return { items: {}, draftResults: {} };
+    }
+    if (fromLegacy) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(parsed));
+      } catch (error) {
+        storageWarnings.push("기존 진행상태를 읽었지만 새 저장 키로 복사하지 못했습니다. 상태 백업을 내려받으세요.");
+      }
+      // Keep the original recoverable; its old key may also be used by another
+      // dashboard version. Only matching, identified payloads are migrated.
+    }
+    return parsed;
   }
 
   function stateItemsEqual(a, b) {
     return a.workflowStatus === b.workflowStatus && a.conclusion === b.conclusion && a.note === b.note;
+  }
+
+  function stateRecordsEqual(a, b) {
+    return stateItemsEqual(a, b) && a.updatedAt === b.updatedAt;
   }
 
   function timestampOf(item) {
@@ -136,6 +265,7 @@
   function mergeStateItems(baseItems, incomingItems, preserveVerified) {
     var merged = {};
     var conflicts = { baseNewer: 0, incomingNewer: 0 };
+    var outcomes = { applied: 0, unchanged: 0, retained: 0 };
     Object.keys(baseItems || {}).forEach(function (id) {
       merged[id] = normalizeStateItem(baseItems[id]);
     });
@@ -145,16 +275,22 @@
       var incoming = normalizeStateItem(incomingItems[id]);
       if (!hasBase) {
         merged[id] = incoming;
-        return;
-      }
-      if (stateItemsEqual(current, incoming)) {
-        merged[id] = Object.assign({}, current, incoming);
+        outcomes.applied += 1;
         return;
       }
       var baseTime = timestampOf(current);
       var incomingTime = timestampOf(incoming);
+      if (stateItemsEqual(current, incoming)) {
+        var keepCurrent = baseTime !== null && (incomingTime === null || baseTime >= incomingTime);
+        merged[id] = keepCurrent ? current : incoming;
+        if (stateRecordsEqual(current, incoming)) outcomes.unchanged += 1;
+        else if (keepCurrent) outcomes.retained += 1;
+        else outcomes.applied += 1;
+        return;
+      }
       if (baseTime !== null && incomingTime !== null && baseTime > incomingTime) {
         conflicts.baseNewer += 1;
+        outcomes.retained += 1;
         return;
       }
       if (baseTime !== null && incomingTime !== null && incomingTime > baseTime) {
@@ -164,20 +300,61 @@
         && !(baseTime !== null && incomingTime !== null && incomingTime > baseTime)) {
         incoming.workflowStatus = "verified";
       }
-      merged[id] = Object.assign({}, current, incoming);
+      var candidate = Object.assign({}, current, incoming);
+      merged[id] = candidate;
+      if (stateRecordsEqual(current, candidate)) outcomes.unchanged += 1;
+      else outcomes.applied += 1;
     });
-    return { items: merged, conflicts: conflicts };
+    return { items: merged, conflicts: conflicts, outcomes: outcomes };
   }
 
   var localProgress = loadLocalProgress();
   var initialMerge = mergeStateItems(fileProgress.items || {}, localProgress.items || {}, true);
   var state = initialMerge.items;
+  var draftResults = Object.assign({}, localProgress.draftResults || {});
+  var persistedDraftResults = Object.assign({}, draftResults);
   var mergeConflicts = initialMerge.conflicts;
+
+  function resultTime(result) {
+    var value = result && validTimestamp(result.updatedAt, false) ? Date.parse(result.updatedAt) : null;
+    return isNaN(value) ? null : value;
+  }
+
+  function sameResult(a, b) {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== "object" || typeof b !== "object" || Array.isArray(a) !== Array.isArray(b)) return false;
+    if (Array.isArray(a)) {
+      return a.length === b.length && a.every(function (value, index) { return sameResult(value, b[index]); });
+    }
+    var aKeys = Object.keys(a).sort();
+    var bKeys = Object.keys(b).sort();
+    return aKeys.length === bKeys.length
+      && aKeys.every(function (key, index) { return key === bKeys[index] && sameResult(a[key], b[key]); });
+  }
+
+  function selectedResult(id) {
+    var fileResult = canonicalResultCache[id] || null;
+    var draft = draftResults[id] || null;
+    if (!draft) return fileResult;
+    if (!fileResult) return draft.result;
+    var fileTime = resultTime(fileResult);
+    var draftTime = resultTime(draft.result);
+    if (fileTime !== null && draftTime !== null && fileTime > draftTime) return fileResult;
+    if (sameResult(fileResult, draft.result)) return fileResult;
+    return draft.result;
+  }
+
+  function refreshResultSelection(id) {
+    return selectedResult(id);
+  }
 
   function renderSyncNotice() {
     var notice = byId("syncNotice");
     if (!notice) { return; }
-    var messages = [];
+    var messages = storageWarnings.slice();
+    if (rejectedStorageRaw !== null) {
+      messages.push("읽지 못한 기존 저장본의 자동 덮어쓰기를 차단했습니다. 유효한 백업을 불러오기 전에 [읽지 못한 저장본 백업]으로 원문 다운로드를 요청하고 파일이 저장되었는지 확인하세요.");
+    }
     if (mergeConflicts.baseNewer > 0) {
       messages.push(
         "파일 진행상태(data/progress.js)가 브라우저 저장본보다 최신인 항목 "
@@ -203,18 +380,41 @@
     return normalizeStateItem(state[asString(id)]);
   }
 
-  function saveState() {
-    var payload = {
+  function progressEnvelope(nextState, nextDraftResults) {
+    return {
       schemaVersion: "1.0",
       workspaceId: workspaceId,
       updatedAt: nowIso(),
-      items: state
+      items: nextState,
+      draftResults: nextDraftResults
     };
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(payload));
-    } catch (error) {
-      showToast("브라우저에 진행상태를 저장하지 못했습니다.", "warning");
+  }
+
+  function persistProgress(nextState, nextDraftResults, allowRecovery) {
+    if (storageWriteBlocked && !allowRecovery) {
+      setMessage("localSaveStatus", "거부된 기존 브라우저 저장본을 복구할 수 있도록 원문 그대로 유지합니다. 확인한 상태 백업을 불러오기 전까지 새 변경은 현재 화면에만 남습니다.", "warning");
+      showToast("거부된 기존 저장본을 유지하고 있습니다. 확인한 백업을 불러와 복구하세요.", "warning");
+      return false;
     }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(progressEnvelope(nextState, nextDraftResults)));
+      if (allowRecovery) {
+        storageWriteBlocked = false;
+        rejectedStorageRaw = null;
+        updateRejectedStorageAction();
+      }
+      persistedDraftResults = Object.assign({}, nextDraftResults);
+      setMessage("localSaveStatus", "진행상태와 브라우저 초안을 함께 저장했습니다. 정본 파일 반영은 아직 확인되지 않았습니다.", "success");
+      return true;
+    } catch (error) {
+      setMessage("localSaveStatus", "브라우저 저장에 실패했습니다. 이전의 완전한 저장본은 유지되며, 현재 내용은 상태+결과 백업으로 내려받으세요.", "warning");
+      showToast("브라우저에 진행상태와 초안을 저장하지 못했습니다.", "warning");
+      return false;
+    }
+  }
+
+  function saveState() {
+    return persistProgress(state, draftResults);
   }
 
   function updateState(id, patch) {
@@ -255,7 +455,13 @@
     byId("reportBadge").textContent = reportId;
     var readiness = READINESS[inputValidation.status] || READINESS.unreviewed;
     byId("inputBadge").textContent = readiness.badge;
+    updateRejectedStorageAction();
     document.title = projectName && reportId ? projectName + " SAST 체크리스트" : "SAST 취약점 체크리스트";
+  }
+
+  function updateRejectedStorageAction() {
+    var button = byId("exportRejectedStorage");
+    if (button) button.hidden = rejectedStorageRaw === null;
   }
 
   function initializeReadiness() {
@@ -512,6 +718,7 @@
       button.type = "button";
       button.textContent = "상세";
       button.dataset.findingId = item.id;
+      button.setAttribute("aria-label", item.id + " 상세 보기");
       row.appendChild(button);
       container.appendChild(row);
     });
@@ -573,6 +780,7 @@
       detailButton.className = "detail-button";
       detailButton.textContent = "상세";
       detailButton.dataset.findingId = item.id;
+      detailButton.setAttribute("aria-label", item.id + " 상세 보기");
       appendCell(row, detailButton);
       body.appendChild(row);
     });
@@ -583,12 +791,15 @@
     document.querySelectorAll(".sort-button").forEach(function (button) {
       var mark = button.querySelector("span");
       mark.textContent = button.dataset.sort === sortState.key ? (sortState.direction === "asc" ? "▲" : "▼") : "";
+      var heading = button.closest("th");
+      if (heading) heading.setAttribute("aria-sort", button.dataset.sort === sortState.key ? (sortState.direction === "asc" ? "ascending" : "descending") : "none");
     });
   }
 
   function renderDashboardFilter() {
     document.querySelectorAll("[data-dashboard-filter]").forEach(function (button) {
       button.classList.toggle("active", button.dataset.dashboardFilter === dashboardFilter);
+      button.setAttribute("aria-pressed", String(button.dataset.dashboardFilter === dashboardFilter));
     });
   }
 
@@ -654,7 +865,6 @@
     if (result.reason) parts.push("판단 이유:\n" + result.reason);
     if (Array.isArray(result.resultFiles) && result.resultFiles.length) parts.push("실제 변경 파일/위치:\n- " + result.resultFiles.join("\n- "));
     if (result.resultSummary) parts.push("적용 내용:\n" + result.resultSummary);
-    if (result.resultCodeDiff) parts.push("기존/수정 코드 비교:\n" + result.resultCodeDiff);
     if (result.resultGuideComparison) parts.push("공통 가이드 부합 여부:\n" + result.resultGuideComparison);
     if (Array.isArray(result.impact) && result.impact.length) parts.push("영향 범위:\n- " + result.impact.join("\n- "));
     if (result.verification) {
@@ -667,6 +877,45 @@
     if (Array.isArray(result.duplicates) && result.duplicates.length) parts.push("중복 처리 항목: " + result.duplicates.join(", "));
     if (result.evidenceNote) parts.push("체크리스트 비고 문구:\n" + result.evidenceNote);
     return parts.join("\n\n");
+  }
+
+  function resultProvenance(id) {
+    var draft = draftResults[id] || null;
+    var fileResult = canonicalResultCache[id] || null;
+    if (!draft && !fileResult) {
+      return { storage: "처리 결과 없음", file: "정본 파일 결과 없음" };
+    }
+    if (!draft) {
+      return { storage: "정본 파일에서 읽음", file: "정본 파일 결과" };
+    }
+    if (!persistedDraftResults[id] || !sameResult(persistedDraftResults[id], draft)) {
+      return {
+        storage: "현재 화면에만 있음 · 저장 실패",
+        file: fileResult && sameResult(fileResult, draft.result) ? "정본 파일과 일치 확인됨" : "정본 파일 반영 대기"
+      };
+    }
+    if (!fileResult) {
+      return { storage: "브라우저 초안 저장됨", file: "정본 파일 반영 대기" };
+    }
+    if (sameResult(fileResult, draft.result)) {
+      return { storage: "브라우저 초안 보관됨", file: "정본 파일과 일치 확인됨" };
+    }
+    if (selectedResult(id) === draft.result) {
+      return { storage: "브라우저 초안 저장됨", file: "정본 파일 반영 대기" };
+    }
+    return { storage: "브라우저 초안도 보관됨", file: "정본 파일이 더 최신" };
+  }
+
+  function verificationLabel(result) {
+    var labels = {
+      "not-run": "미실행",
+      "passed": "통과",
+      "failed": "실패",
+      "partial": "일부 완료",
+      "manual-required": "수동 확인 필요"
+    };
+    var status = result && result.verification ? result.verification.status : "not-run";
+    return "검증 상태: " + (labels[status] || status) + " — 브라우저 초안이나 다운로드만으로 검증완료가 되지 않습니다.";
   }
 
   function renderCurrentDetail() {
@@ -707,15 +956,23 @@
     guidePanel.textContent = formatItemGuide(itemGuide);
     guidePanel.classList.toggle("empty-panel", !itemGuide);
 
-    var result = resultCache[item.id] || window.SAST_ITEM_RESULTS[item.id] || null;
+    var result = refreshResultSelection(item.id);
+    var provenance = resultProvenance(item.id);
+    setText("resultStorageStatus", provenance.storage);
+    setText("resultFileStatus", provenance.file);
+    setText("resultVerificationStatus", verificationLabel(result));
     var resultPanel = byId("resultView");
     resultPanel.textContent = formatResult(result);
     resultPanel.classList.toggle("empty-panel", !result);
+    var resultCodeSection = byId("resultCodeSection");
+    resultCodeSection.hidden = !(result && result.resultCodeDiff);
+    setText("resultCodeView", result && result.resultCodeDiff ? result.resultCodeDiff : "");
   }
 
   function openDetail(id) {
     var item = findingById(id);
     if (!item) return;
+    if (!currentFindingId) detailReturnFocus = document.activeElement;
     currentFindingId = asString(id);
     renderCurrentDetail();
     byId("taskPrompt").classList.add("hidden");
@@ -728,17 +985,61 @@
     setMessage("answerMessage", "", "");
     byId("answerInput").value = "";
     byId("detailDrawer").classList.add("open");
+    byId("detailDrawer").inert = false;
     byId("detailDrawer").setAttribute("aria-hidden", "false");
     byId("overlay").classList.add("open");
+    byId("appHeader").inert = true;
+    byId("mainContent").inert = true;
+    document.body.classList.add("drawer-open");
+    byId("closeDrawer").focus();
     loadItemGuide(id, false);
     loadItemResult(id, false);
   }
 
   function closeDetail() {
+    if (!currentFindingId) return;
+    var findingId = currentFindingId;
+    byId("appHeader").inert = false;
+    byId("mainContent").inert = false;
+    document.body.classList.remove("drawer-open");
+    var target = detailReturnFocus;
+    if (!target || target === document.body || !target.isConnected || !target.getClientRects().length) {
+      target = Array.from(document.querySelectorAll("button[data-finding-id]")).find(function (button) {
+        return button.dataset.findingId === findingId && button.getClientRects().length;
+      }) || byId("search");
+    }
+    // Move focus out before hiding the dialog from assistive technology.
+    target.focus();
     byId("detailDrawer").classList.remove("open");
+    byId("detailDrawer").inert = true;
     byId("detailDrawer").setAttribute("aria-hidden", "true");
     byId("overlay").classList.remove("open");
     currentFindingId = null;
+    detailReturnFocus = null;
+  }
+
+  function handleDetailKeydown(event) {
+    if (!currentFindingId) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeDetail();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    var drawer = byId("detailDrawer");
+    var focusable = Array.from(drawer.querySelectorAll("button, [href], input, select, textarea, [tabindex]")).filter(function (element) {
+      return !element.disabled && element.getAttribute("tabindex") !== "-1" && element.getClientRects().length;
+    });
+    var first = focusable[0] || byId("closeDrawer");
+    var last = focusable[focusable.length - 1] || first;
+    var outside = !drawer.contains(document.activeElement);
+    if (event.shiftKey && (document.activeElement === first || outside)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || outside)) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   function loadScript(path) {
@@ -778,7 +1079,7 @@
   function applyResult(result, preserveVerified) {
     if (!result || !result.id || !findingById(result.id)) return false;
     var key = asString(result.id);
-    resultCache[key] = result;
+    canonicalResultCache[key] = result;
     var current = stateFor(key);
     var incoming = normalizeStateItem(statePatchFromResult(result));
     var curT = timestampOf(current);
@@ -809,8 +1110,8 @@
 
   async function loadItemResult(id, force) {
     var key = asString(id);
-    if (!force && (resultCache[key] || window.SAST_ITEM_RESULTS[key])) {
-      var cached = resultCache[key] || window.SAST_ITEM_RESULTS[key];
+    if (!force && (canonicalResultCache[key] || window.SAST_ITEM_RESULTS[key])) {
+      var cached = canonicalResultCache[key] || window.SAST_ITEM_RESULTS[key];
       applyResult(cached, true);
       saveState();
       render();
@@ -835,7 +1136,6 @@
       Object.keys(window.SAST_ITEM_RESULTS || {}).forEach(function (id) {
         if (applyResult(window.SAST_ITEM_RESULTS[id], true)) count += 1;
       });
-      resultCache = Object.assign({}, resultCache, window.SAST_ITEM_RESULTS || {});
       saveState();
       render();
       if (currentFindingId) renderCurrentDetail();
@@ -934,6 +1234,16 @@
     return asString(text).replace(/```[a-zA-Z0-9_-]*/g, "").replace(/```/g, "").replace(/^\s*[-*]\s?/gm, "").trim();
   }
 
+  function unwrapOuterFence(value) {
+    var opening = value.match(/^[ \t\r\n]*(`{3,}|~{3,})[^\r\n]*\r?\n/);
+    var closing = value.match(/(?:^|\n)[ \t]*(`{3,}|~{3,})[ \t]*(?:\r?\n[ \t]*)*$/);
+    if (opening && closing && closing[1][0] === opening[1][0] && closing[1].length >= opening[1].length) {
+      var end = closing.index + (closing[0][0] === "\n" ? 1 : 0);
+      if (end >= opening[0].length) return value.slice(opening[0].length, end);
+    }
+    return value;
+  }
+
   function extractSection(text, label) {
     var labels = [
       "조치 결론", "판단 이유", "실제 변경 파일/위치", "적용 내용",
@@ -941,10 +1251,37 @@
       "중복 처리 항목", "체크리스트 비고 문구"
     ];
     var escaped = labels.map(function (value) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|");
-    var target = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    var expression = new RegExp("(?:^|\\n)\\s*[-*]?\\s*" + target + "\\s*:\\s*\\n?([\\s\\S]*?)(?=\\n\\s*[-*]?\\s*(?:" + escaped + ")\\s*:|$)", "i");
-    var match = asString(text).replace(/\r\n/g, "\n").match(expression);
-    return match ? cleanSection(match[1]) : "";
+    var expression = new RegExp("^[ \\t]*[-*]?[ \\t]*(" + escaped + ")[ \\t]*:[ \\t]*(.*)$");
+    // Entire answers are sometimes copied as one text/Markdown code block.
+    // Unwrap that outer container before treating inner code fences as code.
+    var lines = unwrapOuterFence(asString(text)).match(/[^\n]*(?:\n|$)/g) || [];
+    var content = [];
+    var collecting = false;
+    var fence = null;
+    for (var index = 0; index < lines.length; index += 1) {
+      var line = lines[index].replace(/\r?\n$/, "");
+      var newline = lines[index].slice(line.length);
+      var marker = line.match(/^[ \t]*(`{3,}|~{3,})(.*)$/);
+      var heading = fence ? null : line.match(expression);
+      if (heading) {
+        if (collecting) break;
+        collecting = heading[1] === label;
+        if (collecting && heading[2]) content.push(heading[2] + newline);
+        continue;
+      }
+      if (collecting) content.push(lines[index]);
+      if (marker) {
+        if (!fence) fence = marker[1];
+        else if (marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) fence = null;
+      }
+    }
+    var value = content.join("");
+    if (label === "기존/수정 코드 비교") {
+      // Remove only a complete outer Markdown fence. Keep every code byte
+      // inside it, including diff deletion markers, indentation and newlines.
+      return unwrapOuterFence(value);
+    }
+    return cleanSection(value.replace(/\r\n/g, "\n"));
   }
 
   function conclusionFromText(text) {
@@ -974,13 +1311,18 @@
     }
     var item = findingById(currentFindingId);
     var conclusionText = extractSection(raw, "조치 결론");
+    var conclusion = conclusionFromText(conclusionText);
+    if (conclusion === "unreviewed") {
+      setMessage("answerMessage", "조치 결론을 읽지 못했습니다. 응답 형식과 결론을 확인하세요. 기존 결과는 유지됩니다.", "warning");
+      return;
+    }
     var verificationText = extractSection(raw, "검증");
     var result = {
       schemaVersion: "1.0",
       id: item.id,
       sequence: item.sequence,
-      workflowStatus: conclusionFromText(conclusionText) === "fix" ? "change-complete" : "analyzed",
-      conclusion: conclusionFromText(conclusionText),
+      workflowStatus: conclusion === "fix" ? "change-complete" : "analyzed",
+      conclusion: conclusion,
       reason: extractSection(raw, "판단 이유") || conclusionText,
       resultFiles: splitLines(extractSection(raw, "실제 변경 파일/위치")),
       resultSummary: extractSection(raw, "적용 내용"),
@@ -998,13 +1340,27 @@
       evidenceNote: extractSection(raw, "체크리스트 비고 문구"),
       updatedAt: nowIso()
     };
-    resultCache[item.id] = result;
-    window.SAST_ITEM_RESULTS[item.id] = result;
-    applyResult(result, true);
-    saveState();
+    validateResultData(result, item.id);
+    var savedAt = result.updatedAt;
+    var nextDraftResults = Object.assign({}, draftResults);
+    nextDraftResults[item.id] = { source: "browser-answer", savedAt: savedAt, result: result };
+    var nextState = mergeStateItems(state, (function () {
+      var items = {};
+      items[item.id] = statePatchFromResult(result);
+      return items;
+    })(), true).items;
+    var persisted = persistProgress(nextState, nextDraftResults);
+    state = nextState;
+    draftResults = nextDraftResults;
     render();
     renderCurrentDetail();
-    setMessage("answerMessage", "답변에서 처리 결과를 추출했습니다. 결과 JSON으로 저장할 수 있습니다.", "success");
+    setMessage(
+      "answerMessage",
+      persisted
+        ? "답변에서 처리 결과를 추출해 브라우저 초안으로 보관했습니다. 정본 파일 반영과 검증은 별도 확인이 필요합니다."
+        : "결과는 현재 화면에만 남아 있습니다. 창을 닫기 전에 상태+결과 백업을 내려받으세요.",
+      persisted ? "success" : "warning"
+    );
   }
 
   function downloadJson(filename, value) {
@@ -1018,49 +1374,89 @@
     URL.revokeObjectURL(link.href);
   }
 
+  function exportRejectedStorage() {
+    if (rejectedStorageRaw === null) return;
+    var blob = new Blob([rejectedStorageRaw], { type: "application/json;charset=utf-8" });
+    var link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "sast-rejected-storage-" + safeFilePart(workspaceId) + ".json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+    showToast("읽지 못한 저장본 원문의 다운로드를 요청했습니다. 파일이 저장되었는지 확인한 뒤 유효한 백업을 불러오세요.", "warning");
+  }
+
   function exportProgress() {
     var allItems = {};
     findings.forEach(function (item) { allItems[item.id] = stateFor(item.id); });
-    downloadJson("sast-progress-" + safeFilePart(workspaceId) + ".json", {
-      schemaVersion: "1.0",
-      workspaceId: workspaceId,
-      updatedAt: nowIso(),
-      items: allItems
+    var allDraftResults = {};
+    findings.forEach(function (item) {
+      if (draftResults[item.id]) allDraftResults[item.id] = draftResults[item.id];
     });
+    downloadJson("sast-progress-" + safeFilePart(workspaceId) + ".json", progressEnvelope(allItems, allDraftResults));
   }
 
-  function extractImportedItems(data) {
-    if (!data) return {};
-    if (data.items && typeof data.items === "object" && !Array.isArray(data.items)) return data.items;
-    if (Array.isArray(data)) {
-      return data.reduce(function (items, value) {
-        if (value && value.id) items[value.id] = value;
-        return items;
-      }, {});
-    }
-    if (typeof data === "object") return data;
-    return {};
+  function mergeDraftResults(baseDrafts, incomingDrafts) {
+    var merged = Object.assign({}, baseDrafts || {});
+    var outcomes = { applied: 0, unchanged: 0, retained: 0 };
+    Object.keys(incomingDrafts || {}).forEach(function (id) {
+      var current = merged[id];
+      var incoming = incomingDrafts[id];
+      if (!current) {
+        merged[id] = incoming;
+        outcomes.applied += 1;
+      } else if (Date.parse(incoming.savedAt) > Date.parse(current.savedAt)) {
+        merged[id] = incoming;
+        outcomes.applied += 1;
+      } else if (sameResult(current, incoming)) {
+        outcomes.unchanged += 1;
+      } else {
+        outcomes.retained += 1;
+      }
+    });
+    return { draftResults: merged, outcomes: outcomes };
   }
 
   function importProgressData(data) {
-    var incomingItems = extractImportedItems(data);
-    var known = {};
+    var validated = validateProgressData(data);
+    var incomingItems = validated.items;
+    var known = Object.create(null);
     findings.forEach(function (item) { known[item.id] = true; });
     var filtered = {};
+    var ignoredStates = 0;
     Object.keys(incomingItems).forEach(function (id) {
       if (known[id]) filtered[id] = incomingItems[id];
+      else ignoredStates += 1;
     });
-    state = mergeStateItems(state, filtered, true).items;
-    saveState();
+    var stateMerge = mergeStateItems(state, filtered, true);
+    var nextState = stateMerge.items;
+    var incomingDrafts = validated.draftResults || {};
+    var draftMerge = mergeDraftResults(draftResults, incomingDrafts);
+    var nextDraftResults = draftMerge.draftResults;
+    if (!persistProgress(nextState, nextDraftResults, true)) {
+      throw new Error("브라우저 저장에 실패해 백업을 반영하지 않았습니다. 이전 저장본은 유지됩니다.");
+    }
+    state = nextState;
+    draftResults = nextDraftResults;
+    lastImportAccounting = {
+      statesApplied: stateMerge.outcomes.applied,
+      statesUnchanged: stateMerge.outcomes.unchanged,
+      statesRetained: stateMerge.outcomes.retained,
+      draftsApplied: draftMerge.outcomes.applied,
+      draftsUnchanged: draftMerge.outcomes.unchanged,
+      draftsRetained: draftMerge.outcomes.retained,
+      ignoredStates: ignoredStates
+    };
     render();
     if (currentFindingId) renderCurrentDetail();
-    return Object.keys(filtered).length;
+    return stateMerge.outcomes.applied;
   }
 
   function exportCurrentResult() {
     if (!currentFindingId) return;
     var item = findingById(currentFindingId);
-    var result = resultCache[currentFindingId] || window.SAST_ITEM_RESULTS[currentFindingId];
+    var result = refreshResultSelection(currentFindingId);
     if (!result) {
       var itemState = stateFor(currentFindingId);
       result = {
@@ -1133,6 +1529,7 @@
         var key = button.dataset.sort;
         if (sortState.key === key) sortState.direction = sortState.direction === "asc" ? "desc" : "asc";
         else sortState = { key: key, direction: "asc" };
+        pageIndex = 0;
         render();
       });
     });
@@ -1142,6 +1539,7 @@
         var button = event.target.closest("button[data-filter-type]");
         if (!button) return;
         dashboardFilter = "all";
+        pageIndex = 0;
         if (button.dataset.filterType === "risk") byId("riskFilter").value = button.dataset.filterValue;
         if (button.dataset.filterType === "conclusion") byId("conclusionFilter").value = button.dataset.filterValue;
         if (button.dataset.filterType === "mapping") byId("mappingFilter").value = button.dataset.filterValue;
@@ -1158,7 +1556,7 @@
 
     byId("closeDrawer").addEventListener("click", closeDetail);
     byId("overlay").addEventListener("click", closeDetail);
-    document.addEventListener("keydown", function (event) { if (event.key === "Escape") closeDetail(); });
+    document.addEventListener("keydown", handleDetailKeydown);
 
     byId("detailWorkflow").addEventListener("change", function () {
       if (currentFindingId && gateReady()) updateState(currentFindingId, { workflowStatus: byId("detailWorkflow").value });
@@ -1180,7 +1578,6 @@
       }
       var item = findingById(currentFindingId);
       if (!item) return;
-      updateState(item.id, { workflowStatus: "in-progress" });
       var prompt = buildTaskPrompt(item);
       byId("taskPrompt").value = prompt;
       byId("taskPrompt").classList.remove("hidden");
@@ -1203,6 +1600,7 @@
     byId("parseAnswer").addEventListener("click", parseAnswer);
     byId("exportResult").addEventListener("click", exportCurrentResult);
     byId("exportProgress").addEventListener("click", exportProgress);
+    byId("exportRejectedStorage").addEventListener("click", exportRejectedStorage);
     byId("importProgress").addEventListener("click", function () { byId("progressFile").click(); });
     byId("progressFile").addEventListener("change", function (event) {
       var file = event.target.files && event.target.files[0];
@@ -1210,10 +1608,18 @@
       var reader = new FileReader();
       reader.onload = function () {
         try {
-          var count = importProgressData(JSON.parse(asString(reader.result)));
-          showToast(count + "개 항목의 진행상태를 불러왔습니다.", "success");
+          importProgressData(JSON.parse(asString(reader.result)));
+          showToast(
+            "진행상태: 적용 " + lastImportAccounting.statesApplied + "개, 동일 "
+            + lastImportAccounting.statesUnchanged + "개, 더 최신인 현재 값 유지 "
+            + lastImportAccounting.statesRetained + "개. 브라우저 초안: 적용 "
+            + lastImportAccounting.draftsApplied + "개, 동일 " + lastImportAccounting.draftsUnchanged
+            + "개, 더 최신인 현재 값 유지 " + lastImportAccounting.draftsRetained + "개."
+            + (lastImportAccounting.ignoredStates ? " 알 수 없는 상태 ID " + lastImportAccounting.ignoredStates + "개는 제외했습니다." : ""),
+            "success"
+          );
         } catch (error) {
-          showToast("진행상태 JSON을 읽지 못했습니다.", "warning");
+          showToast(error.message || "진행상태 JSON을 읽지 못했습니다.", "warning");
         }
         event.target.value = "";
       };

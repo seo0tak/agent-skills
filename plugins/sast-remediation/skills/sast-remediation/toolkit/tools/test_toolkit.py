@@ -10,6 +10,7 @@ validate/sync/query를 서브프로세스로 실행해 출력과 종료코드를
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -83,6 +84,296 @@ class ToolkitCase(unittest.TestCase):
             self.root / "examples" / "item-guide.json", self.root / "security-guides" / "SAMPLE-001.json"
         )
         self.assertEqual(self.run_tool("sync").returncode, 0)
+
+    def ready_inputs(self, vendor: bool = False) -> None:
+        """합성 입력을 승인한다. 의미 판독 정확도가 아닌 승인 이후 불변조건용."""
+        self.load_examples()
+        (self.root.parent / "application.py").write_text("value = 1\n", encoding="utf-8")
+        if vendor:
+            (self.root / "input/report-01.pdf").write_bytes(b"%PDF-1.7\nfirst\n%%EOF\n")
+            (self.root / "input/report-02.pdf").write_bytes(b"%PDF-1.7\nother\n%%EOF\n")
+            (self.root / "input/report.csv").write_text("id,rule\n1,RULE-A\n", encoding="utf-8")
+        else:
+            write_json(self.root / "input/report.sarif", {
+                "version": "2.1.0", "runs": [{
+                    "tool": {"driver": {"name": "ScannerA"}},
+                    "results": [{"ruleId": "RULE-A", "message": {"text": "finding"}}],
+                }],
+            })
+        proc = self.run_tool("preflight")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        record = read_json(self.data / "input-validation.json")
+        record["status"] = "ready"
+        for check in record["checks"]:
+            check["status"] = "pass"
+        for field in record["matching"]:
+            record["matching"][field] = True if field != "reason" else "Synthetic input fixture confirmed."
+        write_json(self.data / "input-validation.json", record)
+        profile = read_json(self.data / "project-profile.json")
+        for kind in ("pdf", "spreadsheet", "sarif"):
+            profile["report"][kind] = (record["inputs"].get(kind) or {}).get("path", "")
+        write_json(self.data / "project-profile.json", profile)
+        self.assertEqual(self.run_tool("sync").returncode, 0)
+        proc = self.run_tool("validate", "--strict")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+
+class InputManifestTests(ToolkitCase):
+    def test_example_input_record_matches_current_contract(self) -> None:
+        self.load_examples()
+        shutil.copyfile(self.root / "examples/input-validation.json", self.data / "input-validation.json")
+        self.run_tool("sync")
+        code, out = self.validate()
+        self.assertEqual(code, 0, out)
+
+    def test_unchanged_approved_inputs_remain_ready(self) -> None:
+        self.ready_inputs()
+        proc = self.run_tool("gate")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("GATE: READY", proc.stdout)
+
+    def test_same_size_sarif_replacement_invalidates_approval(self) -> None:
+        self.ready_inputs()
+        path = self.root / "input/report.sarif"
+        previous = path.read_text(encoding="utf-8")
+        path.write_text(previous.replace("ScannerA", "ScannerB"), encoding="utf-8")
+        for args in (("gate",), ("validate", "--strict")):
+            with self.subTest(command=args):
+                proc = self.run_tool(*args)
+                self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+                self.assertIn("manifest", proc.stdout)
+
+    def test_same_size_spreadsheet_change_invalidates_approval(self) -> None:
+        self.ready_inputs(vendor=True)
+        (self.root / "input/report.csv").write_text("id,rule\n1,RULE-B\n", encoding="utf-8")
+        proc = self.run_tool("gate")
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("manifest", proc.stdout)
+
+    def test_manifest_covers_every_split_pdf_and_the_sheet(self) -> None:
+        self.ready_inputs(vendor=True)
+        record = read_json(self.data / "input-validation.json")
+        expected = [
+            {"path": f"input/{path.name}", "size": path.stat().st_size,
+             "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            for path in sorted((self.root / "input").iterdir()) if path.suffix in {".pdf", ".csv"}
+        ]
+        self.assertEqual(record["inputs"].get("manifest"), expected)
+
+    def test_nonfirst_pdf_rename_invalidates_approval(self) -> None:
+        self.ready_inputs(vendor=True)
+        (self.root / "input/report-02.pdf").rename(self.root / "input/report-03.pdf")
+        proc = self.run_tool("gate")
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("manifest", proc.stdout)
+
+    def test_nonfirst_pdf_content_change_invalidates_approval(self) -> None:
+        self.ready_inputs(vendor=True)
+        (self.root / "input/report-02.pdf").write_bytes(b"%PDF-1.7\nTHIRD\n%%EOF\n")
+        proc = self.run_tool("gate")
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+
+    def test_legacy_approval_requires_preflight_and_semantic_reapproval(self) -> None:
+        self.ready_inputs()
+        record = read_json(self.data / "input-validation.json")
+        record["inputs"].pop("manifest", None)
+        write_json(self.data / "input-validation.json", record)
+        proc = self.run_tool("gate")
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("preflight", proc.stdout)
+        self.assertEqual(self.run_tool("preflight").returncode, 0)
+        self.assertEqual(self.run_tool("gate").returncode, 1)
+        refreshed = read_json(self.data / "input-validation.json")
+        self.assertIsNone(refreshed["matching"]["sameProject"])
+
+
+class CanonicalResultTests(ToolkitCase):
+    def test_completed_progress_requires_result_in_both_validation_modes(self) -> None:
+        self.ready_inputs()
+        (self.root / "security-results/SAMPLE-001.json").unlink()
+        # A missing canonical result must not be republished as completed progress.
+        sync = self.run_tool("sync")
+        self.assertEqual(sync.returncode, 1, sync.stdout + sync.stderr)
+        self.assertIn("no result", sync.stdout + sync.stderr)
+        for args in (("validate",), ("validate", "--strict")):
+            with self.subTest(command=args):
+                proc = self.run_tool(*args)
+                self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+                self.assertIn("SAMPLE-001", proc.stdout)
+                self.assertIn("no result", proc.stdout)
+
+    def test_result_required_states_and_conclusions(self) -> None:
+        self.load_examples()
+        (self.root / "security-results/SAMPLE-001.json").unlink()
+        progress = read_json(self.data / "progress.json")
+        for workflow, conclusion in (("analyzed", "fix"), ("change-complete", "unreviewed"),
+                                     ("verified", "fix"), ("deferred", "exception"),
+                                     ("todo", "false-positive")):
+            with self.subTest(workflow=workflow, conclusion=conclusion):
+                progress["items"]["SAMPLE-001"].update(workflowStatus=workflow, conclusion=conclusion)
+                write_json(self.data / "progress.json", progress)
+                self.run_tool("sync")
+                code, out = self.validate()
+                self.assertEqual(code, 1, out)
+                self.assertIn("no result", out)
+
+    def test_initial_or_parked_provisional_progress_needs_no_result(self) -> None:
+        self.load_examples()
+        (self.root / "security-results/SAMPLE-001.json").unlink()
+        progress = read_json(self.data / "progress.json")
+        for workflow, conclusion in (("todo", "unreviewed"), ("in-progress", "unreviewed"),
+                                     ("analyzed", "needs-review"), ("deferred", "unreviewed"),
+                                     ("deferred", "needs-review")):
+            with self.subTest(workflow=workflow, conclusion=conclusion):
+                progress["items"]["SAMPLE-001"].update(workflowStatus=workflow, conclusion=conclusion)
+                write_json(self.data / "progress.json", progress)
+                self.run_tool("sync")
+                code, out = self.validate()
+                self.assertEqual(code, 0, out)
+
+
+class SchemaContractTests(ToolkitCase):
+    def test_malformed_input_set_is_reported_without_traceback(self) -> None:
+        self.ready_inputs()
+        record = read_json(self.data / "input-validation.json")
+        record["inputs"]["set"] = ["unexpected-array"]
+        write_json(self.data / "input-validation.json", record)
+        self.run_tool("sync")
+        for args in (("gate",), ("validate", "--strict")):
+            with self.subTest(command=args):
+                proc = self.run_tool(*args)
+                out = proc.stdout + proc.stderr
+                self.assertEqual(proc.returncode, 1, out)
+                self.assertIn("inputs.set", out)
+                self.assertNotIn("Traceback", out)
+
+    def test_required_profile_fields_and_nested_array_types_are_checked(self) -> None:
+        self.load_examples()
+        record = read_json(self.data / "project-profile.json")
+        record.pop("projectName")
+        record["technology"]["languages"] = [None]
+        write_json(self.data / "project-profile.json", record)
+        self.run_tool("sync")
+        code, out = self.validate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("projectName", out)
+        self.assertIn("languages[0]", out)
+        self.assertNotIn("Traceback", out)
+
+    def test_verified_result_requires_existing_schema_fields(self) -> None:
+        self.load_examples()
+        path = self.root / "security-results/SAMPLE-001.json"
+        write_json(path, {"schemaVersion": "1.0", "id": "SAMPLE-001", "workflowStatus": "verified",
+                          "conclusion": "fix", "reason": "Applied fix",
+                          "verification": {"status": "passed", "method": "unit-test"}})
+        self.run_tool("sync")
+        code, out = self.validate()
+        self.assertEqual(code, 1, out)
+        for field in ("resultFiles", "resultCodeDiff", "updatedAt", "commands", "results", "verifiedAt"):
+            self.assertIn(field, out)
+
+    def test_nested_and_container_types_fail_without_traceback(self) -> None:
+        self.load_examples()
+        for relative, field, invalid in (("result", "resultFiles", "src/file.py"),
+                                         ("result", "verification", []),
+                                         ("findings", "sequence", []),
+                                         ("findings", "checker", None)):
+            with self.subTest(record=relative, field=field):
+                value = read_json(self.root / "examples" / f"{relative}.json")
+                target = value[0] if relative == "findings" else value
+                target[field] = invalid
+                path = self.data / "findings.json" if relative == "findings" else self.root / "security-results/SAMPLE-001.json"
+                write_json(path, value)
+                self.run_tool("sync")
+                code, out = self.validate()
+                self.assertEqual(code, 1, out)
+                self.assertIn(field, out)
+                self.assertNotIn("Traceback", out)
+                shutil.copyfile(self.root / "examples" / f"{relative}.json", path)
+
+    def test_result_method_and_schema_version_keep_warning_compatibility(self) -> None:
+        self.load_examples()
+        path = self.root / "security-results/SAMPLE-001.json"
+        record = read_json(path)
+        record.pop("schemaVersion")
+        record["verification"].pop("method")
+        write_json(path, record)
+        self.run_tool("sync")
+        code, out = self.validate()
+        self.assertEqual(code, 0, out)
+        self.assert_warn(out, "schemaVersion")
+        self.assert_warn(out, "verification.method")
+
+    def test_manual_review_may_have_no_commands(self) -> None:
+        self.load_examples()
+        path = self.root / "security-results/SAMPLE-001.json"
+        record = read_json(path)
+        record["verification"].update(method="manual-review", commands=[])
+        write_json(path, record)
+        self.run_tool("sync")
+        code, out = self.validate()
+        self.assertEqual(code, 0, out)
+
+    def test_null_blank_or_wrong_type_audit_fields_fail(self) -> None:
+        self.load_examples()
+        for invalid in (None, "   ", [], False, 42):
+            with self.subTest(value=invalid):
+                record = read_json(self.root / "examples/decisions.json")
+                record["decisions"][0].update(observation=invalid, reviewTrigger=invalid)
+                write_json(self.data / "decisions.json", record)
+                self.run_tool("sync")
+                code, out = self.validate()
+                self.assertEqual(code, 1, out)
+                self.assertIn("observation", out)
+                self.assertIn("reviewTrigger", out)
+                self.assertNotIn("Traceback", out)
+
+
+class LightweightGuideTests(ToolkitCase):
+    def add_member(self) -> None:
+        self.load_examples()
+        findings = read_json(self.data / "findings.json")
+        member = json.loads(json.dumps(findings[0]))
+        member.update(id="SAMPLE-002", sequence=2)
+        member["sourceMapping"]["fingerprint"] += ":member"
+        findings.append(member)
+        write_json(self.data / "findings.json", findings)
+        profile = read_json(self.data / "project-profile.json")
+        profile["report"]["findingCount"] = 2
+        write_json(self.data / "project-profile.json", profile)
+        self.guide_path = self.root / "security-guides/SAMPLE-002.json"
+        write_json(self.guide_path, {"schemaVersion": "1.0", "id": "SAMPLE-002", "sequence": 2,
+                                   "title": "Member", "sourceMapping": "exact", "summary": "Same as representative",
+                                   "groupGuideRef": "SAMPLE-001", "delta": []})
+        self.run_tool("sync")
+
+    def test_valid_lightweight_member_is_accepted(self) -> None:
+        self.add_member()
+        code, out = self.validate()
+        self.assertEqual(code, 0, out)
+
+    def test_missing_or_self_referencing_representative_is_rejected(self) -> None:
+        self.add_member()
+        for reference in ("NOPE-001", "SAMPLE-002"):
+            with self.subTest(reference=reference):
+                guide = read_json(self.guide_path)
+                guide["groupGuideRef"] = reference
+                write_json(self.guide_path, guide)
+                self.run_tool("sync")
+                code, out = self.validate()
+                self.assertEqual(code, 1, out)
+                self.assertIn("groupGuideRef", out)
+
+    def test_reference_cycle_is_rejected(self) -> None:
+        self.add_member()
+        path = self.root / "security-guides/SAMPLE-001.json"
+        guide = read_json(path)
+        guide["groupGuideRef"] = "SAMPLE-002"
+        write_json(path, guide)
+        self.run_tool("sync")
+        code, out = self.validate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("cycle", out)
 
 
 class BaselineTests(ToolkitCase):
@@ -275,6 +566,9 @@ class QueryTests(ToolkitCase):
 
     def test_missing_progress_defaults_to_todo(self) -> None:
         self.load_examples()
+        # An unstarted item has neither canonical result nor provisional entry.
+        # Existing results with missing progress are an interruption to reconcile.
+        (self.root / "security-results/SAMPLE-001.json").unlink()
         progress = read_json(self.data / "progress.json")
         progress["items"] = {}
         write_json(self.data / "progress.json", progress)

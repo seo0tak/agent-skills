@@ -5,30 +5,30 @@
     "sequence": 1,
     "risk": {
       "level": "high",
-      "label": "High",
+      "label": "높음",
       "rank": 70
     },
     "impact": {
       "level": "medium",
-      "label": "Medium",
+      "label": "보통",
       "rank": 50
     },
     "checker": {
       "code": "EXAMPLE_CHECKER",
-      "name": "Example checker",
-      "category": "Security"
+      "name": "예시 체커",
+      "category": "보안"
     },
-    "language": "Example Language",
+    "language": "예시 언어",
     "location": {
       "reportedFile": "src/application/ExampleService.ext",
       "reportedLine": 42,
       "reportedFunction": "processInput"
     },
     "report": {
-      "description": "Example report description.",
+      "description": "보고서 검출 설명 예시입니다.",
       "detectedCode": "42. value.use()",
       "detectedAt": "2026-01-01T00:00:00Z",
-      "section": "Example section",
+      "section": "예시 절",
       "vendorAttributes": {
         "A.S": "N"
       }
@@ -38,7 +38,7 @@
       "currentFile": "src/application/ExampleService.ext",
       "currentLine": 42,
       "currentFunction": "processInput",
-      "evidence": "The current source contains the same operation and data flow.",
+      "evidence": "현재 소스에서 같은 연산과 데이터 흐름을 확인했습니다.",
       "fingerprint": "ExampleService.processInput:value.use"
     },
     "grouping": {
@@ -50,7 +50,7 @@
       "relatedIds": []
     },
     "suggestedConclusion": "needs-review",
-    "suggestedReason": "The source matches, but the required input policy is not yet confirmed.",
+    "suggestedReason": "소스는 일치하지만 입력의 필수 여부는 아직 확인하지 못했습니다.",
     "policyDependencies": [
       "input-null-policy"
     ]

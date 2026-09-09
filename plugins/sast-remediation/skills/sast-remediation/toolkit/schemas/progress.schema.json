@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/sast/progress.schema.json",
-  "title": "SAST Progress",
+  "title": "SAST 진행상태",
+  "description": "결과 집계와 아직 결과가 없는 임시 상태·비고. 브라우저 백업의 draftResults는 정본 결과가 아닌 선택 초안입니다.",
   "type": "object",
   "required": ["schemaVersion", "workspaceId", "updatedAt", "items"],
   "properties": {
@@ -15,9 +16,11 @@
         "required": ["workflowStatus", "conclusion", "note"],
         "properties": {
           "workflowStatus": {
+            "description": "진행 단계: todo=미착수, in-progress=작업 중, analyzed=분석 완료, change-complete=수정 완료, verified=검증 완료, deferred=보류. 검증 신선도는 별도로 확인합니다.",
             "enum": ["todo", "in-progress", "analyzed", "change-complete", "verified", "deferred"]
           },
           "conclusion": {
+            "description": "판단: unreviewed=미검토, fix=수정, false-positive=오탐, operations=운영 설정, exception=예외, needs-review=추가 검토.",
             "enum": ["unreviewed", "fix", "false-positive", "operations", "exception", "needs-review"]
           },
           "note": { "type": "string" },

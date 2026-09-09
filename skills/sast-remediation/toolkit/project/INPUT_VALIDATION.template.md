@@ -6,63 +6,76 @@ timestamp:
 tags: [sast]
 ---
 
-# Input Validation
+# 입력 적합성 확인
 
-## Gate Status
+## 게이트 상태
 
-- Status: `UNREVIEWED`
-- Checked at:
-- Decision owner:
+- 상태: `UNREVIEWED`
+- 확인 시각:
+- 판정 주체:
 
 허용 상태는 `UNREVIEWED`, `MECHANICAL_READY`, `READY`, `BLOCKED`입니다.
 실제 분석과 조치는 `READY`에서만 시작합니다.
 
-## Current Project
+## 현재 프로젝트
 
-- Project root:
-- Project identity:
-- Identity evidence:
-- Source roots found:
-- Project declarations found:
+- 프로젝트 루트:
+- 프로젝트 식별정보:
+- 식별 근거:
+- 확인한 소스 루트:
+- 확인한 프로젝트 선언 파일:
 
-## Input Files
+## 선택한 입력 세트
 
-### PDF
+- 모드: 미확인 (벤더 PDF 1개 이상+스프레드시트 1개 / SARIF 1개)
+- 세트명: 미확인
+- 사용하지 않는 모드의 칸은 사유와 함께 해당 없음으로 표시합니다.
+- 미확인을 0건·문제 없음으로 바꾸지 않습니다.
 
-- Path:
-- File signature valid:
-- Project or system name:
-- Analysis identifier:
-- Generated at:
-- Finding count:
+### PDF (벤더 모드 필수, SARIF 모드 선택)
 
-### Spreadsheet
+- 경로:
+- 파일 형식 확인:
+- 프로젝트·시스템 이름:
+- 검사 식별자:
+- 생성 시각:
+- 검출 건수: 미확인
 
-- Path:
-- File structure valid:
-- Project or system name:
-- Analysis identifier:
-- Generated at:
-- Finding count:
-- Finding data sheet:
+### 스프레드시트 (벤더 모드)
 
-## Match Review
+- 경로:
+- 파일 구조 확인:
+- 프로젝트·시스템 이름:
+- 검사 식별자:
+- 생성 시각:
+- 검출 건수: 미확인
+- 검출 데이터 시트·헤더:
 
-| Check | Result | Evidence |
+### SARIF
+
+- 경로:
+- run·도구·검사 식별자:
+- results 건수: 미확인
+- rules의 설명·가이드 확인:
+- 선택 PDF와의 대조:
+
+## 내용 대조
+
+| 검사 | 판정 | 근거 |
 |---|---|---|
-| PDF and spreadsheet belong to the same project |  |  |
-| PDF and spreadsheet belong to the same analysis run |  |  |
-| Finding counts are consistent |  |  |
-| Reported source scope is compatible with the current source |  |  |
-| Required finding fields are readable |  |  |
+| 현재 소스와 선택 보고서의 프로젝트 일치 |  |  |
+| 선택 자료의 검사 차수 일치 |  |  |
+| 검출 건수 일치 또는 차이 설명 |  |  |
+| 보고서 소스 범위와 현재 소스 대조 |  |  |
+| 검출 필수 필드를 읽을 수 있음 |  |  |
 
-## Blockers
+## 차단 사유
 
-- None recorded.
+- 미확인 — 검토 후 차단 사유 또는 확인 근거가 있는 “없음”을 기록합니다.
 
-## Gate Decision
+## 최종 판정
 
-`READY`는 모든 필수 파일이 유효하고, 현재 소스·PDF·스프레드시트가 같은
+`READY`는 모든 필수 파일이 유효하고, 현재 소스와 선택 보고서가 같은
 프로젝트와 검사 차수를 가리키며, 검출 목록을 정규화할 수 있을 때만
 선언합니다. 근거가 부족하거나 불일치가 있으면 `BLOCKED`로 두고 다음
 단계로 진행하지 않습니다.

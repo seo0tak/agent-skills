@@ -6,7 +6,7 @@
     "SAMPLE-001": {
       "workflowStatus": "verified",
       "conclusion": "fix",
-      "note": "Required input validation and targeted verification completed.",
+      "note": "필수 입력 검증과 대상 테스트를 완료했습니다. (합성 예시)",
       "updatedAt": "2026-01-01T01:00:00Z"
     }
   }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "workspaceId": "sample-workspace",
-  "projectName": "Sample Application",
+  "projectName": "예시 애플리케이션",
   "generatedAt": "2026-01-01T00:00:00Z",
   "report": {
     "id": "sample-report",
@@ -13,10 +13,10 @@
     "mismatchReason": ""
   },
   "technology": {
-    "languages": ["Example Language"],
-    "frameworks": ["Example Framework"],
-    "buildTools": ["Example Build Tool"],
-    "testFrameworks": ["Example Test Framework"]
+    "languages": ["예시 언어"],
+    "frameworks": ["예시 프레임워크"],
+    "buildTools": ["예시 빌드 도구"],
+    "testFrameworks": ["예시 테스트 프레임워크"]
   },
   "paths": {
     "sourceRoots": ["src"],
@@ -28,21 +28,21 @@
     {
       "name": "application",
       "path": "src/application",
-      "role": "Application logic",
+      "role": "애플리케이션 업무 로직",
       "dependencies": [],
       "testPath": "test/application"
     }
   ],
   "validation": {
-    "compileCommands": ["<discovered compile command>"],
-    "testCommands": ["<discovered test command>"],
-    "successSignals": ["successful exit status"],
+    "compileCommands": ["<프로젝트에서 확인한 컴파일 명령>"],
+    "testCommands": ["<프로젝트에서 확인한 테스트 명령>"],
+    "successSignals": ["성공 종료 코드와 예상 출력"],
     "limitations": []
   },
   "constraints": [
     {
-      "scope": "external protocol",
-      "rule": "Preserve the documented payload format until compatibility is verified.",
+      "scope": "외부 프로토콜",
+      "rule": "호환성을 검증하기 전에는 명세에 있는 데이터 형식을 유지합니다.",
       "source": "baseline"
     }
   ],

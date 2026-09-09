@@ -2,31 +2,31 @@
   "schemaVersion": "1.0",
   "id": "SAMPLE-001",
   "sequence": 1,
-  "title": "Validate an optional input before use",
+  "title": "입력 필수 여부를 확인하고 사용 전 검증",
   "sourceMapping": "exact",
-  "summary": "The reported value is used without an explicit policy for missing input.",
-  "applicability": "The report guidance applies after the project decides whether the input is required.",
+  "summary": "입력이 없을 때의 정책이 명시되지 않은 채 값을 사용합니다.",
+  "applicability": "입력이 필수인지 확인한 뒤 보고서 가이드의 적용 방법을 결정합니다.",
   "steps": [
-    "Confirm the input contract at the service boundary.",
-    "Add the smallest validation or fallback consistent with that contract."
+    "서비스 경계에서 필수·선택 입력 계약을 확인합니다.",
+    "확인한 계약에 맞는 최소 검증 또는 대체 동작을 추가합니다."
   ],
   "checkpoints": [
-    "Do not convert a required value into an empty default.",
-    "Check all callers before changing the function contract."
+    "필수 입력을 임의의 빈 기본값으로 바꾸지 않습니다.",
+    "함수 계약을 바꾸기 전에 모든 호출부를 확인합니다."
   ],
-  "impact": ["Input error behavior may change."],
-  "testPlan": ["Verify missing and valid input behavior."],
+  "impact": ["입력 오류 처리 동작이 바뀔 수 있습니다."],
+  "testPlan": ["입력 누락과 정상 입력 동작을 검증합니다."],
   "duplicateGroup": "",
   "relatedIds": [],
-  "policyQuestions": ["Is the input required or optional?"],
+  "policyQuestions": ["이 화면에서 이 항목 없이도 진행할 수 있나요?"],
   "evidence": [
     {
       "source": "source",
-      "detail": "The current function dereferences the input before validation."
+      "detail": "현재 함수는 검증 전에 입력을 역참조합니다."
     },
     {
       "source": "report",
-      "detail": "The checker recommends validation before use."
+      "detail": "체커는 사용 전 입력 검증을 권고합니다."
     }
   ]
 }

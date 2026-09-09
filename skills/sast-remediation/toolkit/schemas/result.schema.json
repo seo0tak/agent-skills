@@ -123,6 +123,25 @@
         "method": {
           "type": "string",
           "description": "검증 수단 — 프로필 validation.verificationMeans에 선언된 값 중 하나 (예: build, lint, unit-test, scanner-recheck, manual-review)"
+        },
+        "sourceSnapshot": {
+          "type": "object",
+          "description": "Optional source/evidence binding created by sast_state.py seal-verification. Missing means unbound legacy evidence, never implicitly fresh. Only the listed files are covered.",
+          "required": ["schemaVersion", "workspaceId", "projectRoot", "id", "capturedAt", "files", "sealedAt", "evidenceDigest"],
+          "properties": {
+            "schemaVersion": {"const": "1.0"},
+            "workspaceId": {"type": "string", "minLength": 1},
+            "projectRoot": {"type": "string", "minLength": 1},
+            "id": {"type": "string", "minLength": 1},
+            "capturedAt": {"type": "string", "format": "date-time"},
+            "sealedAt": {"type": "string", "format": "date-time"},
+            "files": {
+              "type": "object",
+              "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            },
+            "evidenceDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          },
+          "additionalProperties": true
         }
       },
       "additionalProperties": true

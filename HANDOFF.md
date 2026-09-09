@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-09-08 기준, v1.10.1)
+# HANDOFF — 개발 세션 인수인계 (2026-09-09, v1.12.0 / v0.4.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,19 +6,42 @@
 
 ## 현재 상태
 
-- sast-remediation **v1.10.1**, skill-architect **v0.2.1** — `827bd89`까지 push 완료,
-  working tree clean
+- 작업 트리: sast-remediation **v1.12.0**, skill-architect **v0.4.0**.
+  작업 브랜치: `codex/resilient-skill-workflows`. 이전 미커밋 변경을 보존했다.
+  리뷰 개선을 반영했으며 이번 변경은 아직 커밋·push·설치본 갱신하지 않았다.
+  기존 설치 확인 버전은 1.10.1/0.2.1이므로 작업 트리와 구분한다.
 - 저장소는 **`seo0tak/agent-skills`** (claude-skills에서 개명, 로컬 디렉터리도
   `~/Project/Source/seo0tak/agent-skills`). 마켓플레이스 name **`0tak`**.
   이 PC에는 Claude Code·Codex 양쪽에 `sast-remediation@0tak`,
-  `skill-architect@0tak`이 GitHub 소스로 설치돼 있다. 기설치자는 없어서
-  마이그레이션 절차는 두지 않는다
-- 실물 Sparrow 산출물로 검증된 마지막 버전은 **1.6.x**. 1.7~1.10은 단위 테스트(22건)와
-  오류 주입으로만 검증했고 실물 차수는 아직 안 돌렸다 (아래 미결 3)
+  `skill-architect@0tak`이 GitHub 소스로 설치돼 있다. 진행 프로젝트의
+  업그레이드·입력 승인 재확인 절차는 새 버전 `docs/VERSIONING.md`를 따른다.
+- 실물 Sparrow 산출물로 검증된 마지막 버전은 **1.6.x**. 이후 변경은 단위
+  테스트와 합성 오류 주입으로 검증했고 실물 차수는 아직 안 돌렸다 (아래 미결 3).
+  1.11의 기본 회귀는 Python 43건·Node 29건이었다. 1.12 최종 정본 테스트는
+  151개(SAST 82·Architect 24·브라우저 44·패키징 1) 모두 통과했다.
+  배포 사본 브라우저 44개도 별도로 통과했고 정본·사본과 버전 일치를 확인했다.
+  독립 리뷰 후 수정·재검증 결과와 한계는
+  `docs/reviews/2026-09-09-resilient-skills-implementation.md`가 기준이다.
+  실제 HTML 열기는 브라우저 로컬 파일 URL 정책에 차단돼 렌더링·반응형
+  실측·스크린리더 검증을 완료한 것으로 보고하지 않는다.
 - 실물 파일 위치: `~/Downloads/issues_lheep-comn-frontend-master_1903.xls`(2,361건),
   `..._1903_01.pdf`(1,906p, 분석 ID 1903)
 
-## 버전별 주요 이력 (전부 하위호환)
+## 이번 구현 범위
+
+- SAST: 수정 전·후 체크포인트, 검증 직전 소스 스냅샷, 실제 근거와 연결,
+  읽기 전용 status와 복구 미리보기/--apply, 협조 잠금·고유 임시 파일 쓰기.
+- 브라우저: 상태+상세 초안 저장/백업, 정본 반영 대기와 저장 실패 구분,
+  정확한 가져오기 건수, 읽기 쉬운 결과·코드·좁은 화면 매핑.
+- 문서: 입력 조합, 상태 종류, 복구·검증 한계, 권한과 기본안, 이월·제출 규칙 정렬.
+- Architect: 선택적 로컬 개선 기록과 재개. 평가·승인 참조·적용·회귀 검증을 연결한다.
+  기록 도구는 실제 권한을 인증하거나 명령·패치·배포를 실행하지 않는다.
+- 비목적: 자동 재시작·네트워크 감시·무승인 자체 수정·배포. 설치본/프로젝트
+  복사본 업그레이드, commit/push는 이번 작업에 포함하지 않는다.
+- 상세 계획과 진행 기록: `docs/superpowers/specs/2026-09-09-resilient-skills-design.md`,
+  `docs/superpowers/plans/2026-09-09-resilient-skills.md`.
+
+## 버전별 주요 이력 (당시 기록; 현재 규칙은 현행 가이드 기준)
 
 | 버전 | 내용 |
 |---|---|
@@ -33,6 +56,8 @@
 | 1.9.0 | skill-architect 감사 결과 적용 — `data/decisions.json` 정본+DECISION_LOG.md 생성, validate가 미확인 결정의 관찰 장치 강제, `query` 명령(원리 10), `tools/test_toolkit.py` 22건, USAGE.html을 USAGE.md에서 생성 |
 | 1.10.0 | `report.vendorAttributes` — 정의 모르는 벤더 컬럼 원문 보존, A.S 조사 결과 반영 |
 | 1.10.1 / 0.2.1 | 멀티 에이전트 재편(기능 무변경, 패치) — 정본 `skills/` 승격, SKILL.md 중립화(`${CLAUDE_SKILL_DIR}` 제거) |
+| 1.11.0 / 0.3.0 | 전체 입력 SHA-256 manifest, 결과 유실/필수 필드/null 감사/경량 참조 검사, 백업 격리·시각·코드 diff 보존, 목록·키보드·저장 안내 개선. Architect는 근거 수준/미확인/조건별 적용/로컬 지식 규약 보강 |
+| 1.12.0 / 0.4.0 | 수동 재개·소스 검증 연결·상세 초안 보존·가독성 정리. Architect 선택적 승인 범위 개선 기록. 자동 실행·배포 없음 |
 
 저장소 쪽: marketplace.json에 skill-architect 등록(이전엔 설치 불가였음), version 필드 제거
 (plugin.json이 정본), 루트 README 관문화. 이후 **멀티 에이전트 재편**(TASK-multi-agent):
@@ -44,18 +69,20 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 
 ## 핵심 설계 원칙 (변경 시 지킬 것)
 
-1. 게이트 선행 — 입력 바뀌면 승인 자동무효
-2. security-results가 canonical, progress는 집계 — validate가 정합성 강제
+1. 게이트 선행 — 전체 입력 목록·크기·SHA-256이 바뀌면 승인 무효. 구 승인에
+   manifest가 없으면 preflight와 의미 대조 후 재승인하며 해시만 덧붙이지 않는다
+2. 결과 정본은 security-results. progress는 결과 집계와 결과 없는 임시 상태·비고,
+   resume-state는 체크포인트·스냅샷. results만으로 임시 상태를 전부 복구할 수 없다
 3. **정본은 JSON, 읽기용은 생성물** — data/*.js, DECISION_LOG.md, USAGE.html은 sync가 만든다.
    직접 편집 금지, 편집은 정본(JSON / USAGE.md)에
 4. 오탐/예외/운영설정은 reason+evidenceNote 없으면 validate 에러
 5. 차수 간 매칭은 fingerprint, 소통은 stableKey
 6. 저비용 티어는 판정·소스수정·verified 승격 금지
 7. 스키마 변경은 선택 필드 추가만 — VERSIONING.md. 하드코딩 버전은 SCHEMA_VERSION 한 곳
-8. **규칙은 문서가 아니라 도구가 강제** — 새 규칙을 넣으면 validate가 잡는지 먼저 묻는다.
-   문서 규칙만이면 skill-architect 감사에서 "부분"이다
-9. **알면 안전한 쪽, 모르면 동작을 보존하는 쪽** — 미확인 결정(decidedBy=baseline-default)은
-   observation+reviewTrigger 없으면 기록 자체가 안 된다
+8. **지침·구현·재현을 구분** — 데이터 검사와 의미 판단·실제 검증·사용자 권한은 별개다.
+   문서 규칙의 적정 강제 수준은 스킬 목적과 영향에 따라 판단한다
+9. 미확인 기본안도 사용자 선택·변경 범위가 필요하다. observation/reviewTrigger
+   누락은 validate 오류지만 실제 관찰·권한을 도구가 인증하지는 않는다
 10. 큰 findings.json은 읽지 않는다 — `sast_toolkit.py query`
 
 ## 미결 사항 (PENDING)
@@ -68,29 +95,34 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 2. **저장소 안에서 툴킷 명령 실행 금지 가드** — 이번 세션에서 회귀 확인용 `preflight`를 저장소에서
    돌렸다가 로컬 절대 경로가 산출물에 섞여 amend로 되돌렸다. `.gitignore`나 "툴킷 부모가 저장소
    루트면 preflight/init 거부" 가드 검토
-3. **1.7~1.10 실물 검증** — 다음 실전 차수에서 통과시킬 것: `query --summary`, 결정 로그
+3. **1.7~1.12 실물 검증** — 다음 실전 차수에서 통과시킬 것: `query --summary`, 결정 로그
    흐름(decisions.json → sync → DECISION_LOG.md), 미확인 결정 validate 에러, 1.8 이전 손으로
    쓴 DECISION_LOG.md 마이그레이션 경고
 4. 결정 로그 대시보드 표시 — `data/decisions.js` 미러는 생성되지만 대시보드는 아직 안 읽는다
-5. **툴킷 내부 문서의 "Claude Code" 전제** — USAGE.md(스킬 설치 절), HOW_IT_WORKS,
-   USAGE.html에 남아 있음. 재편 범위(포장·배치·이름) 밖이라 그대로 둠. Codex·Cursor·Grok
-   사용자가 생기면 중립화
-6. 서브에이전트 없는 하네스(Codex 등)에서 sast-remediation 실전 1회 — 기능은 같고 비용만
-   다르다고 적어 뒀지만 실측은 안 함
+5. **하네스 중립 문서** — 1.12에서 정리함. Claude 전용 에이전트가 없는 환경은
+   메인이 같은 절차를 수행하되 품질·비용·속도 동일성을 주장하지 않는다
+6. 동봉된 Claude 전용 역할을 사용할 수 없는 하네스에서 sast-remediation 실전 1회는 미실행
 7. (아이디어) README 전체 영문판, SARIF 샘플 examples
+8. HTML 실제 브라우저 수동 검증 — 긴 한글 경로, 390/1024/1440px·확대,
+   키보드 왕복, 실제 백업 불러오기/다운로드 및 저장 불가 환경.
+   상세 결과 초안 저장은 1.12에서 구현했다. 원문 답변 입력창 자체의 장기 저장,
+   백업 차이 미리보기·정책 질문 패널·상세 이전/다음 등은 별도 후보다.
 
 ## 검증 습관
 
-- `cd toolkit && python3 -m unittest tools.test_toolkit` — 22건, 배포·업그레이드 전 필수
-  (VERSIONING.md 사전 검증에 명시). 오류 주입 시나리오는 여기 고정돼 있다
+- 툴킷에서 `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer`
+- 루트에서 `python3 -B -m unittest discover -s skills/skill-architect/scripts -p 'test_*.py'`
+  및 `python3 -B -m unittest scripts.test_packaging`
 - `python3 tools/sast_toolkit.py validate` (OK + 입력 없음 경고 1건이 정상),
   `node --check assets/checklist.js`
+- `node --test tools/test_dashboard.cjs` — 실제 함수/이벤트를 VM에서 실행하는
+  저장소·파서·키보드 회귀. 실브라우저 시각/E2E 검증은 별도다
 - USAGE.md·decisions.json 수정 후 반드시 `sync` — 안 하면 validate가 생성물 드리프트 에러
 - 실물 파일 재현 테스트 (위 xls/pdf)
 - 저장소 레벨: `scripts/sync-plugins.sh --check`(정본↔사본), `scripts/check-versions.sh`
   (claude·codex 매니페스트·README 표) — 커밋 전 둘 다 통과
-- 설치 경로 검증: `claude plugin marketplace add ./` / `codex plugin marketplace add ./` /
-  `npx skills add ./ --list` — 테스트 후 반드시 원복(uninstall·remove·캐시 삭제)
+- 설치 경로 검증은 사용자가 설치 테스트를 승인한 별도 작업에서 수행한다.
+  기존 설치를 일괄 제거하거나 캐시를 삭제하지 않는다. 이번 작업은 설치하지 않았다.
 
 ## 이 세션에서 배운 주의점
 
@@ -106,14 +138,24 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 - `.codex-plugin/plugin.json`에도 version이 있다. 올릴 때 check-versions.sh
 - Claude Code 메모리 디렉터리는 경로 키라 디렉터리를 옮기면 `~/.claude/projects/<경로키>/memory`도 옮긴다
 
-## 배포
+## 배포 (별도 사용자 요청이 있을 때만)
+
+아래는 참고 명령이다. 현재 브랜치의 검토·커밋·통합 방식을 먼저 정하며,
+이 문서를 읽었다는 이유로 main push나 설치를 실행하지 않는다.
 
 ```bash
 scripts/sync-plugins.sh --check && scripts/check-versions.sh
 git push origin main
 claude plugin marketplace update 0tak     # Claude Code
-codex plugin marketplace upgrade          # Codex
+claude plugin update sast-remediation@0tak --scope user
+claude plugin update skill-architect@0tak --scope user
+codex plugin marketplace upgrade 0tak     # Codex 카탈로그 갱신
+codex plugin list                         # 설치 버전 확인, 필요 시 앱/CLI 설치본 갱신
 npx skills add seo0tak/agent-skills       # 범용 (재실행)
 ```
 
-진행 중인 차수가 있는 프로젝트는 업그레이드 후 `validate`를 돌리고 **경고까지** 읽는다.
+Claude는 실제 설치 scope를 사용하고 재시작 또는 지원되는 `/reload-plugins`로
+반영한다. Codex도 카탈로그 갱신을 설치 캐시 갱신 완료로 가정하지 않는다.
+진행 중 프로젝트는 새 설치본의 `docs/VERSIONING.md` 자산 정책을 적용한 뒤
+`validate`를 돌리고 **경고까지** 읽는다. 설치본 갱신만으로 프로젝트 복사본은
+자동 교체되지 않는다.
