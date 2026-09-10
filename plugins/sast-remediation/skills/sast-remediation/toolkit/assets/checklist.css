@@ -58,7 +58,7 @@ button:disabled, input:disabled, select:disabled, textarea:disabled {
 }
 
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
-summary:focus-visible, .table-scroll:focus-visible {
+summary:focus-visible, .table-scroll:focus-visible, .recommendations:focus-visible {
   outline: 3px solid var(--primary);
   outline-offset: 2px;
 }
@@ -206,7 +206,12 @@ button.metric-card { width: 100%; }
 .stat-fill { height: 100%; border-radius: 999px; background: #7d97b5; }
 .stat-count { text-align: right; font-weight: 800; }
 
-.recommendations { display: grid; gap: 6px; }
+.recommendations {
+  display: grid;
+  gap: 6px;
+  max-height: min(50vh, 480px);
+  overflow-y: auto;
+}
 .recommendation {
   display: grid;
   grid-template-columns: 55px 82px 100px minmax(0, 1fr) 90px;

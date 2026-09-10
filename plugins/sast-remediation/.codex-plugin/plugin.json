@@ -1,6 +1,6 @@
 {
   "name": "sast-remediation",
-  "version": "1.12.2",
+  "version": "1.12.3",
   "description": "기존 SAST 보고서와 소스를 대조하고 검토·조치·검증 근거를 관리합니다. 저장된 작업의 수동 재개와 결과 초안 백업을 지원합니다.",
   "skills": "./skills"
 }

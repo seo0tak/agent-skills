@@ -123,12 +123,15 @@ function loadDashboard({
   const seam = "  initializeHeader();";
   assert.equal(source.split(seam).length, 2, "dashboard bootstrap seam must be unique");
   vm.runInContext(source.replace(seam, `
-    render = function () { if (window.renderTableForTest) renderTable(findings); };
+    render = function () {
+      if (window.renderRecommendationsForTest) renderRecommendations();
+      if (window.renderTableForTest) renderTable(findings);
+    };
     renderCurrentDetail = function () {};
     window.testApi = { stateFor, updateState, importProgressData, exportProgress,
       parseAnswer, exportCurrentResult, bindEvents, renderSyncNotice, openDetail,
       closeDetail, renderDashboardFilter, updateSortIndicators, renderTable,
-      resultProvenance, formatCheckerGuide, renderStats,
+      resultProvenance, formatCheckerGuide, renderStats, renderRecommendations,
       importAccounting: function () { return lastImportAccounting; },
       setCurrent: function (id) { currentFindingId = id; } };
     ${bootstrap ? "" : "return;"}
@@ -136,7 +139,27 @@ ${seam}`), context, { filename: scriptPath });
   return { api: window.testApi, element, storage, downloads, documentListeners,
     select: (selector, values) => selections.set(selector, values),
     active: () => activeElement, copiedText,
-    useTableRendering: () => { window.renderTableForTest = true; } };
+    useTableRendering: () => { window.renderTableForTest = true; },
+    useRecommendationRendering: () => {
+      window.renderRecommendationsForTest = true;
+      element("recommendationLimit").value = "10";
+      const list = element("recommendations");
+      list.scrollTop = 0;
+      // Model the DOM's removal of descendants and an empty scroll area's
+      // offset clamping. This tests our restoration, not browser layout.
+      Object.defineProperty(list, "textContent", {
+        get() { return ""; },
+        set() {
+          function disconnect(node) {
+            node.isConnected = false;
+            node.children.forEach(disconnect);
+          }
+          this.children.forEach(disconnect);
+          this.children = [];
+          this.scrollTop = 0;
+        },
+      });
+    } };
 }
 
 test("ready prompt and empty guide stay input-neutral while preserving the parser contract", async () => {
@@ -922,4 +945,91 @@ test("each table detail button has an accessible name identifying its finding", 
   const row = dashboard.element("findingsBody").children[0];
   const detail = row.children[row.children.length - 1].children[0];
   assert.match(detail.getAttribute("aria-label") || "", /F-001/);
+});
+
+test("recommendation limits keep all eligible rows and exclude verified or deferred findings", () => {
+  const dashboard = loadDashboard({ findingCount: 23, fileItems: {
+    "F-001": item("verified", "fix"), "F-002": item("deferred"),
+  } });
+  dashboard.useRecommendationRendering();
+  dashboard.api.bindEvents();
+  const list = dashboard.element("recommendations");
+  for (const [limit, count, lastId] of [["5", 5, "F-007"], ["10", 10, "F-012"], ["20", 20, "F-022"], ["all", 21, "F-023"]]) {
+    dashboard.element("recommendationLimit").value = limit;
+    dashboard.element("recommendationLimit").listeners.input();
+    assert.equal(list.children.length, count);
+    assert.equal(list.children[0].children.at(-1).dataset.findingId, "F-003");
+    assert.equal(list.children.at(-1).children.at(-1).dataset.findingId, lastId);
+  }
+  assert.equal(dashboard.storage.size, 0, "changing display limits must not save workflow state");
+});
+
+test("unrelated table filtering and sorting preserve the recommendation scroll offset", () => {
+  for (const action of ["filter", "sort"]) {
+    const dashboard = loadDashboard({ findingCount: 50 });
+    dashboard.useRecommendationRendering();
+    dashboard.element("recommendationLimit").value = "all";
+    const sort = dashboard.element("sort-sequence");
+    sort.dataset.sort = "sequence";
+    dashboard.select(".sort-button", [sort]);
+    dashboard.api.bindEvents();
+    dashboard.api.renderRecommendations();
+    const list = dashboard.element("recommendations");
+    list.scrollTop = 640;
+    if (action === "filter") {
+      dashboard.element("checkerFilter").value = "OTHER";
+      dashboard.element("checkerFilter").listeners.input();
+    } else sort.listeners.click();
+    assert.equal(list.scrollTop, 640, action + " must not move the independent recommendation list");
+    assert.equal(list.children.length, 50);
+  }
+});
+
+test("changing recommendation count resets only its scroll while keeping table filters and page", () => {
+  const dashboard = loadDashboard({ findingCount: 205 });
+  dashboard.useRecommendationRendering();
+  dashboard.useTableRendering();
+  dashboard.element("recommendationLimit").value = "all";
+  dashboard.element("pageSize").value = "100";
+  dashboard.api.bindEvents();
+  dashboard.element("nextPage").listeners.click();
+  dashboard.element("checkerFilter").value = "KEEP";
+  dashboard.element("recommendations").scrollTop = 920;
+  dashboard.element("recommendationLimit").value = "20";
+  dashboard.element("recommendationLimit").listeners.input();
+  assert.equal(dashboard.element("recommendations").scrollTop, 0);
+  assert.equal(dashboard.element("recommendations").children.length, 20);
+  assert.equal(dashboard.element("checkerFilter").value, "KEEP");
+  assert.equal(dashboard.element("pageInfo").textContent, "101–200 / 205건");
+});
+
+test("recommendation detail round trip restores its button and scroll after a state rerender", () => {
+  const dashboard = loadDashboard({ findingCount: 50 });
+  dashboard.useRecommendationRendering();
+  dashboard.element("recommendationLimit").value = "all";
+  dashboard.api.renderRecommendations();
+  const list = dashboard.element("recommendations");
+  list.scrollTop = 640;
+  const trigger = list.children[12].children.at(-1);
+  trigger.focus();
+  dashboard.api.openDetail("F-013");
+  dashboard.api.updateState("F-013", { workflowStatus: "analyzed" });
+  const buttons = list.children.map((row) => row.children.at(-1));
+  dashboard.select("button[data-finding-id]", buttons);
+  dashboard.api.closeDetail();
+  assert.equal(dashboard.active(), buttons[12]);
+  assert.equal(dashboard.active().dataset.findingId, "F-013");
+  assert.equal(list.scrollTop, 640);
+});
+
+test("an empty recommendation list resets scrolling and shows the empty explanation", () => {
+  const dashboard = loadDashboard();
+  dashboard.useRecommendationRendering();
+  dashboard.api.renderRecommendations();
+  const list = dashboard.element("recommendations");
+  list.scrollTop = 20;
+  dashboard.api.updateState("F-001", { workflowStatus: "deferred" });
+  assert.equal(list.scrollTop, 0);
+  assert.equal(list.children.length, 1);
+  assert.match(list.children[0].textContent, /추천할 진행 대상이 없습니다/);
 });

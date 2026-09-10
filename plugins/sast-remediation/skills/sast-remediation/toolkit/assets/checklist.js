@@ -690,11 +690,13 @@
     if (limitValue !== "all") candidates = candidates.slice(0, Number(limitValue));
 
     var container = byId("recommendations");
+    var scrollTop = container.scrollTop;
     container.textContent = "";
     if (!candidates.length) {
       var empty = document.createElement("p");
       empty.textContent = "추천할 진행 대상이 없습니다. 검출 항목이 없거나 모든 항목이 검증 완료·보류 상태인지 확인하세요.";
       container.appendChild(empty);
+      container.scrollTop = 0;
       return;
     }
     candidates.forEach(function (item) {
@@ -724,6 +726,9 @@
       row.appendChild(button);
       container.appendChild(row);
     });
+    // Rebuilding rows must not move this independent list on table filtering
+    // or detail updates. The browser clamps the offset if the list gets shorter.
+    container.scrollTop = scrollTop;
   }
 
   function appendCell(row, content, className) {
@@ -1519,6 +1524,7 @@
     ["search", "checkerFilter", "riskFilter", "workflowFilter", "conclusionFilter", "mappingFilter", "languageFilter", "recommendationLimit"].forEach(function (id) {
       byId(id).addEventListener("input", function () {
         if (id !== "recommendationLimit") { dashboardFilter = "all"; pageIndex = 0; }
+        else byId("recommendations").scrollTop = 0;
         if (id === "search") {
           if (searchTimer) clearTimeout(searchTimer);
           searchTimer = setTimeout(render, 150);
