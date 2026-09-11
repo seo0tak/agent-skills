@@ -38,11 +38,15 @@
    필요하면 --fields id,risk.level,checker.code,location,progress로 범위를 줄입니다.
 2. 현재 소스와 선택 보고서의 검출 코드를 대조합니다. 항목별
    security-guides/<ID>.json에 분석·영향 범위·검증 계획을 먼저 작성합니다.
+   `../docs/DETERMINATION_GUIDE.md`에 따라 규칙 적용성, 실제 영향,
+   안전 전제·미확인과 조치 필요성(`필수/예방/없음/미정`)을 기존 필드에
+   구분해 기록합니다. 결론과 workflowStatus는 독립적으로 정합니다.
    탐색은 SECURITY_SAST_WORKFLOW.md의 「소스 탐색 계약」을 따릅니다. 공통 API나
    함수 이름·시그니처 변경 전에는 의미 참조와 동적 연결을 함께 확인하며,
    실패·오래된 인덱스·참조 0건을 영향 없음의 증거로 사용하지 않습니다.
    같은 원인의 다른 항목은 groupGuideRef, summary, delta를 쓸 수 있지만,
-   실제 차이가 큰 항목에는 전체 가이드를 작성합니다.
+   실제 차이가 큰 항목에는 전체 가이드를 작성합니다. 경량 가이드도 각 멤버의
+   핵심 호출자·입력 타입·설정·안전 전제와 잔존 동적 경로를 확인합니다.
 3. 수정 직전에 체크포인트를 저장합니다.
    python3 tools/sast_state.py checkpoint --id <ID> --phase before-edit
      --path <프로젝트 루트 기준 파일> --note "<현재 판단>"
@@ -55,6 +59,9 @@
    있을 때만 baseline-default로 기록해 관찰 수단을 추가합니다.
    답변이나 변경 권한이 없으면 deferred로 두고 재개 조건만 기록합니다.
    비밀값을 로그에 남기지 않고 로그 양·성능·운영 영향도 확인합니다.
+   실제 사용자 제어 값이 위험한 사용처에 원문으로 도달하면 실제 조치 검토
+   대상으로 다룹니다. 진짜 오탐의 예방 변경은 선택 사항이며, 스캐너만 만족시키는
+   무의미한 변경을 강제하거나 예방 변경 때문에 오탐 결론을 바꾸지 않습니다.
 5. 수정 후 checkpoint --phase after-edit로 현재 판단과 다음 작업을 저장합니다.
    사용할 수 있고 최신 파일을 반영해 정상 응답하면 변경 파일과 관련 범위의 LSP 진단을
    확인하고 이번 변경으로 생긴 오류와 기존 오류를 구분합니다. 사용할 수 없거나
@@ -72,7 +79,11 @@
    verification.method, commands, results, limitations와 실제 verifiedAt을
    결과에 남깁니다. 필요하고 사용 가능한 경우 변경 파일의 SAST 재검사도 합니다.
    도구 부재·실패·부분 검증을 passed로 바꾸지 않습니다.
-7. security-results/<ID>.json을 작성합니다. 검증 통과 근거가 있는 항목만
+7. security-results/<ID>.json을 작성합니다. `작업 상태:` 응답 라벨에는
+   실제 수준만 기록합니다. 새로 파싱하는 응답에서 누락 시 `analyzed`이며,
+   기존 JSON의 유효한 상태는 보존합니다. `fix`에서 `change-complete`를,
+   자연어에서 `verified`를 추론하지 않습니다.
+   검증 통과 근거가 있는 항목만
    verified 후보로 두고 다음 명령으로 검증 근거와 소스를 연결합니다.
    python3 tools/sast_state.py seal-verification --id <ID>
    이 명령은 테스트를 실행하거나 상태를 승격하지 않습니다. 스냅샷 이후

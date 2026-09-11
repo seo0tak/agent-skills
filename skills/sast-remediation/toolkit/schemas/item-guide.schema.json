@@ -40,7 +40,8 @@
       "type": "string"
     },
     "applicability": {
-      "type": "string"
+      "type": "string",
+      "description": "원래 규칙의 검출 조건·적용 범위와 현재 항목의 충족/불충족/미확인 근거. 피해가 작거나 미재현이라는 사실만으로 불충족으로 쓰지 않는다."
     },
     "steps": {
       "type": "array",
@@ -109,7 +110,7 @@
     },
     "groupGuideRef": {
       "type": "string",
-      "description": "그룹 대표 가이드의 검출 ID. 항목별 가이드의 기본 필수 필드는 유지한다. 대표 가이드와의 차이는 summary에 요약하고 필요한 경우 delta에 추가로 기록할 수 있다."
+      "description": "그룹 대표 가이드의 검출 ID. 기본 필수 필드를 유지하며, 이 항목의 호출부·타입·설정 등 핵심 전제와 대표의 차이를 summary에 기록하고 필요한 경우 delta에 추가한다. 참조만으로 같은 결론을 확정하지 않는다."
     },
     "delta": {
       "type": "array",

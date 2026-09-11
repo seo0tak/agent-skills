@@ -33,6 +33,7 @@
       "minimum": 1
     },
     "workflowStatus": {
+      "description": "실제로 도달한 작업 단계. conclusion과 독립적이며, 수정 제안만으로 change-complete 또는 verified가 되지 않는다.",
       "enum": [
         "todo",
         "in-progress",
@@ -43,6 +44,7 @@
       ]
     },
     "conclusion": {
+      "description": "검출 항목의 처리 결론. 규칙 적용 여부·현재 영향·조치 필요성의 근거는 reason에 기록한다. false-positive와 예방 수정 완료는 함께 기록할 수 있다.",
       "enum": [
         "unreviewed",
         "fix",
@@ -53,7 +55,8 @@
       ]
     },
     "reason": {
-      "type": "string"
+      "type": "string",
+      "description": "검출 규칙·출처와 적용 여부, 현재 소스·호출부 근거, 조치 필요성(필수/예방/불필요/판단 보류)을 구분해 설명한다. 이 문자열의 구조 검사는 의미 판정의 정당성을 보장하지 않는다."
     },
     "resultFiles": {
       "type": "array",
@@ -62,7 +65,8 @@
       }
     },
     "resultSummary": {
-      "type": "string"
+      "type": "string",
+      "description": "실제로 적용한 내용. 제안·예정·미변경과 완료한 수정을 구분하고, 예방 수정이면 목적과 승인 범위를 설명한다."
     },
     "resultCodeDiff": {
       "type": "string"
@@ -72,6 +76,7 @@
     },
     "impact": {
       "type": "array",
+      "description": "현재 영향, 안전 판단이 의존하는 호출부·타입·설정 등 전제와 미확인 범위. 변경 영향도 함께 구분해 기록한다.",
       "items": {
         "type": "string"
       }
@@ -154,7 +159,8 @@
       "uniqueItems": true
     },
     "evidenceNote": {
-      "type": "string"
+      "type": "string",
+      "description": "제출 검토용 요약: 결론 근거·현재 안전 조건·실제 조치·남은 확인 및 재검토 조건. 승인·검증을 수행하지 않았다면 완료한 것으로 표현하지 않는다."
     },
     "updatedAt": {
       "type": "string",

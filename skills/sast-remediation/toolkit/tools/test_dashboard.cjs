@@ -1,6 +1,8 @@
 /* Run with: node --test tools/test_dashboard.cjs (Node.js built-ins only). */
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
@@ -162,19 +164,15 @@ ${seam}`), context, { filename: scriptPath });
     } };
 }
 
-test("ready prompt and empty guide stay input-neutral while preserving the parser contract", async () => {
+test("copying a ready prompt preserves the fixed parser labels without changing state", async () => {
   const dashboard = loadDashboard({ bootstrap: true });
   dashboard.api.setCurrent("F-001");
   await dashboard.element("copyTaskPrompt").listeners.click();
 
   assert.match(dashboard.element("readinessMessage").textContent, /선택한 입력 자료/);
-  assert.match(dashboard.api.formatCheckerGuide(null), /PDF를 사용하지 않은 입력에서는 비어 있을 수 있습니다/);
   const prompt = dashboard.copiedText[0];
-  assert.match(prompt, /제공된 체커 공통 가이드가 있으면/);
-  assert.doesNotMatch(prompt, /PDF 체커 가이드/);
-  assert.match(prompt, /라벨과 콜론은 결과 추출에 사용하므로 그대로 유지/);
   for (const label of [
-    "조치 결론:", "판단 이유:", "실제 변경 파일/위치:", "적용 내용:",
+    "조치 결론:", "작업 상태:", "판단 이유:", "실제 변경 파일/위치:", "적용 내용:",
     "기존/수정 코드 비교:", "공통 가이드 부합 여부:", "영향 범위:", "검증:",
     "중복 처리 항목:", "체크리스트 비고 문구:",
   ]) assert.ok(prompt.includes(label), `missing fixed parser label: ${label}`);
@@ -272,7 +270,7 @@ test("dynamic stat filter names include the displayed count", () => {
   assert.equal(button.getAttribute("aria-label"), "높음 3개로 목록 필터링");
 });
 
-test("a parsed full result survives reload and exports the exact diff bytes", () => {
+test("a proposed fix defaults to analyzed and survives reload with its exact diff bytes", () => {
   const storage = new Map();
   const first = loadDashboard({ storage });
   first.api.setCurrent("F-001");
@@ -282,7 +280,7 @@ test("a parsed full result survives reload and exports the exact diff bytes", ()
   const next = loadDashboard({ storage });
   next.api.setCurrent("F-001");
   next.api.exportCurrentResult();
-  assert.equal(next.api.stateFor("F-001").workflowStatus, "change-complete");
+  assert.equal(next.api.stateFor("F-001").workflowStatus, "analyzed");
   assert.equal(next.downloads[0].data.resultCodeDiff, "- old();\n+ checked();\n");
 });
 
@@ -790,6 +788,263 @@ test("an outer answer fence is removed without removing its inner diff fence con
     assert.equal(dashboard.downloads[0].data.conclusion, "fix");
     assert.equal(dashboard.downloads[0].data.resultCodeDiff, code);
     assert.deepEqual(dashboard.downloads[0].data.verification.results, ["확인"]);
+  }
+});
+
+test("an explicit workflow status records completed preventive work independently from a false-positive conclusion", () => {
+  for (const [statusText, expected] of [["change-complete", "change-complete"], ["변경 완료", "change-complete"]]) {
+    const dashboard = loadDashboard();
+    dashboard.api.setCurrent("F-001");
+    dashboard.element("answerInput").value = [
+      "조치 결론: 오탐",
+      "작업 상태: " + statusText,
+      "판단 이유: 보고된 취약 경로는 없지만 예방적 경계 검사를 추가함",
+      "적용 내용: 예방적 보강",
+      "검증: 아직 실행하지 않음",
+    ].join("\n");
+    dashboard.api.parseAnswer();
+    dashboard.api.exportCurrentResult();
+    assert.equal(dashboard.api.stateFor("F-001").workflowStatus, expected);
+    assert.equal(dashboard.downloads[0].data.workflowStatus, expected);
+    assert.equal(dashboard.downloads[0].data.conclusion, "false-positive");
+  }
+});
+
+test("explicit change-complete without an applied summary cannot replace an existing detailed result", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.setCurrent("F-001");
+  dashboard.element("answerInput").value = [
+    "조치 결론: 수정",
+    "판단 이유: 현재 경계 검사가 누락됨",
+    "적용 내용: 입력 길이 검사 추가",
+    "기존/수정 코드 비교:",
+    "- old();",
+    "+ checked();",
+    "체크리스트 비고 문구: 현재 소스에서 변경을 확인",
+  ].join("\n");
+  dashboard.api.parseAnswer();
+  dashboard.api.exportCurrentResult();
+  const resultBefore = dashboard.downloads[0].data;
+  const stateBefore = { ...dashboard.api.stateFor("F-001") };
+  const storageBefore = Array.from(dashboard.storage.entries());
+
+  dashboard.element("answerInput").value = "조치 결론: 수정\n작업 상태: change-complete\n판단 이유: 수정할 예정";
+  dashboard.api.parseAnswer();
+  dashboard.api.exportCurrentResult();
+
+  assert.deepEqual(dashboard.downloads[1].data, resultBefore);
+  assert.deepEqual({ ...dashboard.api.stateFor("F-001") }, stateBefore);
+  assert.deepEqual(Array.from(dashboard.storage.entries()), storageBefore);
+  assert.match(dashboard.element("answerMessage").textContent, /변경 완료.*실제 적용 내용/);
+  assert.equal(dashboard.element("answerMessage").classList.contains("warning"), true);
+});
+
+test("an operational change can be change-complete with a summary and no code files or diff", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.setCurrent("F-001");
+  dashboard.element("answerInput").value = [
+    "조치 결론: 운영 설정",
+    "작업 상태: 변경 완료",
+    "판단 이유: 배포 경계의 인코딩 정책을 적용함",
+    "적용 내용: 관리 콘솔에서 출력 인코딩 정책을 활성화함",
+    "체크리스트 비고 문구: 운영 설정 반영 기록을 대조",
+  ].join("\n");
+  dashboard.api.parseAnswer();
+  dashboard.api.exportCurrentResult();
+  const parsed = dashboard.downloads[0].data;
+  assert.equal(parsed.workflowStatus, "change-complete");
+  assert.equal(parsed.conclusion, "operations");
+  assert.equal(parsed.resultSummary, "관리 콘솔에서 출력 인코딩 정책을 활성화함");
+  assert.deepEqual(parsed.resultFiles, []);
+  assert.equal(parsed.resultCodeDiff, "");
+});
+
+test("exact enum and legacy Korean conclusion aliases are accepted without substring inference", () => {
+  for (const [answerLabel, expected] of [
+    ["false-positive", "false-positive"], ["운영", "operations"],
+    ["예외", "exception"], ["보류", "needs-review"],
+  ]) {
+    const dashboard = loadDashboard();
+    dashboard.api.setCurrent("F-001");
+    dashboard.element("answerInput").value = "조치 결론: " + answerLabel + "\n판단 이유: 호출부 제약을 확인함";
+    dashboard.api.parseAnswer();
+    dashboard.api.exportCurrentResult();
+    assert.equal(dashboard.downloads[0].data.conclusion, expected);
+    assert.equal(dashboard.downloads[0].data.workflowStatus, "analyzed");
+  }
+});
+
+test("a present but blank optional workflow label defaults to analyzed", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.setCurrent("F-001");
+  dashboard.element("answerInput").value = "조치 결론: 수정\n작업 상태:\n판단 이유: 수정 필요 여부만 분석함";
+  dashboard.api.parseAnswer();
+  dashboard.api.exportCurrentResult();
+  assert.equal(dashboard.downloads[0].data.workflowStatus, "analyzed");
+  assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "analyzed");
+});
+
+test("Python sync, validate and query preserve the parser's independent conclusion and workflow status", (t) => {
+  const cases = [
+    {
+      answer: "조치 결론: 오탐\n작업 상태: 변경 완료\n판단 이유: 취약 경로는 없고 예방적 검사를 추가함\n적용 내용: 예방적 보강\n체크리스트 비고 문구: 현재 소스에서 취약 경로가 없음을 확인",
+      workflowStatus: "change-complete",
+      conclusion: "false-positive",
+    },
+    {
+      answer: "조치 결론: 수정\n판단 이유: 수정이 제안되었고 아직 적용하지 않음\n체크리스트 비고 문구: 수정 적용 전 현재 위험을 확인",
+      workflowStatus: "analyzed",
+      conclusion: "fix",
+    },
+  ];
+  const records = cases.map(({ answer }) => {
+    const dashboard = loadDashboard();
+    dashboard.api.setCurrent("F-001");
+    dashboard.element("answerInput").value = answer;
+    dashboard.api.parseAnswer();
+    dashboard.api.exportCurrentResult();
+    return dashboard.downloads[0].data;
+  });
+
+  const toolkitRoot = path.resolve(__dirname, "..");
+  const temporaryParent = fs.mkdtempSync(path.join(os.tmpdir(), "sast-dashboard-consumer-"));
+  const temporaryToolkit = path.join(temporaryParent, "toolkit");
+  t.after(() => fs.rmSync(temporaryParent, { recursive: true, force: true }));
+  fs.cpSync(toolkitRoot, temporaryToolkit, {
+    recursive: true,
+    filter(sourcePath) {
+      const name = path.basename(sourcePath);
+      return !["input", "__pycache__", ".git", ".sast-write.lock"].includes(name) && !name.endsWith(".pyc");
+    },
+  });
+  for (const name of ["findings", "progress", "project-profile", "checker-guides", "decisions"]) {
+    fs.copyFileSync(path.join(temporaryToolkit, "examples", name + ".json"), path.join(temporaryToolkit, "data", name + ".json"));
+  }
+  fs.copyFileSync(
+    path.join(temporaryToolkit, "examples", "item-guide.json"),
+    path.join(temporaryToolkit, "security-guides", "SAMPLE-001.json"),
+  );
+  const pythonEnv = { ...process.env, PYTHONDONTWRITEBYTECODE: "1" };
+  const runToolkit = (...args) => childProcess.execFileSync(
+    "python3", ["-B", "tools/sast_toolkit.py", ...args],
+    { cwd: temporaryToolkit, env: pythonEnv, encoding: "utf8" },
+  );
+
+  cases.forEach((expected, index) => {
+    const record = { ...records[index], id: "SAMPLE-001", sequence: 1 };
+    fs.writeFileSync(
+      path.join(temporaryToolkit, "security-results", "SAMPLE-001.json"),
+      JSON.stringify(record, null, 2) + "\n",
+    );
+    const progressPath = path.join(temporaryToolkit, "data", "progress.json");
+    const progress = JSON.parse(fs.readFileSync(progressPath, "utf8"));
+    progress.updatedAt = record.updatedAt;
+    progress.items["SAMPLE-001"] = {
+      workflowStatus: record.workflowStatus,
+      conclusion: record.conclusion,
+      note: record.evidenceNote || record.reason,
+      updatedAt: record.updatedAt,
+    };
+    fs.writeFileSync(progressPath, JSON.stringify(progress, null, 2) + "\n");
+
+    runToolkit("sync");
+    runToolkit("validate");
+    const rows = JSON.parse(runToolkit(
+      "query", "--ids", "SAMPLE-001", "--status", expected.workflowStatus,
+      "--conclusion", expected.conclusion, "--fields", "id,progress.workflowStatus,progress.conclusion",
+    ));
+    assert.deepEqual(rows, [{
+      id: "SAMPLE-001",
+      "progress.workflowStatus": expected.workflowStatus,
+      "progress.conclusion": expected.conclusion,
+    }]);
+  });
+});
+
+test("an incomplete status-only answer is rejected and preserves the existing detailed draft", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.setCurrent("F-001");
+  dashboard.element("answerInput").value = [
+    "조치 결론: 수정",
+    "판단 이유: 경계 검사가 필요함",
+    "실제 변경 파일/위치: src/example.c:10",
+    "적용 내용: 길이 검사 추가",
+    "기존/수정 코드 비교:",
+    "- old();",
+    "+ checked();",
+    "검증: 테스트는 아직 실행하지 않음",
+    "체크리스트 비고 문구: 현재 소스에서 재확인",
+  ].join("\n");
+  dashboard.api.parseAnswer();
+  dashboard.api.exportCurrentResult();
+  const before = dashboard.downloads[0].data;
+  const storedBefore = Array.from(dashboard.storage.entries());
+  const stateBefore = { ...dashboard.api.stateFor("F-001") };
+
+  dashboard.element("answerInput").value = "조치 결론: 수정\n작업 상태: 변경 완료\n판단 이유:\n적용 내용:\n검증: 아직 실행하지 않음";
+  dashboard.api.parseAnswer();
+  dashboard.api.exportCurrentResult();
+
+  assert.deepEqual({ ...dashboard.api.stateFor("F-001") }, stateBefore);
+  assert.deepEqual(dashboard.downloads[1].data, before);
+  assert.deepEqual(Array.from(dashboard.storage.entries()), storedBefore);
+  assert.match(dashboard.element("answerMessage").textContent, /실제 적용 내용|상세|전체|근거/);
+  assert.equal(dashboard.element("answerMessage").classList.contains("warning"), true);
+});
+
+test("verified answer text cannot bypass canonical verification", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.setCurrent("F-001");
+  const before = { ...dashboard.api.stateFor("F-001") };
+  dashboard.element("answerInput").value = "조치 결론: 수정\n작업 상태: 검증 완료\n검증: 모든 테스트 통과";
+  dashboard.api.parseAnswer();
+  assert.deepEqual({ ...dashboard.api.stateFor("F-001") }, before);
+  assert.equal(dashboard.storage.size, 0);
+  assert.match(dashboard.element("answerMessage").textContent, /검증|작업 상태/);
+  assert.equal(dashboard.element("answerMessage").classList.contains("warning"), true);
+});
+
+test("invalid workflow text is rejected instead of silently falling back", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.setCurrent("F-001");
+  dashboard.element("answerInput").value = "조치 결론: 수정\n작업 상태: 거의 완료";
+  dashboard.api.parseAnswer();
+  assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "todo");
+  assert.equal(dashboard.storage.size, 0);
+  assert.match(dashboard.element("answerMessage").textContent, /작업 상태/);
+  assert.equal(dashboard.element("answerMessage").classList.contains("warning"), true);
+});
+
+test("negated, conflicting or inherited-property conclusion text is rejected without throwing", () => {
+  for (const answer of [
+    "조치 결론: 오탐 아님", "조치 결론: 오탐 또는 수정", "조치 결론: 수정하지 않음",
+    "조치 결론: constructor", "조치 결론: toString", "조치 결론: __proto__",
+  ]) {
+    const dashboard = loadDashboard();
+    dashboard.api.setCurrent("F-001");
+    const before = { ...dashboard.api.stateFor("F-001") };
+    dashboard.element("answerInput").value = answer;
+    assert.doesNotThrow(() => dashboard.api.parseAnswer());
+    assert.deepEqual({ ...dashboard.api.stateFor("F-001") }, before);
+    assert.equal(dashboard.storage.size, 0);
+    assert.match(dashboard.element("answerMessage").textContent, /결론|형식/);
+    assert.equal(dashboard.element("answerMessage").classList.contains("warning"), true);
+  }
+});
+
+test("duplicate conclusion or workflow labels are rejected even when the first value is valid", () => {
+  for (const answer of [
+    "조치 결론: 오탐\n조치 결론: 수정\n판단 이유: 서로 충돌함",
+    "조치 결론: 수정\n작업 상태: analyzed\n작업 상태: change-complete\n판단 이유: 서로 충돌함",
+  ]) {
+    const dashboard = loadDashboard();
+    dashboard.api.setCurrent("F-001");
+    dashboard.element("answerInput").value = answer;
+    dashboard.api.parseAnswer();
+    assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "todo");
+    assert.equal(dashboard.storage.size, 0);
+    assert.match(dashboard.element("answerMessage").textContent, /중복|하나/);
+    assert.equal(dashboard.element("answerMessage").classList.contains("warning"), true);
   }
 });
 

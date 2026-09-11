@@ -1192,17 +1192,18 @@
       "현재 조치 결론: " + CONCLUSION[itemState.conclusion],
       "",
       "요청:",
-      "1. 현재 소스와 호출부를 확인하고 보고서 검출 코드가 실제로 존재하는지 다시 대조합니다.",
-      "2. 제공된 체커 공통 가이드가 있으면 공통 참고자료로만 보고, 실제 타입과 코드 흐름에 맞는지 검토합니다.",
-      "3. 수정, 오탐, 운영 설정, 예외 처리, 추가 검토 중 하나로 결론을 남깁니다.",
-      "4. 수정한다면 운영 동작을 유지하는 최소 변경을 적용하고, 현재 요청에서 승인된 범위의 검증을 실행합니다.",
-      "5. 같은 원인으로 함께 처리할 수 있는 항목과 충돌 파일을 확인합니다.",
-      "6. 프로젝트 정책으로 확정되지 않은 중요한 결정은 임의로 정하지 말고 질문 하나를 남깁니다.",
-      "7. security-results/" + item.id + ".json과 data/progress.json을 갱신합니다.",
+      "1. 체커 규칙이 이 항목에 적용되는지 먼저 판단합니다.",
+      "2. 현재 소스와 호출부의 근거로 실제 위험이 남아 있는지 확인합니다.",
+      "3. 체커 공통 가이드는 참고자료로만 사용하고 실제 타입과 코드 흐름에 맞는지 검토합니다.",
+      "4. 필수 수정, 예방적 보강, 변경 불필요, 아직 불명확 중 무엇인지 구분해 결론과 작업 상태를 각각 기록합니다.",
+      "5. 현재 요청에서 승인된 범위 안에서만 최소 변경과 검증을 수행합니다.",
+      "6. 같은 원인의 항목별 차이와 충돌 파일을 확인하고, 미확정 정책은 임의로 정하지 말고 질문 하나를 남깁니다.",
+      "7. security-results/" + item.id + ".json과 data/progress.json을 갱신합니다. 세부 절차와 정본 반영은 워크플로 문서를 따릅니다.",
       "",
-      "아래 라벨과 콜론은 결과 추출에 사용하므로 그대로 유지하세요. 설명란에는 확인하지 못한 내용과 사유를 적으세요. 조치 결론과 검증 상태는 정해진 값 중 실제 근거에 맞는 값으로 기록하고, 코드 비교·파일 경로처럼 원문 보존이 필요한 항목에는 임의의 placeholder를 넣지 마세요.",
+      "아래 라벨과 콜론은 결과 추출에 사용하므로 그대로 유지하세요. 조치 결론은 fix/false-positive/operations/exception/needs-review 또는 화면의 정확한 한국어 값으로 기록하세요. 작업 상태는 선택 사항이며 verified/검증 완료를 제외한 작업 상태 enum 또는 화면의 정확한 한국어 값만 사용하세요. 생략하면 분석 완료로 기록됩니다. 확인하지 못한 내용과 사유를 밝히고, 원문 보존 필드에는 placeholder를 넣지 마세요.",
       "응답 형식:",
       "조치 결론:",
+      "작업 상태:",
       "판단 이유:",
       "실제 변경 파일/위치:",
       "적용 내용:",
@@ -1256,6 +1257,12 @@
     return asString(text).replace(/```[a-zA-Z0-9_-]*/g, "").replace(/```/g, "").replace(/^\s*[-*]\s?/gm, "").trim();
   }
 
+  var ANSWER_LABELS = [
+    "조치 결론", "작업 상태", "판단 이유", "실제 변경 파일/위치", "적용 내용",
+    "기존/수정 코드 비교", "공통 가이드 부합 여부", "영향 범위", "검증",
+    "중복 처리 항목", "체크리스트 비고 문구"
+  ];
+
   function unwrapOuterFence(value) {
     var opening = value.match(/^[ \t\r\n]*(`{3,}|~{3,})[^\r\n]*\r?\n/);
     var closing = value.match(/(?:^|\n)[ \t]*(`{3,}|~{3,})[ \t]*(?:\r?\n[ \t]*)*$/);
@@ -1267,12 +1274,7 @@
   }
 
   function extractSection(text, label) {
-    var labels = [
-      "조치 결론", "판단 이유", "실제 변경 파일/위치", "적용 내용",
-      "기존/수정 코드 비교", "공통 가이드 부합 여부", "영향 범위", "검증",
-      "중복 처리 항목", "체크리스트 비고 문구"
-    ];
-    var escaped = labels.map(function (value) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|");
+    var escaped = ANSWER_LABELS.map(function (value) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|");
     var expression = new RegExp("^[ \\t]*[-*]?[ \\t]*(" + escaped + ")[ \\t]*:[ \\t]*(.*)$");
     // Entire answers are sometimes copied as one text/Markdown code block.
     // Unwrap that outer container before treating inner code fences as code.
@@ -1306,14 +1308,39 @@
     return cleanSection(value.replace(/\r\n/g, "\n"));
   }
 
+  function countSectionLabels(text, label) {
+    var escaped = ANSWER_LABELS.map(function (value) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|");
+    var expression = new RegExp("^[ \\t]*[-*]?[ \\t]*(" + escaped + ")[ \\t]*:");
+    var lines = unwrapOuterFence(asString(text)).split(/\r?\n/);
+    var fence = null;
+    var count = 0;
+    for (var index = 0; index < lines.length; index += 1) {
+      var marker = lines[index].match(/^[ \t]*(`{3,}|~{3,})(.*)$/);
+      var heading = fence ? null : lines[index].match(expression);
+      if (heading && heading[1] === label) count += 1;
+      if (marker) {
+        if (!fence) fence = marker[1];
+        else if (marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) fence = null;
+      }
+    }
+    return count;
+  }
+
+  function exactEnumLabel(map, text) {
+    var value = asString(text).trim();
+    var keys = Object.keys(map);
+    for (var index = 0; index < keys.length; index += 1) {
+      if (value === keys[index] || value === map[keys[index]]) return keys[index];
+    }
+    return null;
+  }
+
   function conclusionFromText(text) {
-    var value = asString(text);
-    if (value.indexOf("오탐") >= 0) return "false-positive";
-    if (value.indexOf("운영") >= 0) return "operations";
-    if (value.indexOf("예외") >= 0) return "exception";
-    if (value.indexOf("추가 검토") >= 0 || value.indexOf("보류") >= 0) return "needs-review";
-    if (value.indexOf("수정") >= 0) return "fix";
-    return "unreviewed";
+    var value = asString(text).trim();
+    var legacyAliases = { "운영": "operations", "예외": "exception", "보류": "needs-review" };
+    var conclusion = exactEnumLabel(CONCLUSION, value)
+      || (Object.prototype.hasOwnProperty.call(legacyAliases, value) ? legacyAliases[value] : null);
+    return conclusion && conclusion !== "unreviewed" ? conclusion : "unreviewed";
   }
 
   function splitLines(text) {
@@ -1332,10 +1359,45 @@
       return;
     }
     var item = findingById(currentFindingId);
+    if (countSectionLabels(raw, "조치 결론") !== 1) {
+      setMessage("answerMessage", "조치 결론 라벨은 답변에 정확히 하나만 있어야 합니다. 기존 결과는 유지됩니다.", "warning");
+      return;
+    }
     var conclusionText = extractSection(raw, "조치 결론");
     var conclusion = conclusionFromText(conclusionText);
     if (conclusion === "unreviewed") {
       setMessage("answerMessage", "조치 결론을 읽지 못했습니다. 응답 형식과 결론을 확인하세요. 기존 결과는 유지됩니다.", "warning");
+      return;
+    }
+    var workflowLabelCount = countSectionLabels(raw, "작업 상태");
+    if (workflowLabelCount > 1) {
+      setMessage("answerMessage", "작업 상태 라벨은 답변에 하나만 사용할 수 있습니다. 기존 결과는 유지됩니다.", "warning");
+      return;
+    }
+    var hasWorkflowStatus = workflowLabelCount === 1;
+    var workflowText = extractSection(raw, "작업 상태");
+    var workflowStatus = hasWorkflowStatus && workflowText ? exactEnumLabel(WORKFLOW, workflowText) : "analyzed";
+    if (hasWorkflowStatus && workflowText && !workflowStatus) {
+      setMessage("answerMessage", "작업 상태를 읽지 못했습니다. enum 또는 화면의 정확한 한국어 상태를 사용하세요. 기존 결과는 유지됩니다.", "warning");
+      return;
+    }
+    if (workflowStatus === "verified") {
+      setMessage("answerMessage", "검증 완료 상태는 답변 텍스트에서 반영할 수 없습니다. 정본 검증 절차를 완료한 뒤 반영하세요. 기존 결과는 유지됩니다.", "warning");
+      return;
+    }
+    var resultSummaryText = extractSection(raw, "적용 내용");
+    if (hasWorkflowStatus && workflowStatus === "change-complete" && !resultSummaryText.trim()) {
+      setMessage("answerMessage", "변경 완료에는 실제 적용 내용을 적어야 합니다. 기존 결과는 유지됩니다.", "warning");
+      return;
+    }
+    var detailLabels = ANSWER_LABELS.filter(function (label) {
+      return label !== "조치 결론" && label !== "작업 상태" && label !== "검증";
+    });
+    var statusOnly = hasWorkflowStatus && !detailLabels.some(function (label) {
+      return asString(extractSection(raw, label)).trim();
+    });
+    if (statusOnly) {
+      setMessage("answerMessage", "작업 상태만 있는 답변은 반영하지 않았습니다. 현재 판단 근거와 상세 결과를 포함한 전체 응답을 붙여넣으세요. 기존 결과는 유지됩니다.", "warning");
       return;
     }
     var verificationText = extractSection(raw, "검증");
@@ -1343,11 +1405,11 @@
       schemaVersion: "1.0",
       id: item.id,
       sequence: item.sequence,
-      workflowStatus: conclusion === "fix" ? "change-complete" : "analyzed",
+      workflowStatus: workflowStatus,
       conclusion: conclusion,
       reason: extractSection(raw, "판단 이유") || conclusionText,
       resultFiles: splitLines(extractSection(raw, "실제 변경 파일/위치")),
-      resultSummary: extractSection(raw, "적용 내용"),
+      resultSummary: resultSummaryText,
       resultCodeDiff: extractSection(raw, "기존/수정 코드 비교"),
       resultGuideComparison: extractSection(raw, "공통 가이드 부합 여부"),
       impact: splitLines(extractSection(raw, "영향 범위")),

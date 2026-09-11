@@ -1,6 +1,6 @@
 {
   "name": "skill-architect",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "에이전트 스킬의 설계와 품질을 근거에 따라 검토합니다. 요청 시 승인된 개선 범위와 평가·적용·재개 이력을 기록합니다.",
   "skills": "./skills"
 }
