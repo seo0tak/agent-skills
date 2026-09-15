@@ -48,6 +48,7 @@ function draft(resultValue, savedAt = DAY_3) {
 function loadDashboard({
   workspaceId = "project-A", fileItems = {}, fileResults = {}, storage = new Map(),
   reportId = "report-A", scope, findings: suppliedFindings,
+  fileActivity,
   findingCount = 1, bootstrap = false, inputStatus = "ready", scriptLoadSucceeds = false,
 } = {}) {
   const elements = new Map();
@@ -110,6 +111,7 @@ function loadDashboard({
         risk: { level: "high", label: "높음", rank: 60 },
       })),
       progress: backup(fileItems, workspaceId),
+      activity: fileActivity,
     },
     SAST_ITEM_RESULTS: fileResults,
   };
@@ -134,6 +136,8 @@ function loadDashboard({
     },
     setTimeout() {}, clearTimeout() {}, Date, Node: Object,
   });
+  const activityPath = path.join(__dirname, "../assets/activity.js");
+  if (fs.existsSync(activityPath)) vm.runInContext(fs.readFileSync(activityPath, "utf8"), context, { filename: activityPath });
   // Expose the existing closure only in this harness. Rendering requires
   // separate browser verification; this minimal DOM double checks storage,
   // merging, parser, downloads and event handlers use production logic without
@@ -152,6 +156,7 @@ function loadDashboard({
       resultProvenance, formatCheckerGuide, renderStats, renderRecommendations,
       resolveProcessingScope, scopeBucket, scopeSummary, buildTaskPrompt,
       buildScopeRequest, initializeProcessingScope, clearFilters, highRisk, renderSummary,
+      renderActivity,
       importAccounting: function () { return lastImportAccounting; },
       setCurrent: function (id) { currentFindingId = id; } };
     ${bootstrap ? "" : "return;"}
@@ -181,6 +186,178 @@ ${seam}`), context, { filename: scriptPath });
       });
     } };
 }
+
+test("two browser status changes survive reload and backup import as cumulative events", () => {
+  const first = loadDashboard();
+  first.api.updateState("F-001", { workflowStatus: "in-progress" });
+  first.api.updateState("F-001", { workflowStatus: "analyzed" });
+  const reloaded = loadDashboard({ storage: first.storage });
+  reloaded.api.exportProgress();
+  const exported = reloaded.downloads[0].data;
+  assert.equal(exported.activityEvents?.length, 2);
+  assert.equal(exported.activityEvents[0].source, "browser");
+  assert.equal(exported.activityEvents[0].before.workflowStatus, "todo");
+  assert.equal(exported.activityEvents[1].after.workflowStatus, "analyzed");
+  const restored = loadDashboard();
+  restored.api.importProgressData(exported);
+  restored.api.importProgressData(exported);
+  restored.api.exportProgress();
+  assert.equal(restored.downloads[0].data.activityEvents.length, 3);
+  assert.equal(restored.downloads[0].data.activityEvents[2].action, "browser.import");
+  assert.deepEqual(restored.downloads[0].data.activityEvents.slice(0, 2), exported.activityEvents);
+});
+
+test("unchanged state and ordinary filters do not add history", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.updateState("F-001", { workflowStatus: "analyzed" });
+  dashboard.api.updateState("F-001", { workflowStatus: "analyzed" });
+  dashboard.api.clearFilters();
+  dashboard.api.exportProgress();
+  assert.equal(dashboard.downloads[0].data.activityEvents?.length, 1);
+});
+
+test("foreign and colliding activity imports reject atomically without losing current state", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.updateState("F-001", { workflowStatus: "analyzed" });
+  dashboard.api.exportProgress();
+  const valid = dashboard.downloads[0].data;
+  assert.equal(valid.activityEvents?.length, 1);
+  const original = [...dashboard.storage.entries()];
+  for (const field of ["workspaceId", "source", "summary"]) {
+    const incoming = JSON.parse(JSON.stringify(valid));
+    incoming.activityEvents[0][field] = field === "source" ? "toolkit" : "different";
+    assert.throws(() => dashboard.api.importProgressData(incoming), /기록|이력|충돌|작업공간|차수/);
+    assert.deepEqual([...dashboard.storage.entries()], original);
+    assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "analyzed");
+  }
+});
+
+test("old-report activity survives backup restore without changing the current report", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.updateState("F-001", { workflowStatus: "analyzed" });
+  dashboard.api.exportProgress();
+  const incoming = dashboard.downloads[0].data;
+  incoming.activityEvents[0].eventId = "older-report-event";
+  incoming.activityEvents[0].reportId = "older-report";
+  dashboard.api.importProgressData(incoming);
+  dashboard.api.exportProgress();
+  assert.equal(dashboard.downloads[1].data.activityEvents.length, 2);
+  assert.equal(dashboard.downloads[1].data.activityEvents[1].reportId, "older-report");
+});
+
+test("failed browser save preserves previous stored history and exports unsaved current event", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.updateState("F-001", { workflowStatus: "analyzed" });
+  const original = [...dashboard.storage.entries()];
+  dashboard.storage.set = () => { throw new Error("quota exceeded"); };
+  dashboard.api.updateState("F-001", { workflowStatus: "change-complete" });
+  assert.deepEqual([...dashboard.storage.entries()], original);
+  assert.match(dashboard.element("localSaveStatus").textContent, /실패/);
+  dashboard.api.exportProgress();
+  assert.equal(dashboard.downloads[0].data.activityEvents?.length, 2);
+});
+
+test("a conflicting imported browser event cannot overwrite a file-journal event or save changed state", () => {
+  const first = loadDashboard();
+  first.api.updateState("F-001", { workflowStatus: "analyzed" });
+  first.api.exportProgress();
+  const backed = first.downloads[0].data;
+  const dashboard = loadDashboard({ fileActivity: { schemaVersion: "1.0", generatedAt: DAY_3,
+    events: backed.activityEvents, warnings: [] } });
+  const conflicting = JSON.parse(JSON.stringify(backed));
+  conflicting.activityEvents[0].summary = "conflicting";
+  assert.throws(() => dashboard.api.importProgressData(conflicting), /충돌/);
+  assert.equal(dashboard.storage.size, 0);
+  assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "todo");
+});
+
+test("one completed note edit creates one durable event rather than a record per keystroke", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.bindEvents();
+  dashboard.api.setCurrent("F-001");
+  dashboard.element("detailNote").value = "first character";
+  dashboard.element("detailNote").listeners.input();
+  dashboard.element("detailNote").value = "complete memo";
+  dashboard.element("detailNote").listeners.input();
+  assert.equal(dashboard.storage.size, 0);
+  dashboard.element("detailNote").listeners.change();
+  dashboard.api.exportProgress();
+  assert.equal(dashboard.downloads[0].data.activityEvents.length, 1);
+  assert.equal(dashboard.downloads[0].data.activityEvents[0].after.note, "complete memo");
+  assert.equal(dashboard.downloads[0].data.items["F-001"].note, "complete memo");
+});
+
+test("work log controls page 50 records and do not alter finding filters or create events", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.bindEvents();
+  for (let index = 0; index < 57; index++) dashboard.api.updateState("F-001", { note: "note " + index });
+  dashboard.element("search").value = "finding filter";
+  dashboard.element("activityNext").listeners.click();
+  assert.match(dashboard.element("activityPageInfo").textContent, /57건 · 2 \/ 2페이지/);
+  dashboard.element("activitySearch").value = "note 56";
+  dashboard.element("activitySearch").listeners.input();
+  assert.match(dashboard.element("activityPageInfo").textContent, /1건 · 1 \/ 1페이지/);
+  assert.equal(dashboard.element("search").value, "finding filter");
+  dashboard.api.clearFilters();
+  assert.equal(dashboard.element("activitySearch").value, "note 56");
+  dashboard.api.exportProgress();
+  assert.equal(dashboard.downloads[0].data.activityEvents.length, 57);
+});
+
+test("backup state changes are attributable to each affected item with before and after values", () => {
+  const dashboard = loadDashboard({ findingCount: 2 });
+  dashboard.api.importProgressData(backup({ "F-001": item("analyzed"), "F-002": item("deferred", "needs-review", "pending") }));
+  dashboard.api.exportProgress();
+  const records = dashboard.downloads[0].data.activityEvents;
+  assert.equal(records.length, 2);
+  assert.deepEqual(records.map(record => record.itemIds), [["F-001"], ["F-002"]]);
+  assert.equal(records[1].before.workflowStatus, "todo");
+  assert.equal(records[1].after.workflowStatus, "deferred");
+});
+
+test("successive answer drafts preserve both historical summaries through backup and reload", () => {
+  const first = loadDashboard();
+  first.api.setCurrent("F-001");
+  for (const summary of ["first fix proposal", "second fix proposal"]) {
+    first.element("answerInput").value = "조치 결론: fix\n판단 이유: reviewed\n적용 내용: " + summary;
+    first.api.parseAnswer();
+  }
+  const restored = loadDashboard({ storage: first.storage });
+  restored.api.exportProgress();
+  const payload = restored.downloads[0].data;
+  assert.equal(payload.activityEvents.length, 2);
+  assert.equal(payload.activityEvents[0].after.resultSummary, "first fix proposal");
+  assert.equal(payload.activityEvents[1].after.resultSummary, "second fix proposal");
+  assert.equal(payload.draftResults["F-001"].result.resultSummary, "second fix proposal");
+});
+
+test("sequential saves from already-open browser contexts preserve both cumulative histories", () => {
+  const storage = new Map();
+  const first = loadDashboard({ storage });
+  const second = loadDashboard({ storage });
+  first.api.updateState("F-001", { workflowStatus: "analyzed" });
+  second.api.updateState("F-001", { workflowStatus: "in-progress" });
+  const reloaded = loadDashboard({ storage });
+  reloaded.api.exportProgress();
+  assert.equal(reloaded.downloads[0].data.activityEvents.length, 2);
+  assert.deepEqual(reloaded.downloads[0].data.activityEvents.map(event => event.after.workflowStatus), ["analyzed", "in-progress"]);
+});
+
+test("activity file generation, load and newest-record metadata use concise UTC dates", () => {
+  const first = loadDashboard();
+  first.api.updateState("F-001", { workflowStatus: "analyzed" });
+  first.api.exportProgress();
+  const events = first.downloads[0].data.activityEvents;
+  events[0].recordedAt = "2026-09-15T04:29:48.224039Z";
+  const dashboard = loadDashboard({ fileActivity: { schemaVersion: "1.0", generatedAt: "2026-09-15T04:30:00.999999Z", events, warnings: [] } });
+  dashboard.api.renderActivity();
+  const text = dashboard.element("activityTimes").textContent;
+  assert.match(text, /파일 생성: 2026-09-15 04:30:00 UTC/);
+  assert.match(text, /화면 불러옴: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/);
+  assert.match(text, /최신 기록: 2026-09-15 04:29:48 UTC/);
+  assert.doesNotMatch(text, /999999|224039/);
+  assert.equal(events[0].recordedAt, "2026-09-15T04:29:48.224039Z");
+});
 
 const SCOPE_FINDINGS = [
   { id: "CRITICAL-1", sequence: 1, groupId: "WG-1", risk: { level: "critical", label: "매우 위험", rank: 1 } },

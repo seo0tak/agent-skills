@@ -2,6 +2,25 @@
   "use strict";
 
   var toolkitData = window.SAST_TOOLKIT_DATA || {};
+  var activity = window.SAST_ACTIVITY;
+  var activityLoadedAt = new Date().toISOString();
+  var fileActivity = toolkitData.activity || null;
+  var fileActivityEvents = [];
+  var activityWarnings = [];
+  var activityPage = 1;
+  var itemActivityPage = 1;
+  var pendingNote = false;
+  if (!activity) activityWarnings.push("작업 이력 기능을 읽지 못했습니다. 페이지를 다시 열고 배포 파일을 확인하세요.");
+  else if (!fileActivity) activityWarnings.push("파일 작업 이력이 아직 생성되거나 불러와지지 않았습니다. sync 후 페이지를 다시 열어 확인하세요.");
+  else {
+    try {
+      if (fileActivity.schemaVersion !== "1.0" || !Array.isArray(fileActivity.warnings)
+        || !fileActivity.warnings.every(function (value) { return typeof value === "string"; })
+        || (fileActivity.generatedAt !== null && !activity.timestamp(fileActivity.generatedAt))) throw new Error("작업 이력 화면용 파일 형식이 올바르지 않습니다.");
+      fileActivityEvents = activity.merge([], fileActivity.events);
+      activityWarnings = activityWarnings.concat(fileActivity.warnings);
+    } catch (error) { activityWarnings.push(error.message); }
+  }
   var inputValidation = toolkitData.inputValidation || { status: "unreviewed", blockers: [] };
   var profile = toolkitData.projectProfile || {};
   var findings = Array.isArray(toolkitData.findings) ? toolkitData.findings : [];
@@ -340,6 +359,10 @@
       }
     });
     if (Object.prototype.hasOwnProperty.call(data, "draftResults")) validateDraftResults(data.draftResults);
+    if (Object.prototype.hasOwnProperty.call(data, "activityEvents")) {
+      if (!activity) throw new Error("작업 이력 기능이 없어 이 백업을 안전하게 확인할 수 없습니다.");
+      activity.merge([], data.activityEvents, { workspaceId: workspaceId, browserOnly: true });
+    }
     return data;
   }
 
@@ -444,6 +467,17 @@
   var state = initialMerge.items;
   var draftResults = Object.assign({}, localProgress.draftResults || {});
   var persistedDraftResults = Object.assign({}, draftResults);
+  var activityEvents = [];
+  if (activity) {
+    try {
+      activityEvents = activity.merge(fileProgress.activityEvents || [], localProgress.activityEvents || [], { workspaceId: workspaceId, browserOnly: true });
+    } catch (error) {
+      activityEvents = localProgress.activityEvents || [];
+      activityWarnings.push(error.message + " 파일과 브라우저 원본을 보존하고 대조하세요.");
+      storageWriteBlocked = true;
+    }
+  }
+  var persistedActivityEvents = activityEvents.slice();
   var mergeConflicts = initialMerge.conflicts;
 
   function resultTime(result) {
@@ -511,31 +545,47 @@
     return normalizeStateItem(state[asString(id)]);
   }
 
-  function progressEnvelope(nextState, nextDraftResults) {
+  function progressEnvelope(nextState, nextDraftResults, nextEvents) {
     return {
       schemaVersion: "1.0",
       workspaceId: workspaceId,
       updatedAt: nowIso(),
       items: nextState,
-      draftResults: nextDraftResults
+      draftResults: nextDraftResults,
+      activityEvents: nextEvents === undefined ? activityEvents : nextEvents
     };
   }
 
-  function persistProgress(nextState, nextDraftResults, allowRecovery) {
+  function persistProgress(nextState, nextDraftResults, allowRecovery, nextEvents) {
     if (storageWriteBlocked && !allowRecovery) {
       setMessage("localSaveStatus", "읽지 못한 기존 브라우저 저장본을 원문 그대로 보호하고 있습니다. 원본을 먼저 백업한 뒤 확인한 상태+결과 백업을 불러오기 전까지 새 변경은 현재 화면에만 남습니다.", "warning");
       showToast("읽지 못한 기존 저장본을 보호하고 있습니다. 원본을 먼저 백업한 뒤 확인한 상태+결과 백업을 불러오세요.", "warning");
       return false;
     }
     try {
-      localStorage.setItem(storageKey, JSON.stringify(progressEnvelope(nextState, nextDraftResults)));
+      var requestedEvents = nextEvents === undefined ? activityEvents : nextEvents;
+      var storedEvents = [];
+      var latestRaw = localStorage.getItem(storageKey);
+      if (latestRaw !== null) {
+        try { storedEvents = validateProgressData(JSON.parse(latestRaw)).activityEvents || []; }
+        catch (error) { if (!allowRecovery) throw error; }
+      }
+      var mergedEvents = activity ? activity.merge(storedEvents, requestedEvents, { workspaceId: workspaceId, browserOnly: true }) : requestedEvents;
+      if (activity) activity.merge(fileActivityEvents, mergedEvents);
+      localStorage.setItem(storageKey, JSON.stringify(progressEnvelope(nextState, nextDraftResults, mergedEvents)));
+      if (nextEvents === undefined) activityEvents = mergedEvents;
+      else {
+        nextEvents.length = 0;
+        mergedEvents.forEach(function (event) { nextEvents.push(event); });
+      }
       if (allowRecovery) {
         storageWriteBlocked = false;
         rejectedStorageRaw = null;
         updateRejectedStorageAction();
       }
       persistedDraftResults = Object.assign({}, nextDraftResults);
-      setMessage("localSaveStatus", "진행상태와 브라우저 초안을 함께 저장했습니다. 정본 파일 반영은 아직 확인되지 않았습니다.", "success");
+      persistedActivityEvents = mergedEvents.slice();
+      setMessage("localSaveStatus", "진행상태·브라우저 초안·작업 이력을 함께 저장했습니다. 정본 파일 반영은 아직 확인되지 않았습니다.", "success");
       return true;
     } catch (error) {
       setMessage("localSaveStatus", "브라우저 저장에 실패했습니다. 이전의 완전한 저장본은 유지되며, 현재 내용은 상태+결과 백업으로 내려받으세요.", "warning");
@@ -550,9 +600,74 @@
 
   function updateState(id, patch) {
     var key = asString(id);
-    state[key] = Object.assign({}, stateFor(key), patch || {}, { updatedAt: nowIso() });
+    var before = stateFor(key);
+    var after = Object.assign({}, before, patch || {}, { updatedAt: nowIso() });
+    if (stateItemsEqual(before, after)) return false;
+    if (!activity) { showToast("작업 이력 기능을 읽지 못해 변경을 저장하지 않았습니다.", "warning"); return false; }
+    activityEvents = activity.merge(activityEvents, [activity.create({ workspaceId: workspaceId,
+      reportId: profile.report && profile.report.id, itemIds: [key],
+      action: patch && Object.prototype.hasOwnProperty.call(patch, "note") ? "browser.note" : "browser.state",
+      summary: patch && Object.prototype.hasOwnProperty.call(patch, "note") ? "브라우저 메모 변경" : "브라우저 상태·결론 변경",
+      before: before, after: after })]);
+    state[key] = after;
     saveState();
     render();
+    renderActivity();
+    return true;
+  }
+
+  function savePendingNote() {
+    if (pendingNote && currentFindingId && gateReady() && byId("detailNote")) {
+      pendingNote = false;
+      updateState(currentFindingId, { note: byId("detailNote").value });
+    }
+  }
+
+  function activityViewEvents() {
+    if (!activity) return [];
+    try { return activity.merge(fileActivityEvents, activityEvents); }
+    catch (error) {
+      setText("activityWarning", error.message + " 원본을 보존하고 파일 기록과 브라우저 백업을 대조하세요. 충돌한 이력은 합쳐 표시하지 않습니다.");
+      return [];
+    }
+  }
+
+  function renderActivity() {
+    if (!byId("activityList")) return;
+    if (!activity) {
+      setText("activityWarning", activityWarnings.join(" "));
+      setText("activityCount", "작업 이력 기능 불러오기 실패");
+      return;
+    }
+    setText("activityWarning", activityWarnings.join(" "));
+    var events = activityViewEvents();
+    var selected = activity.select(events, { search: byId("activitySearch").value,
+      mode: byId("activityMode").value, source: byId("activitySource").value,
+      from: byId("activityFrom").value, to: byId("activityTo").value, page: activityPage });
+    activityPage = selected.page;
+    var fileIds = Object.create(null), persistedIds = Object.create(null);
+    fileActivityEvents.forEach(function (event) { fileIds[event.eventId] = true; });
+    persistedActivityEvents.forEach(function (event) { persistedIds[event.eventId] = true; });
+    var options = { fileIds: fileIds, persistedIds: persistedIds, unfinishedIds: selected.unfinishedIds };
+    activity.render(document, byId("activityList"), selected.events, options);
+    setText("activityCount", "전체 " + events.length + "건 · 종료 미확인 " + selected.projection.unfinished.length
+      + "건 · 실패·차단·중단 " + selected.projection.errors.length + "건");
+    var latestEvent = activity.select(events, {}).events[0];
+    setText("activityTimes", "파일 생성: " + activity.formatTimestamp(fileActivity && fileActivity.generatedAt)
+      + " · 화면 불러옴: " + activity.formatTimestamp(activityLoadedAt) + " · 최신 기록: "
+      + (latestEvent ? activity.formatTimestamp(latestEvent.recordedAt) : "없음"));
+    setText("activityPageInfo", selected.total + "건 · " + selected.page + " / " + selected.pages + "페이지 (최대 50건)");
+    byId("activityPrev").disabled = selected.page <= 1;
+    byId("activityNext").disabled = selected.page >= selected.pages;
+    if (currentFindingId && byId("itemActivityList")) {
+      var item = activity.select(events.filter(function (event) { return event.workspaceId === workspaceId; }),
+        { itemId: currentFindingId, reportId: profile.report && profile.report.id || null, page: itemActivityPage });
+      itemActivityPage = item.page;
+      activity.render(document, byId("itemActivityList"), item.events, options);
+      setText("itemActivityPageInfo", "현재 차수 " + item.total + "건 · " + item.page + " / " + item.pages + "페이지");
+      byId("itemActivityPrev").disabled = item.page <= 1;
+      byId("itemActivityNext").disabled = item.page >= item.pages;
+    }
   }
 
   function showToast(message, kind) {
@@ -1165,7 +1280,7 @@
 
     byId("detailWorkflow").value = itemState.workflowStatus;
     byId("detailConclusion").value = itemState.conclusion;
-    byId("detailNote").value = itemState.note;
+    if (!pendingNote) byId("detailNote").value = itemState.note;
     setText("detectedCode", report.detectedCode || "검출 코드가 없습니다.");
     setText("sourceMapping", [
       "매핑 상태: " + (MAPPING[mapping.status] || MAPPING.unreviewed),
@@ -1195,9 +1310,12 @@
   function openDetail(id) {
     var item = findingById(id);
     if (!item) return;
+    savePendingNote();
     if (!currentFindingId) detailReturnFocus = document.activeElement;
     currentFindingId = asString(id);
+    itemActivityPage = 1;
     renderCurrentDetail();
+    renderActivity();
     byId("taskPrompt").classList.add("hidden");
     byId("taskPrompt").value = "";
     var taskAllowed = gateReady() && findingInAppliedScope(item);
@@ -1222,6 +1340,7 @@
 
   function closeDetail() {
     if (!currentFindingId) return;
+    savePendingNote();
     var findingId = currentFindingId;
     byId("appHeader").inert = false;
     byId("mainContent").inert = false;
@@ -1563,6 +1682,8 @@
 
   function parseAnswer() {
     if (!currentFindingId) return;
+    savePendingNote();
+    if (!activity) { setMessage("answerMessage", "작업 이력 기능이 없어 새 초안을 저장하지 않았습니다.", "warning"); return; }
     if (!gateReady()) {
       setMessage("answerMessage", "입력 검증이 완료되지 않았습니다. 상단 ‘작업 시작 조건’을 확인하세요(GATE: READY 필요).", "warning");
       return;
@@ -1647,11 +1768,19 @@
       items[item.id] = statePatchFromResult(result);
       return items;
     })(), true).items;
-    var persisted = persistProgress(nextState, nextDraftResults);
+    var nextEvents = activity.merge(activityEvents, [activity.create({ workspaceId: workspaceId,
+      reportId: profile.report && profile.report.id, itemIds: [item.id], action: "browser.draft",
+      summary: "AI 답변을 브라우저 결과 초안으로 보관", before: stateFor(item.id),
+      after: { workflowStatus: result.workflowStatus, conclusion: result.conclusion,
+        reason: result.reason, resultSummary: result.resultSummary, resultFiles: result.resultFiles,
+        verificationStatus: result.verification.status, hasCodeDiff: !!result.resultCodeDiff } })]);
+    var persisted = persistProgress(nextState, nextDraftResults, false, nextEvents);
     state = nextState;
     draftResults = nextDraftResults;
+    activityEvents = nextEvents;
     render();
     renderCurrentDetail();
+    renderActivity();
     setMessage(
       "answerMessage",
       persisted
@@ -1686,6 +1815,7 @@
   }
 
   function exportProgress() {
+    savePendingNote();
     var allItems = {};
     findings.forEach(function (item) { allItems[item.id] = stateFor(item.id); });
     var allDraftResults = {};
@@ -1718,6 +1848,9 @@
 
   function importProgressData(data) {
     var validated = validateProgressData(data);
+    if (!activity) throw new Error("작업 이력 기능이 없어 백업을 반영하지 않았습니다.");
+    var nextEvents = activity.merge(activityEvents, validated.activityEvents || [], { workspaceId: workspaceId, browserOnly: true });
+    activity.merge(fileActivityEvents, nextEvents);
     var incomingItems = validated.items;
     var known = Object.create(null);
     findings.forEach(function (item) { known[item.id] = true; });
@@ -1732,11 +1865,25 @@
     var incomingDrafts = validated.draftResults || {};
     var draftMerge = mergeDraftResults(draftResults, incomingDrafts);
     var nextDraftResults = draftMerge.draftResults;
-    if (!persistProgress(nextState, nextDraftResults, true)) {
+    var changedEvents = [];
+    findings.forEach(function (item) {
+      var before = stateFor(item.id), after = normalizeStateItem(nextState[item.id]);
+      var draftChanged = !sameResult(draftResults[item.id], nextDraftResults[item.id]);
+      if (!stateRecordsEqual(before, after) || draftChanged) {
+        changedEvents.push(activity.create({ workspaceId: workspaceId,
+          reportId: profile.report && profile.report.id, itemIds: [item.id], action: "browser.import",
+          summary: "브라우저 백업의 항목 상태·초안 대조·반영", before: before,
+          after: Object.assign({}, after, { draftChanged: draftChanged,
+            draftSummary: nextDraftResults[item.id] ? nextDraftResults[item.id].result.resultSummary : "" }) }));
+      }
+    });
+    nextEvents = activity.merge(nextEvents, changedEvents);
+    if (!persistProgress(nextState, nextDraftResults, true, nextEvents)) {
       throw new Error("브라우저 저장에 실패해 백업을 반영하지 않았습니다. 이전 저장본은 유지됩니다.");
     }
     state = nextState;
     draftResults = nextDraftResults;
+    activityEvents = nextEvents;
     lastImportAccounting = {
       statesApplied: stateMerge.outcomes.applied,
       statesUnchanged: stateMerge.outcomes.unchanged,
@@ -1747,6 +1894,7 @@
       ignoredStates: ignoredStates
     };
     render();
+    renderActivity();
     if (currentFindingId) renderCurrentDetail();
     return stateMerge.outcomes.applied;
   }
@@ -1896,16 +2044,35 @@
     document.addEventListener("keydown", handleDetailKeydown);
 
     byId("detailWorkflow").addEventListener("change", function () {
+      savePendingNote();
       if (currentFindingId && gateReady()) updateState(currentFindingId, { workflowStatus: byId("detailWorkflow").value });
     });
     byId("detailConclusion").addEventListener("change", function () {
+      savePendingNote();
       if (currentFindingId && gateReady()) updateState(currentFindingId, { conclusion: byId("detailConclusion").value });
     });
     byId("detailNote").addEventListener("input", function () {
-      if (currentFindingId && gateReady()) {
-        state[currentFindingId] = Object.assign({}, stateFor(currentFindingId), { note: byId("detailNote").value, updatedAt: nowIso() });
-        saveState();
-      }
+      pendingNote = !!currentFindingId && gateReady();
+      if (pendingNote) setMessage("localSaveStatus", "메모 입력 중입니다. 메모 저장 또는 입력란을 벗어나면 상태와 이력을 함께 저장합니다.", "warning");
+    });
+    byId("detailNote").addEventListener("change", savePendingNote);
+    byId("saveNote").addEventListener("click", savePendingNote);
+    if (typeof window.addEventListener === "function") window.addEventListener("pagehide", savePendingNote);
+
+    ["activitySearch", "activityMode", "activitySource", "activityFrom", "activityTo"].forEach(function (id) {
+      byId(id).addEventListener(id === "activitySearch" ? "input" : "change", function () { activityPage = 1; renderActivity(); });
+    });
+    byId("activityReset").addEventListener("click", function () {
+      ["activitySearch", "activityMode", "activitySource", "activityFrom", "activityTo"].forEach(function (id) { byId(id).value = ""; });
+      activityPage = 1; renderActivity();
+    });
+    [["activityPrev", -1], ["activityNext", 1], ["itemActivityPrev", -1], ["itemActivityNext", 1]].forEach(function (entry) {
+      byId(entry[0]).addEventListener("click", function () {
+        var item = entry[0].indexOf("item") === 0;
+        if (item) itemActivityPage += entry[1]; else activityPage += entry[1];
+        renderActivity();
+        byId(item ? "itemActivityList" : "activityList").scrollTop = 0;
+      });
     });
 
     byId("copyTaskPrompt").addEventListener("click", async function () {
@@ -1994,4 +2161,5 @@
   initializeProcessingScope();
   bindEvents();
   render();
+  renderActivity();
 })();

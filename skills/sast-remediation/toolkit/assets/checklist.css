@@ -415,6 +415,30 @@ td code { color: #344054; font-family: Consolas, "Courier New", monospace; font-
 .pager button, .pager select { min-height: 38px; padding: 0 10px; }
 .pager #pageInfo { margin-right: auto; }
 
+.activity-panel { margin: 18px 0; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.activity-panel > summary { cursor: pointer; padding: 14px 16px; line-height: 1.6; }
+.activity-panel > summary > span { margin-left: 12px; color: var(--muted); font-size: 13px; }
+.activity-panel-body { padding: 0 16px 14px; }
+.activity-controls { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(4, minmax(120px, 1fr)) auto; gap: 10px; align-items: end; }
+.activity-controls label { display: grid; gap: 5px; min-width: 0; font-size: 13px; color: var(--muted); }
+.activity-controls input, .activity-controls select { min-width: 0; width: 100%; }
+.activity-list { max-height: min(60vh, 620px); overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border: 1px solid var(--line); border-radius: 7px; padding: 8px; line-height: 1.6; }
+.item-activity-panel .activity-list { max-height: min(48vh, 460px); }
+.activity-entry { padding: 9px 10px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.activity-entry:last-child { border-bottom: 0; }
+.activity-entry > summary { cursor: pointer; }
+.activity-event-title { font-weight: 600; }
+.activity-event-meta { display: block; margin: 3px 0 0 18px; color: var(--muted); font-size: 12px; }
+.activity-event-detail { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; padding: 10px; background: #f6f8fb; border-radius: 6px; }
+.activity-list:focus-visible, .activity-entry > summary:focus-visible, .activity-panel > summary:focus-visible { outline: 3px solid #367bdc; outline-offset: 2px; }
+.activity-panel .pager > span, .item-activity-panel .pager > span { margin-right: auto; }
+@media (max-width: 1100px) { .activity-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .activity-controls { grid-template-columns: minmax(0, 1fr); }
+  .activity-panel > summary > span { display: block; margin: 4px 0 0; }
+  .activity-panel-body { padding: 0 10px 10px; }
+}
+
 @media (max-width: 480px) {
   .controls { grid-template-columns: minmax(0, 1fr); }
   .controls input { grid-column: auto; }
