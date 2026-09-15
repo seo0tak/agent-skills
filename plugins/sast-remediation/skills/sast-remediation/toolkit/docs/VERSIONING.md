@@ -103,6 +103,27 @@
 
 ## 마이그레이션 기록
 
+### 1.13.0 → 1.14.0: 누적 작업 이력과 체크리스트 로그
+
+- 기존 결과·progress·resume-state의 schemaVersion과 상태 enum은 유지합니다.
+  이력 없는 기존 자료는 그대로 읽으며, 처음 관측한 값만 기준 상태로 기록합니다.
+  없던 과거 수정·실패·검증 내역을 추측해 만들지 않습니다.
+- `data/activity/`의 실제 이벤트 파일은 프로젝트 상태로 보존합니다. 브라우저
+  백업의 선택 필드 `activityEvents`도 함께 보존합니다. 빈 배포 데이터로 교체하거나
+  로그를 자동 삭제하지 않습니다. 월별 디렉터리는 삭제 주기가 아니라 보관 단위입니다.
+- 새 `tools/sast_activity.py`, `assets/activity.js`, 관련 스키마와 문서·화면을
+  함께 갱신합니다. `data/activity.js`는 보존한 누적 기록에서 재생성합니다.
+  새 자산만 복사하고 오래된 프롬프트로 계속 실행하면 외부 소스 수정·검증의
+  시작과 종료가 연결되지 않을 수 있습니다.
+- 종료 기록이 없는 시도는 확인이 필요한 상태이며, 오래됐다는 이유만으로
+  실패·성공 처리하지 않습니다. 재개 시 실제 소스·결과와 작업자 상태를 확인합니다.
+  query/status/복구 미리보기는 이력을 닫거나 원본을 바꾸지 않습니다.
+- 브라우저 이력 가져오기는 결과 정본 반영이나 사용자 승인·검증 완료가 아닙니다.
+  과거 차수 이력도 출처를 유지하고, 같은 이벤트 ID의 다른 내용은 충돌로 처리합니다.
+- 업그레이드 전 파일과 브라우저 백업을 보존하고 위 자산 정책에 따라 갱신한 뒤
+  sync, validate, 상태·로그 조회를 확인합니다. 상세는 `ACTIVITY_LOG.md`를 따릅니다.
+  플러그인 설치본과 프로젝트 복사본은 저장소 푸시만으로 바뀌지 않습니다.
+
 ### 1.12.4 → 1.13.0: 차수별 위험도 처리 범위
 
 - SAST 툴킷 기능 버전은 `1.13.0`입니다. Architect 기능은 바뀌지 않아
@@ -235,8 +256,8 @@
 - 다른 하네스의 설치 명령은 저장소 README와 해당 버전 CLI 도움말을 따른다.
   카탈로그 버전만 보고 설치 성공으로 판단하지 말고 설치된 플러그인 버전을
   확인한다. 프로젝트 복사본에는 별도로 위 업그레이드 자산 정책을 적용한다.
-- 사전 검증: push 전에 `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer`와
-  `node --test tools/test_dashboard.cjs`가 전부
+- 사전 검증: push 전에 `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer tools.test_activity`와
+  `node --test tools/test_dashboard.cjs tools/test_activity_dashboard.cjs`가 전부
   통과해야 하고, 로컬 경로 마켓플레이스로 설치 테스트
   (`claude plugin marketplace add <로컬경로>`)
 - 롤백: 되돌릴 배포를 확정해 버전과 변경 요약을 준비한 뒤 설치본을 갱신한다.

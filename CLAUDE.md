@@ -28,8 +28,8 @@ plugins/<이름>/                ← Claude Code / Codex 플러그인 배포 구
 ## 작업 전 확인
 
 - 툴킷 변경 후 툴킷 루트에서 `python3 -B tools/sast_toolkit.py validate`,
-  `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer`,
-  `node --test tools/test_dashboard.cjs`를 실행한다.
+  `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer tools.test_activity`,
+  `node --test tools/test_dashboard.cjs tools/test_activity_dashboard.cjs`를 실행한다.
 - 저장소 루트에서 `python3 -B -m unittest discover -s skills/skill-architect/scripts -p 'test_*.py'`
   및 `python3 -B -m unittest scripts.test_packaging`를 실행한다.
 - 저장소 안에서 `preflight`/`init`을 돌리지 않는다 — 산출물이 배포물에 섞인다.

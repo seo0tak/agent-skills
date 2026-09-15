@@ -33,7 +33,7 @@ Modify `tools/sast_state.py`, `tools/sast_toolkit.py` and their tests.
 is the generated envelope. Common recorder handles read-only projection, automatic command
 attempts, explicit agent steps, state reconciliation, browser-event import.
 
-- [ ] RED: add real temporary-workspace tests for start without finish, completed retry,
+- [x] RED: add real temporary-workspace tests for start without finish, completed retry,
   rejected duplicate event payload, persisted before/after events, and failing write preventing callback.
   Example assertion shape:
   ```python
@@ -41,12 +41,12 @@ attempts, explicit agent steps, state reconciliation, browser-event import.
   status = self.run_activity('status')
   self.assertEqual(status['unfinishedCount'], 1)
   ```
-- [ ] Run `python3 -B -m unittest tools.test_activity` and capture missing-feature failures.
-- [ ] Implement append-only file writer, schema validation, attempt lifecycle and projection;
+- [x] Run `python3 -B -m unittest tools.test_activity` and capture missing-feature failures.
+- [x] Implement append-only file writer, schema validation, attempt lifecycle and projection;
   `start -> callback -> finish` never conflates command success with verified.
-- [ ] Connect toolkit/state mutation commands, canonical digest/state reconcile, readonly
+- [x] Connect toolkit/state mutation commands, canonical digest/state reconcile, readonly
   recovery diagnostics. Preserve existing errors and record attempts including failure.
-- [ ] Run focused tests then all Python suites; commit only Task 1 files and report RED/GREEN.
+- [x] Run focused tests then all Python suites; commit only Task 1 files and report RED/GREEN.
 
 ### Task 2: 체크리스트 작업 로그 및 브라우저 이력
 
@@ -59,18 +59,18 @@ attempts, explicit agent steps, state reconciliation, browser-event import.
 No backend source files are owned by this task. Expose a small `window.SAST_ACTIVITY` helper
 for projection/render/validation integration; actual function names documented in task report.
 
-- [ ] RED: fixture two status changes, reload and export/import; both history events survive.
+- [x] RED: fixture two status changes, reload and export/import; both history events survive.
   ```javascript
   assert.equal(exported.activityEvents.length, 2);
   assert.equal(restored.activityEvents[0].source, 'browser');
   ```
-- [ ] RED: failed storage does not falsely claim history persisted; foreign/colliding imported
+- [x] RED: failed storage does not falsely claim history persisted; foreign/colliding imported
   events reject atomically; text containing HTML remains text; >50 events paginate.
-- [ ] Implement event helper and logging at state/draft/import change boundaries; store
+- [x] Implement event helper and logging at state/draft/import change boundaries; store
   draft state and events together, no event for unchanged refresh or filter changes.
-- [ ] Add full/item panels, independent filters/search/date, bounded scrolling, expandable
+- [x] Add full/item panels, independent filters/search/date, bounded scrolling, expandable
   detail, file/browser source badges and loaded/generated timestamps; keyboard accessible.
-- [ ] Run focused new and existing Node tests, syntax checks; commit Task 2 files and report.
+- [x] Run focused new and existing Node tests, syntax checks; commit Task 2 files and report.
 
 ### Task 3: 사용·재개 계약과 배포 검증
 
@@ -81,15 +81,15 @@ root README/HANDOFF, two SAST plugin manifests; sync generated/mirror files.
 
 **Interfaces:** use actual Task 1 CLI and Task 2 screen labels, no invented flags.
 
-- [ ] Run baseline retrieval scenario against old skill: ask how to retain two edits and
+- [x] Run baseline retrieval scenario against old skill: ask how to retain two edits and
   a failed verification across interruption. Record absent cumulative recipe, not inferred remote loss.
-- [ ] Write a concise lifecycle recipe using implemented start/finish/reconcile/status and
+- [x] Write a concise lifecycle recipe using implemented start/finish/reconcile/status and
   explicit failure/stopped handling, plus browser-only persistence/import distinction.
-- [ ] Forward-test revised recipe in isolated fixture; verify no fabricated interruption
+- [x] Forward-test revised recipe in isolated fixture; verify no fabricated interruption
   cause, no log-derived verified, no loss of earlier records on retry.
-- [ ] Document migration preservation, no automatic purge, direct-edit detection limits,
+- [x] Document migration preservation, no automatic purge, direct-edit detection limits,
   log-write failures and safe read-only diagnostics. Update 1.14.0 manifests/README.
-- [ ] Run `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer tools.test_activity`,
+- [x] Run `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer tools.test_activity`,
   `node --test tools/test_dashboard.cjs tools/test_activity_dashboard.cjs`, Architect/packaging
   tests, validate, mirror/version checks. Verify generated output and actual browser at narrow/wide width.
 - [ ] Independent final code review; fix blocking defects with focused regression tests.

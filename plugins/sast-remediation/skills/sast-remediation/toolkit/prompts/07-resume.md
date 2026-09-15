@@ -3,6 +3,7 @@
 새 세션에서 진행 중인 차수를 이어갈 때 사용합니다. 이 스킬은 스스로
 세션을 다시 열거나 네트워크 복구를 기다리는 실행기가 아닙니다.
 사용자나 실행 환경이 다시 시작한 뒤, 파일에 남은 기록으로 재개합니다.
+누적 작업 이력과 종료 확인 방법은 `docs/ACTIVITY_LOG.md`를 따릅니다.
 
 ```text
 진행 중인 SAST 조치 작업을 안전하게 이어서 진행해 주세요.
@@ -19,14 +20,25 @@
    미설정·손상·다른 차수 범위이면 전체로 확대하지 않고 상세 실행을 멈춥니다.
 
 2. 집계를 사용하기 전에 정본 상태를 검사합니다.
+   python3 tools/sast_activity.py status
    python3 tools/sast_state.py status
    python3 tools/sast_toolkit.py validate
-   두 명령의 오류, 최상위 resumeCandidates, inScopeResumeCandidates,
+   각 명령의 오류, 최상위 resumeCandidates, inScopeResumeCandidates,
    selectedReadyForCompletion, pendingCheckpoints와 processingScope,
    verification의 fresh/stale/unbound 상태를 읽습니다.
    status.processingScope.selectedComplete는 workflowStatus 라벨 기반이고,
    status.selectedReadyForCompletion은 최상위 완료 보고 준비 필드입니다.
    어느 쪽도 제출 승인이 아닙니다.
+   작업 이력의 unfinishedAttempts는 종료 확인이 없는 시도입니다. 현재 파일과
+   실제 작업자를 확인하고 재실행 전에 반영 여부를 대조합니다. 오래됐다는 이유로
+   실패·강제 종료·네트워크 단절을 단정하지 않습니다. 확인한 결과는 현재 시각에
+   finish로 남기고, 새 시도는 원래 operationId에 연결해 과거 기록을 보존합니다.
+   기록 손상·저장 실패를 정상 완료로 숨기지 않고 해당 원본부터 보존합니다.
+   activity status의 baselineRequired·driftCount·canonicalChanges를 읽고 현재
+   정본을 대조합니다. 손상 원본을 먼저 보존·복구한 뒤
+   python3 tools/sast_activity.py reconcile로 기준 상태 또는 발견한 차이를
+   누적 기록합니다. 저장 실패 시 새 변경을 시작하지 않습니다. 이 관측은 실제
+   수정 시각·수행 주체·변경 이유의 증명이 아니며, 기존 시도를 자동 종료하지 않습니다.
    processingScope.error가 있으면 status가 성공했어도 범위가 유효한 것이
    아닙니다. 전체 resumeCandidates·checkpoints·verification은 보존·복구하되,
    inScopeResumeCandidates가 빈 상태에서 선택 실행을 추정하지 않습니다.

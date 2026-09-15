@@ -21,12 +21,13 @@
 
 | 스킬 | 버전 |
 |---|---|
-| **sast-remediation** | 1.13.0 |
+| **sast-remediation** | 1.14.0 |
 | **skill-architect** | 0.4.3 |
 
 - **sast-remediation** — 기존 SAST 보고서(PDF·스프레드시트 또는 SARIF)의
   검토·조치·검증 근거를 관리합니다. 저장된 기록으로 작업을 수동 재개하고,
-  브라우저에서 추출한 결과 초안을 백업할 수 있습니다.
+  브라우저에서 추출한 결과 초안을 백업할 수 있습니다. 작업·오류·변경 이력을
+  누적 보존하고 체크리스트에서 전체 로그와 항목별 이력을 조회합니다.
 - **skill-architect** — 입력·상태·복구·검증 등 스킬 설계를 10개 범주로
   검토합니다. 요청 시 승인된 개선 범위와 평가·적용·재개 이력을 기록합니다.
 
@@ -108,6 +109,7 @@ test ! -e ~/.agents/skills/skill-architect && \
 - **이어서 작업** — "SAST 조치 이어서 해줘"
 - **처리 범위 지정** — "이번 차수는 높음 이상만 분석·조치해줘"
   (전체 검출 목록은 보존하고, 선택 범위와 전체의 진행 현황을 구분합니다.)
+- **작업 이력 확인** — "실패한 검증과 종료 확인이 없는 작업 이력을 보여줘"
 - **스킬 품질 점검** — "이 스킬 감사해줘" / "sast-remediation 스킬 감사해줘"
 
 ## 설치본 업데이트
@@ -166,6 +168,8 @@ Codex는 다음 세 단계를 구분합니다.
   저장되는 정보, 중단 후 재개, 검증 결과의 재사용 조건과 한계
 - [위험도별 처리 범위](skills/sast-remediation/toolkit/docs/PROCESSING_SCOPE.md) —
   처리할 위험도 선택, 적용 요청과 저장의 차이, 범위 밖·미확인 관리
+- [작업 이력과 실행 로그](skills/sast-remediation/toolkit/docs/ACTIVITY_LOG.md) —
+  중요한 기록 보존, 실패·중단 확인, 체크리스트 조회와 브라우저 이력 백업
 - [정책 확인 가이드](skills/sast-remediation/toolkit/SECURITY_GRILL_GUIDE.md) —
   업무 사실을 중심으로 정책을 확인하는 방법과 확인이 어려울 때의 처리
 - [버전·업그레이드 정책](skills/sast-remediation/toolkit/docs/VERSIONING.md) —

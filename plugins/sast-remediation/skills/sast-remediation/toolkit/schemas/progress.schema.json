@@ -9,6 +9,15 @@
     "schemaVersion": { "const": "1.0" },
     "workspaceId": { "type": "string" },
     "updatedAt": { "type": ["string", "null"], "format": "date-time" },
+    "activityEvents": {
+      "type": "array",
+      "description": "같은 작업공간의 누적 브라우저 변경 이력. 이전 검사 차수도 보존하며 파일 작업 이력 정본 반영은 별도 절차다. 옛 백업에는 이 필드가 없을 수 있다.",
+      "items": {
+        "type": "object",
+        "required": ["schemaVersion", "eventId", "recordedAt", "workspaceId", "reportId", "operationId", "attemptId", "kind", "action", "outcome", "source", "actor", "itemIds", "summary", "before", "after", "evidence", "important"],
+        "description": "상세 계약은 activity-event.schema.json 및 공통 기록기의 검증을 따른다. 출처·작업공간·중복 ID도 별도로 대조한다."
+      }
+    },
     "items": {
       "type": "object",
       "additionalProperties": {

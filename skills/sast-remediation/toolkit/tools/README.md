@@ -74,6 +74,22 @@ status의 `ok`와 후보·오류 목록도 함께 확인하세요. 종료 코드
 fresh·미완료 체크포인트 없음까지 본 준비 조건입니다. 어느 값도 제출 승인을
 뜻하지 않습니다.
 
+## 작업 이력·오류·중단 확인
+
+```text
+python3 tools/sast_activity.py status
+python3 tools/sast_activity.py query --id <ID>
+python3 tools/sast_activity.py reconcile
+python3 tools/sast_activity.py start --action remediation --id <ID> --actor agent --summary "승인된 수정 시작"
+python3 tools/sast_activity.py finish --attempt-id <반환된 attemptId> --outcome succeeded --summary "수정 적용과 결과 기록; 검증은 별도"
+```
+
+status/query는 읽기 전용입니다. 종료 기록이 없는 시도는 실제 작업과 파일을
+대조하며 원인·정확한 중단 시각을 추측하지 않습니다. 외부 검증도 별도 시도로
+시작하고 실제 실패·차단·사용자 중단을 기록합니다. 재시도는 같은 operationId에
+새 attemptId를 사용합니다. 전체 예제와 보존·민감정보·저장 실패 규칙은
+`docs/ACTIVITY_LOG.md`를 따릅니다.
+
 ## 저장과 회귀 검사
 
 공용 정본은 지정한 한 작성자가 갱신합니다. 도구의 협조 잠금은
@@ -81,8 +97,8 @@ fresh·미완료 체크포인트 없음까지 본 준비 조건입니다. 어느
 JSON 정본을 확인한 뒤 sync → validate 순서로 실행합니다.
 
 ```text
-python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer
-node --test tools/test_dashboard.cjs
+python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer tools.test_activity
+node --test tools/test_dashboard.cjs tools/test_activity_dashboard.cjs
 ```
 
 테스트는 임시 작업공간을 사용합니다. 배포용 빈 툴킷 자체에서

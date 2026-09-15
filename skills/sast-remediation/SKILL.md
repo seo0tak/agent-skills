@@ -36,6 +36,7 @@ description: Manage and remediate SAST findings you already have — input gate,
 1. `sast-remediation-toolkit/SECURITY_SAST_WORKFLOW.md`를 읽는다.
    위험도 처리 범위를 사용하거나 재개·완료 집계를 할 때는
    `sast-remediation-toolkit/docs/PROCESSING_SCOPE.md`도 읽는다.
+   작업·오류 이력의 기록·조회·재개에는 같은 곳의 `docs/ACTIVITY_LOG.md`를 읽는다.
 2. `sast-remediation-toolkit/prompts/00-preflight.md`부터 시작한다.
    게이트가 READY가 아니면 어떤 분석·조치도 시작하지 않는다.
 3. 이후 단계는 사용자의 요청에 맞는 프롬프트 파일을 따른다:
@@ -96,6 +97,10 @@ prompts/03의 위임 규칙을 따른다: 기계적 대량 작업은 bulk-worker
 - 수정 전·후 `tools/sast_state.py checkpoint`, 검증 직전 `snapshot`, 실제
   검증 결과 작성 후 `seal-verification`을 사용한다. 재개는 07의 원본 상태
   검사·복구 미리보기부터 수행한다. status의 stale/unbound를 완료로 신뢰하지 않는다.
+- 소스 수정·외부 검증은 `docs/ACTIVITY_LOG.md`의 시작·종료 기록 절차로 연결한다.
+  실패·차단·사용자 중단도 확인된 결과로 남긴다. 종료 기록이 없는 시도는 현재 파일과
+  대조하며 원인·시각을 추측하지 않는다. 이전 메모·판단·실패 이력을 삭제하지 않는다.
+  로그 저장 실패를 정상 완료로 보고하거나 로그의 succeeded를 verified로 해석하지 않는다.
 - 갱신 후 `sync`·`validate`·`sast_state.py status`를 확인한다. 체크포인트는
   소스 백업이나 자동 재시작 기능이 아니다. 공용 정본은 한 작성자가 담당한다.
 - 이전 차수는 fingerprint로 오탐·예외 재사용 후보를 찾고 과거 검증·현재
@@ -116,6 +121,8 @@ prompts/03의 위임 규칙을 따른다: 기계적 대량 작업은 bulk-worker
 모든 산출물은 프로젝트의 `sast-remediation-toolkit/` 아래에 생성된다:
 `project/`(분석·정책), `data/`(진행상태·재개 기록),
 `security-guides/`·`security-results/`(항목별 기록),
-`evidence/`(제출용 xlsx). 사용자 안내 문서는 `USAGE.md`(정본)와
+`evidence/`(제출용 xlsx).
+작업 이력은 `data/activity/`에 누적하고 체크리스트에서 조회한다.
+사용자 안내 문서는 `USAGE.md`(정본)와
 거기서 생성되는 `USAGE.html`, 동작 원리 설명은 `docs/HOW_IT_WORKS.md`다. 사용자가
 스킬의 동작 방식이나 원리를 물으면 이 문서를 기반으로 답한다.

@@ -12,6 +12,12 @@ JavaScript 파일은 이 JSON 내용을 로컬 HTML에서 읽을 수 있게 생�
 - `decisions.json`: 정책 결정 정본; DECISION_LOG.md는 생성물
 - `resume-state.json`: 필요할 때 생성되는 중단 지점·파일 스냅샷(화면 미러 없음)
 - `progress.recovery-*.bak`: 복구 적용 전 원본; 프로젝트 상태로 보존
+- `activity/`: 작업·오류·중단·변경 전후를 월별 개별 JSON으로 누적; 자동 삭제하지 않음
+- `activity.js`: 누적 이력을 체크리스트에서 조회하는 생성물
+
+브라우저 백업의 `activityEvents`는 브라우저 검토 이력입니다. 파일 기록과
+결과 정본 반영을 구분합니다. 저장·조회·중단 확인은
+[작업 이력 안내](../docs/ACTIVITY_LOG.md)를 따릅니다.
 
 JSON을 변경한 작성자는 툴킷 루트 디렉터리에서 다음 명령을 실행해 JavaScript
 미러를 갱신하고 검사합니다.

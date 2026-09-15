@@ -1,10 +1,34 @@
-# HANDOFF — 개발 세션 인수인계 (2026-09-15, v1.13.0 / v0.4.3)
+# HANDOFF — 개발 세션 인수인계 (2026-09-15, v1.14.0 / v0.4.3)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-09-15 위험도 처리 범위)
+## 최신 작업 기준 (2026-09-15 누적 작업 이력)
+
+- 배포 버전은 sast-remediation **v1.14.0**, skill-architect **v0.4.3**이다.
+  기존 상태 정본과 별도로 시작·종료·실패·차단·중단·재시도·변경 관측을
+  누적 보존하며 체크리스트의 전체/항목별 작업 로그에서 확인한다.
+  작업 브랜치는 `codex/durable-activity-log`, 시작점은 `37f4abf`다.
+  사용자 요청의 통합·푸시 대상은 main이며 실제 반영은 Git 기록으로 확인한다.
+- `data/activity/YYYY-MM/<eventId>.json`이 파일 이력 정본이고,
+  `data/activity.js`는 생성물이다. 브라우저 이력은 상태+결과 백업의 선택 필드
+  `activityEvents`로 보존한다. 가져오기는 이력 보관이지 결과 반영이나 승인·검증이 아니다.
+- 시작만 남은 시도는 **종료 미확인**이다. 강제 종료 원인·시각이나 현재 실행 여부를
+  추측하지 않는다. 재개 시 현재 소스·근거·작업자와 대조한다. 외부 소스 수정·
+  테스트는 명시적 start/finish가 필요하며 모든 프로세스를 감시하는 기능은 아니다.
+- 초기화된 프로젝트 또는 명시적으로 기록을 시작한 툴킷에서 변경 명령을 자동
+  기록한다. 미초기화 배포물 검사로 실제 로그를 만들지 않는다. 기록 저장 실패는
+  완료 보고를 막고 이미 적용된 변경 여부를 확인한다. 로그는 자동 삭제하지 않는다.
+- 사용 계약: `skills/sast-remediation/toolkit/docs/ACTIVITY_LOG.md`.
+  검토·검증 기록: `docs/reviews/2026-09-15-durable-activity-log.md`.
+  설치본과 고객 소스·복사된 툴킷은 이번 범위에 포함하지 않는다.
+- 정본 265개(SAST Python 130, Node 110, Architect 24, 패키징 1), 배포 사본
+  240개(Python 130, Node 110) 검사를 통과했다. 독립 리뷰의 관측 기준 위조·
+  작업 ID 혼합 문제를 수정·재검토했고, 합성 입력의 실제 브라우저 1440/390px,
+  백업 재가져오기·잘못된 이력 거절·키보드 스크롤을 확인했다.
+
+## 이전 작업 기준 (2026-09-15 위험도 처리 범위)
 
 - 배포 파일 버전은 sast-remediation **v1.13.0**, skill-architect **v0.4.3**이다.
   사용자 승인에 따라 5단계 위험도의 최소 처리 등급을 선택·저장하는 기능을
@@ -118,6 +142,7 @@
 | 1.12.3 / 0.4.2 | 추천 목록 최대 높이·내부 스크롤·키보드 접근, 개수 변경 시 처음으로 이동, 재렌더 시 스크롤 위치 유지. Architect·데이터 형식은 변경 없음 |
 | 1.12.4 / 0.4.3 | 판정 근거와 실제 작업 상태 분리, 답변 추출의 부정·모호·중복 판정 거부, 오탐과 승인된 예방 수정 병행 안내 |
 | 1.13.0 / 0.4.3 | 차수별 위험도 처리 범위, 선택 대상 실행·추천·재개·집계, 범위 밖 상태 보존. 범위 미설정/손상과 오래된 소스 검증의 복구 경계 분리 |
+| 1.14.0 / 0.4.3 | 누적 작업·실행·변경 이력, 종료 미확인 진단, 브라우저 이력 보존과 전체/항목별 로그 조회. 기존 결과·상태 정본과 검증 권한 분리 |
 
 저장소 쪽: marketplace.json에 skill-architect 등록(이전엔 설치 불가였음), version 필드 제거
 (plugin.json이 정본), 루트 README를 설치·사용 안내의 시작 문서로 재구성. 이후 **멀티 에이전트 재편**(TASK-multi-agent):
@@ -152,6 +177,8 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 12. 처리 범위는 전체 입력을 잘라내는 기준이 아니다. 범위 밖 상태는 그대로 남기고,
     상세 실행에는 `query --scope in-scope`를 쓴다. 전체 조회·복구·sync의 성공을
     선택 완료나 검증 신선도로 확대하지 않는다
+13. 현재 상태를 갱신해도 누적 이력은 덮어쓰거나 자동 삭제하지 않는다. 종료 미확인과
+    실제 실패를 구분하고, 변경 발견 시각을 실제 수정 시각으로 표현하지 않는다
 
 ## 미결 사항 (PENDING)
 
@@ -163,7 +190,7 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 2. **저장소 안에서 툴킷 명령 실행 금지 가드** — 이전 개발 세션에서 회귀 확인용 `preflight`를 저장소에서
    돌렸다가 로컬 절대 경로가 산출물에 섞여 당시 amend로 되돌렸다. `.gitignore`나 "툴킷 부모가 저장소
    루트면 preflight/init 거부" 가드 검토
-3. **1.7~1.13 실제 보고서 검증** — 다음 실전 차수에서 확인할 것: `query --summary`, 결정 로그
+3. **1.7~1.14 실제 보고서 검증** — 다음 실전 차수에서 확인할 것: `query --summary`, 결정 로그
    흐름(decisions.json → sync → DECISION_LOG.md), 미확인 결정 validate 에러, 1.8 이전 손으로
    쓴 DECISION_LOG.md 마이그레이션 경고
 4. 결정 로그 대시보드 표시 — `data/decisions.js` 미러는 생성되지만 대시보드는 아직 안 읽는다
@@ -178,12 +205,12 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 
 ## 검증 습관
 
-- 툴킷에서 `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer`
+- 툴킷에서 `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer tools.test_activity`
 - 루트에서 `python3 -B -m unittest discover -s skills/skill-architect/scripts -p 'test_*.py'`
   및 `python3 -B -m unittest scripts.test_packaging`
 - `python3 tools/sast_toolkit.py validate` (OK + 입력 없음 경고 1건이 정상),
-  `node --check assets/checklist.js`
-- `node --test tools/test_dashboard.cjs` — 실제 함수/이벤트를 VM에서 실행하는
+  `node --check assets/checklist.js`, `node --check assets/activity.js`
+- `node --test tools/test_dashboard.cjs tools/test_activity_dashboard.cjs` — 실제 함수/이벤트를 VM에서 실행하는
   저장소·파서·키보드 회귀. 실브라우저 시각/E2E 검증은 별도다
 - USAGE.md·decisions.json 수정 후 반드시 `sync` — 안 하면 validate가 생성물 드리프트 에러
 - 실물 파일 재현 테스트 (위 xls/pdf)

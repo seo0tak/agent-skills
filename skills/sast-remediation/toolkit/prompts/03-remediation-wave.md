@@ -23,6 +23,9 @@
   영향, 해결되지 않는 검증 오류, 안전한 저장 불가, 사용자 중단 요청에서는
   멈춥니다. 정책 질문은 해당 항목을 보류하고 독립적인 항목을 계속할 수 있습니다.
   보류된 질문이 5개 모이거나 범위를 완료하면 중복 질문을 합쳐 하나씩 제시합니다.
+- `docs/ACTIVITY_LOG.md`를 읽고 `python3 tools/sast_activity.py status`로
+  종료 확인이 없는 시도를 대조합니다. 이전 실패와 메모는 누적 기록으로 보존합니다.
+  미종료가 실행 중인지 중단인지 확인하지 않고 성공·실패로 닫지 않습니다.
 
 담당 분리
 - 작업을 총괄하는 AI를 이하 "총괄 AI"라고 합니다.
@@ -55,6 +58,9 @@
    실제 차이가 큰 항목에는 전체 가이드를 작성합니다. 경량 가이드도 각 멤버의
    핵심 호출자·입력 타입·설정·안전 전제와 잔존 동적 경로를 확인합니다.
 3. 수정 직전에 체크포인트를 저장합니다.
+   먼저 `docs/ACTIVITY_LOG.md`의 `start --action remediation`으로 작업
+   시작을 저장하고 반환된 operationId·attemptId를 연결합니다. 시작 기록이
+   실패하면 소스를 수정하지 않습니다. 다음 체크포인트도 기존 절차대로 저장합니다.
    python3 tools/sast_state.py checkpoint --id <ID> --phase before-edit
      --path <프로젝트 루트 기준 파일> --note "<현재 판단>"
      --next-action "<다음 작업>"
@@ -81,12 +87,19 @@
    범위 밖 기존 경고를 정리 작업으로 확대하지 않습니다. 새 오류를 해결하지
    못하면 검증 성공으로 보고하지 않고 한계를 기록합니다. 진단 0건만으로
    verified 후보로 올리지 않습니다.
+   수정을 실제로 마쳤으면 결과 JSON에 change-complete와 적용 내용을 저장하고,
+   수정 attempt를 finish로 종료합니다. 이때 검증은 아직 통과하지 않은 상태입니다.
+   중간 수정·실패·차단·사용자 중단은 실제 수준을 기록하고 성공으로 닫지 않습니다.
+   종료 기록 저장에 실패하면 이미 적용된 파일을 대조하고 새 검증·수정을 보류합니다.
    검증 직전에 대상 소스와 관련 설정·테스트 파일을 스냅샷으로 기록합니다.
    python3 tools/sast_state.py snapshot --id <ID> --path <관련 파일>
    관련 파일은 --path로 모두 지정합니다. 지정하지 않은 외부 서비스·DB·운영
    설정까지 해시가 보장하지 않으므로 적용 범위와 한계를 따로 기록합니다.
    snapshot과 seal-verification도 현재 선택 항목에만 수행합니다.
 6. 위험과 영향 범위에 맞는 검증을 실제로 실행합니다.
+   외부 테스트는 `start --action verification`으로 별도 시도를 기록한 뒤
+   실행하고 실제 결과를 finish로 남깁니다. 실패·차단·사용자 중단을 성공으로
+   바꾸지 않습니다. 수정 완료와 검증 실패는 서로 다른 시도로 보존할 수 있습니다.
    profile의 validation.verificationMeans에 선언된 수단을 사용하고,
    verification.method, commands, results, limitations와 실제 verifiedAt을
    결과에 남깁니다. 필요하고 사용 가능한 경우 변경 파일의 SAST 재검사도 합니다.
@@ -105,8 +118,16 @@
    다른 항목의 상태·비고와 아직 결과가 없는 임시 진행상태를 보존합니다.
    python3 tools/sast_toolkit.py sync
    python3 tools/sast_toolkit.py validate
-   python3 tools/sast_state.py status
    오류·stale·unbound가 남은 항목은 완료로 보고하지 않습니다.
+   수정과 검증 시도가 각각 실제 결과로 종료 기록됐는지 확인합니다.
+   종료 로그 성공으로 verified를 부여하지 않습니다.
+   예외·사용자 중단 때는 관찰한 결과를 남기고 멈춥니다. 세션 강제 종료로 기록을
+   못 썼다면 다음 재개에서 대조합니다. 로그 저장 실패 시 이미 적용된 파일을
+   확인하고 완료 보고를 보류합니다. 재시도는 같은 operationId에 새 attemptId로
+   남기며 과거 실패 기록을 덮어쓰지 않습니다.
+   종료 기록을 저장한 다음 python3 tools/sast_state.py status와
+   python3 tools/sast_activity.py status로 최종 상태와 남은 미종료 시도를
+   확인합니다. 상태 조회만으로 시도를 자동 종료하지 않습니다.
 
 운영 설정 조치는 소스 변경과 별도 그룹으로 관리합니다.
 항목별 응답 라벨은 SECURITY_SAST_WORKFLOW.md의 형식을 그대로 사용합니다.

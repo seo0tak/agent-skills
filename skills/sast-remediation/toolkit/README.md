@@ -71,6 +71,8 @@
 9. 처리 결과는 `security-results/`와 `data/progress.*`에 반영합니다.
    결과 정본은 `security-results/`입니다. progress에는 결과와 일치하는
    집계와 아직 결과가 없는 임시 상태·메모가 함께 있습니다.
+   작업·오류·변경 이력은 `data/activity/`에 누적하고 체크리스트의 작업 로그에서
+   확인합니다. [작업 이력 안내](docs/ACTIVITY_LOG.md)에 따라 외부 수정·검증도 연결합니다.
 10. 제출 전에는 `validate --strict`로 데이터 오류를 확인하고,
     `sast_state.py status`의 stale/unbound, 실제 검증 근거와 증적을 함께
     검토합니다. 어느 한 검사만으로 제출 승인이 되지는 않습니다.
@@ -125,6 +127,7 @@ sast-remediation-toolkit/
 - `data/findings.json` 및 `.js`
 - `data/checker-guides.json` 및 `.js`
 - `data/progress.json` 및 `.js`
+- `data/activity/`의 작업 이력 및 화면용 `data/activity.js`
 - `security-guides/<ID>.json` 및 `.js`
 - `security-results/<ID>.json` 및 `.js`
 - `evidence/` 아래 제출용 결과
@@ -173,6 +176,10 @@ PDF의 해결 예시는 특정 코드에 그대로 적용하는 패치가 아닙
 `--apply`로 반영합니다. 자동 재시작·네트워크 감시·무승인 배포는 하지 않습니다.
 저장되지 않은 정보는 복구할 수 없습니다. 명령과 한계는 `tools/README.md`,
 `docs/HOW_IT_WORKS.md`를 참고하세요.
+
+시작 기록은 있으나 종료 기록이 없으면 현재 파일과 실제 작업자를 확인합니다.
+이 표시만으로 네트워크 단절이나 강제 종료를 확정하지 않습니다. 이전 실패·메모는
+누적 이력에서 확인하며 로그의 정상 종료를 취약점 검증 완료와 혼동하지 않습니다.
 
 ## 완료 기준
 
