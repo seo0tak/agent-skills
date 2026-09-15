@@ -13,6 +13,11 @@ function event(overrides = {}) {
     itemIds: ["F-001"], summary: "상태 변경", before: { workflowStatus: "todo" },
     after: { workflowStatus: "analyzed" }, evidence: [], important: true, ...overrides };
 }
+function nested(depth) {
+  let value = {};
+  for (let index = 0; index < depth; index++) value = { child: value };
+  return value;
+}
 function load() {
   const window = {};
   const context = vm.createContext({ window, Date, Math });
@@ -132,6 +137,21 @@ test("browser and Python validators agree on identity, secrets, lifecycle and da
       { evidence: ["access_token=TEST_SECRET"] }, { summary: "한".repeat(12000) },
       { after: { pwd: "hidden" } }, { extra: true }].map(value => event(value))];
   const expected = values.map(value => { try { helper.validate(value); return true; } catch { return false; } });
+  const boundaries = [
+    { value: event({ before: nested(8) }), accepted: true },
+    { value: event({ after: nested(9) }), accepted: false },
+    ...["__proto__", "prototype", "constructor"].map(key => ({
+      value: event({ before: JSON.parse('{"nested":{"' + key + '":"value"}}') }), accepted: false })),
+    { value: event({ action: "canonical.reconcile" }), accepted: false },
+    ...["2026-09-15 01:00:00Z", "20260915T010000Z", "2026-09-15T01:00Z"].map(recordedAt => ({
+      value: event({ recordedAt }), accepted: false })),
+  ];
+  for (const boundary of boundaries) {
+    const accepted = (() => { try { helper.validate(boundary.value); return true; } catch { return false; } })();
+    assert.equal(accepted, boundary.accepted);
+    values.push(boundary.value);
+    expected.push(boundary.accepted);
+  }
   const script = "import json,sys\nsys.path.insert(0,sys.argv[1])\nfrom sast_activity import validate_event\nresults=[]\nfor value in json.load(sys.stdin):\n try:\n  validate_event(value); results.append(True)\n except (ValueError,TypeError):\n  results.append(False)\nprint(json.dumps(results))";
   const actual = JSON.parse(childProcess.execFileSync("python3", ["-B", "-c", script, __dirname], { input: JSON.stringify(values), encoding: "utf8" }));
   assert.deepEqual(actual, expected);
@@ -164,4 +184,83 @@ test("date presentation safely labels invalid input and does not change chronolo
   assert.deepEqual(Array.from(selected, entry => entry.eventId), ["newer", "older"]);
   assert.deepEqual(Array.from(selected, entry => helper.formatTimestamp(entry.recordedAt)), ["2026-09-15 00:00:01 UTC", "2026-09-15 00:00:00 UTC"]);
   assert.equal(JSON.stringify(values), original);
+});
+
+test("browser histories reject reserved canonical reconciliation actions before import", () => {
+  const helper = api();
+  assert.throws(() => helper.merge([], [event({ action: "canonical.reconcile" })]), /예약|내부|출처/);
+  assert.equal(helper.merge([], [event({ action: "browser.reconcile" })]).length, 1);
+});
+
+test("import rejects reserved metadata keys and excessive nesting without silently rewriting records", () => {
+  const helper = api();
+  for (const key of ["__proto__", "prototype", "constructor"]) {
+    const value = event({ before: JSON.parse('{"nested":{"' + key + '":"untrusted"}}') });
+    const original = JSON.stringify(value);
+    assert.throws(() => helper.merge([], [value]), /키|허용/);
+    assert.equal(JSON.stringify(value), original);
+  }
+  assert.equal(helper.merge([], [event({ before: nested(8) })]).length, 1);
+  assert.throws(() => helper.merge([], [event({ after: nested(9) })]), /깊/);
+});
+
+test("new snapshot compaction records omitted reserved keys while preserving safe metadata", () => {
+  const helper = api();
+  const before = JSON.parse('{"safe":"keep","__proto__":"a","prototype":"b","constructor":"c","nested":{"constructor":"d","value":5}}');
+  const original = JSON.stringify(before);
+  const created = helper.create({ workspaceId: "w-1", action: "browser.draft", summary: "초안", before });
+  assert.equal(created.before.safe, "keep");
+  assert.deepEqual(Array.from(created.before._omittedKeys || []), ["__proto__", "prototype", "constructor"]);
+  assert.deepEqual(Array.from(created.before.nested._omittedKeys || []), ["constructor"]);
+  for (const key of ["__proto__", "prototype", "constructor"]) assert.equal(Object.hasOwn(created.before, key), false);
+  assert.equal(created.before.nested.value, 5);
+  assert.equal(JSON.stringify(before), original);
+  const crowded = JSON.parse('{"__proto__":0,"prototype":0,"constructor":0}');
+  for (let index = 0; index < 51; index++) crowded["safe" + index] = index;
+  const compacted = helper.create({ workspaceId: "w-1", action: "browser.draft", summary: "초안", before: crowded }).before;
+  assert.equal(compacted.safe49, 49);
+  assert.equal(compacted._truncated, 1);
+});
+
+test("JavaScript and Python both reject raw non-finite JSON numbers rather than accepting JSON null", () => {
+  const helper = api();
+  for (const value of [NaN, Infinity, -Infinity]) assert.throws(() => helper.validate(event({ after: { number: value } })));
+  const rawEvents = "[" + ["NaN", "Infinity", "-Infinity"].map(number => JSON.stringify(event({ after: { number: "REPLACE_NONFINITE" } })).replace('"REPLACE_NONFINITE"', number)).join(",") + "]";
+  assert.throws(() => JSON.parse(rawEvents));
+  const script = "import json,sys\nsys.path.insert(0,sys.argv[1])\nfrom sast_activity import validate_event\nresults=[]\nfor value in json.load(sys.stdin):\n try:\n  validate_event(value); results.append(True)\n except (ValueError,TypeError):\n  results.append(False)\nprint(json.dumps(results))";
+  const actual = JSON.parse(childProcess.execFileSync("python3", ["-B", "-c", script, __dirname], { input: rawEvents, encoding: "utf8" }));
+  assert.deepEqual(actual, [false, false, false]);
+});
+
+test("operation identity conflicts reject whole merges while actor changes and internal observations remain compatible", () => {
+  const helper = api();
+  const first = event({ itemIds: ["F-001", "F-002"] });
+  const next = event({ eventId: "e-2", attemptId: "a-2", itemIds: ["F-002", "F-001"], actor: "second-user" });
+  assert.equal(helper.merge([first], [next]).length, 2);
+  for (const patch of [{ workspaceId: "w-2" }, { reportId: "r-2" }, { action: "browser.draft" },
+    { source: "agent" }, { itemIds: ["F-003"] }]) {
+    assert.throws(() => helper.merge([first], [{ ...next, ...patch }]), /논리|작업.*충돌/);
+  }
+  const canonical = event({ eventId: "e-3", action: "canonical.reconcile", kind: "observation", source: "external", itemIds: [] });
+  assert.equal(helper.merge([first], [canonical]).length, 2);
+});
+
+test("Python and browser batch validators agree on logical operation identity boundaries", () => {
+  const helper = api();
+  const first = event({ itemIds: ["F-001", "F-002"] });
+  const second = event({ eventId: "e-2", attemptId: "a-2", actor: "second-user", itemIds: ["F-002", "F-001"] });
+  const fixtures = [
+    { records: [first, second], accepted: true },
+    ...[{ workspaceId: "other" }, { reportId: "other" }, { action: "browser.draft" },
+      { source: "agent" }, { itemIds: ["F-003"] }].map(patch => ({ records: [first, { ...second, ...patch }], accepted: false })),
+    { records: [first, { ...second, source: "external", kind: "observation", action: "canonical.reconcile", itemIds: [] }], accepted: true },
+  ];
+  for (const fixture of fixtures) {
+    let accepted = true;
+    try { helper.merge([], fixture.records); } catch { accepted = false; }
+    assert.equal(accepted, fixture.accepted);
+  }
+  const script = "import json,sys\nsys.path.insert(0,sys.argv[1])\nfrom sast_activity import validate_event,lifecycle_issues\nresults=[]\nfor values in json.load(sys.stdin):\n try:\n  [validate_event(value) for value in values]; results.append(not lifecycle_issues(values))\n except (ValueError,TypeError):\n  results.append(False)\nprint(json.dumps(results))";
+  const actual = JSON.parse(childProcess.execFileSync("python3", ["-B", "-c", script, __dirname], { input: JSON.stringify(fixtures.map(fixture => fixture.records)), encoding: "utf8" }));
+  assert.deepEqual(actual, fixtures.map(fixture => fixture.accepted));
 });

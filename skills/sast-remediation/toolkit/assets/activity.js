@@ -5,6 +5,7 @@
   var KINDS = ["started", "finished", "changed", "observation"];
   var OUTCOMES = ["running", "succeeded", "failed", "blocked", "stopped", "info"];
   var SOURCES = ["toolkit", "agent", "browser", "external"];
+  var RESERVED_KEYS = ["__proto__", "prototype", "constructor"];
   var SECRET_NAMES = "password|passwd|pwd|token|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|authorization";
   var SECRET_KEY = new RegExp("^(?:" + SECRET_NAMES + ")$", "i");
   var SECRET_ASSIGNMENT = new RegExp("\\b(" + SECRET_NAMES + ")\\b(\\s*[:=]\\s*)(?:\"[^\"]*\"|'[^']*'|[^\\s,;]+)", "gi");
@@ -31,11 +32,13 @@
     return new Date(value).toISOString().slice(0, 19).replace("T", " ") + " UTC";
   }
   function jsonValue(value, depth) {
+    if (depth > 8) throw new Error("작업 이력의 상세 값이 너무 깊습니다.");
     if (value === null || typeof value === "boolean" || typeof value === "string") return;
     if (typeof value === "number" && Number.isFinite(value)) return;
     if (Array.isArray(value)) { value.forEach(function (v) { jsonValue(v, depth + 1); }); return; }
     if (!object(value)) throw new Error("작업 이력의 상세 값은 JSON이어야 합니다.");
     Object.keys(value).forEach(function (key) {
+      if (RESERVED_KEYS.indexOf(key) !== -1) throw new Error("작업 이력에 허용되지 않는 예약 키가 있습니다.");
       jsonValue(value[key], depth + 1);
     });
   }
@@ -63,6 +66,10 @@
       throw new Error("작업 이력의 작업공간이 현재 백업과 다릅니다.");
     }
     if (settings.browserOnly && event.source !== "browser") throw new Error("브라우저 백업에는 브라우저 출처의 이력만 허용됩니다.");
+    if (event.action === "canonical.reconcile" && (["toolkit", "external"].indexOf(event.source) === -1
+      || ["changed", "observation"].indexOf(event.kind) === -1)) {
+      throw new Error("내부 정본 대조에 예약된 작업 이름은 해당 출처의 관측 기록에만 허용됩니다.");
+    }
     jsonValue(event.before, 0); jsonValue(event.after, 0);
     if ((event.kind === "started" && event.outcome !== "running")
       || (event.kind === "finished" && ["succeeded", "failed", "blocked", "stopped"].indexOf(event.outcome) === -1)) {
@@ -81,9 +88,17 @@
   }
   function merge(base, incoming, options) {
     if (!Array.isArray(base) || !Array.isArray(incoming)) throw new Error("작업 이력 목록의 형식이 올바르지 않습니다.");
-    var seen = Object.create(null), result = [];
+    var seen = Object.create(null), operations = Object.create(null), result = [];
     base.concat(incoming).forEach(function (event) {
       validate(event, options);
+      if (event.action !== "canonical.reconcile") {
+        var identity = stable([event.workspaceId, event.reportId, event.action, event.source,
+          event.itemIds.filter(function (value, index, values) { return values.indexOf(value) === index; }).slice().sort()]);
+        if (Object.prototype.hasOwnProperty.call(operations, event.operationId) && operations[event.operationId] !== identity) {
+          throw new Error("같은 작업 ID의 논리 작업 정보가 충돌합니다: " + event.operationId);
+        }
+        operations[event.operationId] = identity;
+      }
       if (Object.prototype.hasOwnProperty.call(seen, event.eventId)) {
         if (stable(seen[event.eventId]) !== stable(event)) throw new Error("작업 이력 ID 충돌: " + event.eventId);
       } else { seen[event.eventId] = event; result.push(event); }
@@ -110,8 +125,11 @@
     if (Array.isArray(value)) return value.slice(0, 50).map(function (v) { return compact(v, depth + 1); });
     if (object(value)) {
       var result = Object.create(null), keys = Object.keys(value);
-      keys.slice(0, 50).forEach(function (key) { result[key.slice(0, 2000)] = compact(value[key], depth + 1); });
-      if (keys.length > 50) result._truncated = keys.length - 50;
+      var omitted = keys.filter(function (key) { return RESERVED_KEYS.indexOf(key) !== -1; });
+      var allowed = keys.filter(function (key) { return RESERVED_KEYS.indexOf(key) === -1; });
+      allowed.slice(0, 50).forEach(function (key) { result[key.slice(0, 2000)] = compact(value[key], depth + 1); });
+      if (omitted.length) result._omittedKeys = omitted;
+      if (allowed.length > 50) result._truncated = allowed.length - 50;
       return result;
     }
     return value;

@@ -238,6 +238,8 @@ test("old-report activity survives backup restore without changing the current r
   dashboard.api.exportProgress();
   const incoming = dashboard.downloads[0].data;
   incoming.activityEvents[0].eventId = "older-report-event";
+  incoming.activityEvents[0].operationId = "older-report-operation";
+  incoming.activityEvents[0].attemptId = "older-report-attempt";
   incoming.activityEvents[0].reportId = "older-report";
   dashboard.api.importProgressData(incoming);
   dashboard.api.exportProgress();
@@ -357,6 +359,24 @@ test("activity file generation, load and newest-record metadata use concise UTC 
   assert.match(text, /최신 기록: 2026-09-15 04:29:48 UTC/);
   assert.doesNotMatch(text, /999999|224039/);
   assert.equal(events[0].recordedAt, "2026-09-15T04:29:48.224039Z");
+});
+
+test("reserved-action and unsafe snapshot imports reject before changing browser state or history", () => {
+  const dashboard = loadDashboard();
+  dashboard.api.updateState("F-001", { workflowStatus: "analyzed" });
+  dashboard.api.exportProgress();
+  const saved = dashboard.downloads[0].data;
+  const original = [...dashboard.storage.entries()];
+  for (const mutation of [event => { event.action = "canonical.reconcile"; },
+    event => { event.action = "browser.other-logical-work"; },
+    event => { event.after = JSON.parse('{"constructor":{"state":"forged"}}'); }]) {
+    const incoming = JSON.parse(JSON.stringify(saved));
+    incoming.activityEvents[0].eventId = "new-unsafe-id";
+    mutation(incoming.activityEvents[0]);
+    assert.throws(() => dashboard.api.importProgressData(incoming));
+    assert.deepEqual([...dashboard.storage.entries()], original);
+    assert.equal(dashboard.api.stateFor("F-001").workflowStatus, "analyzed");
+  }
 });
 
 const SCOPE_FINDINGS = [
