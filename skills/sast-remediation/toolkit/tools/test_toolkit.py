@@ -13,12 +13,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from datetime import datetime, timezone
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+try:
+    from .sast_scope import resolve_scope, scope_bucket, scope_summary
+except ImportError:
+    from sast_scope import resolve_scope, scope_bucket, scope_summary
 
 TOOLKIT = Path(__file__).resolve().parent.parent
 SKIP_DIRS = {"input", "__pycache__", ".git"}
@@ -594,6 +600,401 @@ class QueryTests(ToolkitCase):
         write_json(self.data / "progress.json", progress)
         rows = self.query("--status", "todo")
         self.assertEqual(rows[0]["progress"]["conclusion"], "unreviewed")
+
+
+class ScopeTests(ToolkitCase):
+    def run_state(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "tools/sast_state.py", *args],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+
+    def install_severity_fixture(self) -> None:
+        self.ready_inputs()
+        template = read_json(self.root / "examples/findings.json")[0]
+        levels = (
+            ("CRITICAL-1", "critical", 1),
+            ("VERY-HIGH-1", "very-high", 2),
+            ("HIGH-1", "high", 3),
+            ("MEDIUM-1", "medium", 99),
+            ("LOW-1", "low", 100),
+            ("INFO-1", "info", 100),
+            ("UNKNOWN-1", "unknown", 100),
+        )
+        findings = []
+        for sequence, (finding_id, level, rank) in enumerate(levels, 1):
+            finding = json.loads(json.dumps(template))
+            finding["id"] = finding_id
+            finding["sequence"] = sequence
+            finding["risk"].update(level=level, label=level, rank=rank)
+            findings.append(finding)
+        write_json(self.data / "findings.json", findings)
+
+        profile = read_json(self.data / "project-profile.json")
+        profile["report"]["findingCount"] = len(findings)
+        write_json(self.data / "project-profile.json", profile)
+
+        progress = read_json(self.root / "examples/progress.json")
+        progress["items"] = {"HIGH-1": progress["items"]["SAMPLE-001"]}
+        write_json(self.data / "progress.json", progress)
+
+        result = read_json(self.root / "examples/result.json")
+        result["id"] = "HIGH-1"
+        result["sequence"] = 3
+        (self.root / "security-results/SAMPLE-001.json").unlink()
+        write_json(self.root / "security-results/HIGH-1.json", result)
+        proc = self.run_tool("sync")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+    def test_scope_cli_filters_literal_severities_and_preserves_canonical_records(self) -> None:
+        """A numeric-rank implementation, implicit default, or sync rewrite breaks this."""
+        self.install_severity_fixture()
+        progress_before = (self.data / "progress.json").read_bytes()
+        result_before = (self.root / "security-results/HIGH-1.json").read_bytes()
+
+        targeted = self.run_tool("query", "--scope", "in-scope")
+        self.assertNotEqual(targeted.returncode, 0)
+        all_rows = json.loads(self.run_tool("query").stdout)
+        self.assertEqual(len(all_rows), 7)
+
+        applied = self.run_tool(
+            "scope", "--min-risk", "high", "--set-by", "user", "--reason", "approved scope"
+        )
+        self.assertEqual(applied.returncode, 0, applied.stdout + applied.stderr)
+        summary = json.loads(applied.stdout)
+        self.assertEqual(summary["counts"], {
+            "total": 7,
+            "inScope": 3,
+            "outOfScope": 3,
+            "unknown": 1,
+            "unconfigured": 0,
+            "inScopeVerified": 1,
+            "inScopeRemaining": 2,
+            "totalVerified": 1,
+        })
+        self.assertEqual(summary["completionBasis"], "workflow-status-only")
+
+        selected = json.loads(self.run_tool("query", "--scope", "in-scope").stdout)
+        self.assertEqual(
+            [row["id"] for row in selected],
+            ["CRITICAL-1", "VERY-HIGH-1", "HIGH-1"],
+        )
+        self.assertEqual((self.data / "progress.json").read_bytes(), progress_before)
+        self.assertEqual(
+            (self.root / "security-results/HIGH-1.json").read_bytes(), result_before
+        )
+
+    def test_shared_scope_boundaries_ignore_rank_and_report_workflow_completion(self) -> None:
+        """Wrong threshold ordering, rank use, or empty-target completion breaks this."""
+        levels = ("critical", "very-high", "high", "medium", "low", "info", "unknown")
+        findings = [
+            {"id": level, "risk": {"level": level, "rank": index}}
+            for index, level in enumerate(levels)
+        ]
+        base = {
+            "workspaceId": "workspace",
+            "report": {"id": "report"},
+        }
+        expected = {
+            "critical": (1, 5, 1),
+            "very-high": (2, 4, 1),
+            "high": (3, 3, 1),
+            "medium": (4, 2, 1),
+            "low": (5, 1, 1),
+        }
+        for min_risk, buckets in expected.items():
+            with self.subTest(min_risk=min_risk):
+                profile = dict(base)
+                profile["processingScope"] = {
+                    "workspaceId": "workspace",
+                    "reportId": "report",
+                    "minRisk": min_risk,
+                    "updatedAt": "2026-09-15T00:00:00Z",
+                    "updatedBy": "user",
+                    "reason": "approved",
+                }
+                progress = {
+                    "items": {
+                        level: {"workflowStatus": "verified"}
+                        for level in levels[: buckets[0]]
+                    }
+                }
+                summary = scope_summary(profile, findings, progress)
+                self.assertEqual(
+                    (
+                        summary["counts"]["inScope"],
+                        summary["counts"]["outOfScope"],
+                        summary["counts"]["unknown"],
+                    ),
+                    buckets,
+                )
+                self.assertTrue(summary["selectedComplete"])
+                self.assertFalse(summary["allComplete"])
+
+        unconfigured = resolve_scope(base)
+        self.assertEqual(scope_bucket(findings[-1], unconfigured), "unknown")
+        self.assertEqual(scope_bucket(findings[0], unconfigured), "unconfigured")
+        empty = scope_summary(
+            {**base, "processingScope": {
+                "workspaceId": "workspace",
+                "reportId": "report",
+                "minRisk": "critical",
+                "updatedAt": "2026-09-15T00:00:00Z",
+                "updatedBy": "user",
+                "reason": "approved",
+            }},
+            [],
+            {"items": {}},
+        )
+        self.assertFalse(empty["selectedComplete"])
+        self.assertFalse(empty["allComplete"])
+
+    def test_resolve_scope_rejects_malformed_records_and_uninitialized_identity(self) -> None:
+        """Fail-open persisted scope parsing or inherited/unknown fields breaks this."""
+        valid = {
+            "workspaceId": "workspace",
+            "report": {"id": "report"},
+            "processingScope": {
+                "workspaceId": "workspace",
+                "reportId": "report",
+                "minRisk": "high",
+                "updatedAt": "2026-09-15T00:00:00Z",
+                "updatedBy": "user",
+                "reason": "approved",
+            },
+        }
+        malformed = []
+        for field, value in (
+            ("minRisk", "urgent"),
+            ("workspaceId", "other"),
+            ("reportId", "other"),
+            ("updatedAt", "yesterday"),
+            ("updatedAt", "2026-09-15 00:00:00+00:00"),
+            ("updatedAt", "2026-02-30T00:00:00Z"),
+            ("updatedAt", "2026-09-15T24:00:00Z"),
+            ("updatedAt", "2026-09-15T00:00:00+00:99"),
+            ("updatedAt", "2026-09-15T00:00:00+24:00"),
+            ("updatedBy", ""),
+            ("reason", ""),
+        ):
+            candidate = json.loads(json.dumps(valid))
+            candidate["processingScope"][field] = value
+            malformed.append(candidate)
+        missing = json.loads(json.dumps(valid))
+        del missing["processingScope"]["reason"]
+        malformed.append(missing)
+        unexpected = json.loads(json.dumps(valid))
+        unexpected["processingScope"]["minimumRisk"] = "high"
+        malformed.append(unexpected)
+        non_string_key = json.loads(json.dumps(valid))
+        non_string_key["processingScope"][1] = "high"
+        malformed.append(non_string_key)
+        wrong_type = json.loads(json.dumps(valid))
+        wrong_type["processingScope"] = []
+        malformed.append(wrong_type)
+        uninitialized = json.loads(json.dumps(valid))
+        uninitialized["workspaceId"] = "uninitialized"
+        uninitialized["processingScope"]["workspaceId"] = "uninitialized"
+        malformed.append(uninitialized)
+        for index, profile in enumerate(malformed):
+            with self.subTest(case=index):
+                with self.assertRaises(ValueError):
+                    resolve_scope(profile)
+        for timestamp in (
+            "2026-09-15T00:00:00Z",
+            "2026-09-15T00:00:00.123Z",
+            "2026-09-15T09:00:00+09:00",
+        ):
+            with self.subTest(valid_timestamp=timestamp):
+                candidate = json.loads(json.dumps(valid))
+                candidate["processingScope"]["updatedAt"] = timestamp
+                self.assertTrue(resolve_scope(candidate)["configured"])
+
+    def test_scope_cli_rejects_unapproved_or_incomplete_application_without_writing(self) -> None:
+        """A setter that bypasses READY or accepts partial approval metadata breaks this."""
+        self.load_examples()
+        profile_path = self.data / "project-profile.json"
+        before = profile_path.read_bytes()
+        blocked = self.run_tool(
+            "scope", "--min-risk", "high", "--set-by", "user", "--reason", "approved"
+        )
+        self.assertNotEqual(blocked.returncode, 0)
+        self.assertEqual(profile_path.read_bytes(), before)
+        partial = self.run_tool("scope", "--min-risk", "high", "--set-by", "user")
+        self.assertNotEqual(partial.returncode, 0)
+        self.assertEqual(profile_path.read_bytes(), before)
+        invalid = self.run_tool(
+            "scope", "--min-risk", "urgent", "--set-by", "user", "--reason", "approved"
+        )
+        self.assertNotEqual(invalid.returncode, 0)
+        self.assertEqual(profile_path.read_bytes(), before)
+
+    def test_scope_application_rechecks_approved_input_manifest_before_replacing_scope(self) -> None:
+        """Trusting a stale READY string or overwriting the prior scope on failure breaks this."""
+        self.ready_inputs()
+        applied = self.run_tool(
+            "scope", "--min-risk", "high", "--set-by", "user", "--reason", "approved"
+        )
+        self.assertEqual(applied.returncode, 0, applied.stdout + applied.stderr)
+        profile_path = self.data / "project-profile.json"
+        before = profile_path.read_bytes()
+        with (self.root / "input/report.sarif").open("a", encoding="utf-8") as handle:
+            handle.write("\n")
+        stale = self.run_tool(
+            "scope", "--min-risk", "low", "--set-by", "user", "--reason", "changed"
+        )
+        self.assertNotEqual(stale.returncode, 0)
+        self.assertEqual(profile_path.read_bytes(), before)
+
+    def test_scope_application_validates_current_profile_run_before_writing(self) -> None:
+        """A finding-count/profile run mismatch must preserve the existing profile."""
+        self.ready_inputs()
+        profile_path = self.data / "project-profile.json"
+        profile = read_json(profile_path)
+        profile["report"]["findingCount"] = 999
+        write_json(profile_path, profile)
+        before = profile_path.read_bytes()
+        proc = self.run_tool(
+            "scope", "--min-risk", "high", "--set-by", "user", "--reason", "approved"
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(profile_path.read_bytes(), before)
+
+    def test_scope_changes_recompute_target_without_changing_the_general_query(self) -> None:
+        """Sticky filtering or destructive shrink/expansion breaks this."""
+        self.install_severity_fixture()
+        for min_risk, expected in (("high", 3), ("low", 5), ("critical", 1)):
+            with self.subTest(min_risk=min_risk):
+                proc = self.run_tool(
+                    "scope", "--min-risk", min_risk, "--set-by", "user", "--reason", "approved"
+                )
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                selected = json.loads(self.run_tool("query", "--scope", "in-scope").stdout)
+                self.assertEqual(len(selected), expected)
+                self.assertEqual(len(json.loads(self.run_tool("query").stdout)), 7)
+
+    def test_corrupt_scope_blocks_scoped_reads_but_not_full_audit_query(self) -> None:
+        """A malformed canonical scope must fail closed only at the scoped boundary."""
+        self.install_severity_fixture()
+        profile = read_json(self.data / "project-profile.json")
+        profile["processingScope"] = {"minRisk": "high"}
+        write_json(self.data / "project-profile.json", profile)
+        self.assertNotEqual(self.run_tool("scope").returncode, 0)
+        self.assertNotEqual(self.run_tool("query", "--scope", "in-scope").returncode, 0)
+        full = self.run_tool("query")
+        self.assertEqual(full.returncode, 0, full.stdout + full.stderr)
+        self.assertEqual(len(json.loads(full.stdout)), 7)
+        explicit_all = self.run_tool("query", "--scope", "all")
+        self.assertEqual(explicit_all.returncode, 0, explicit_all.stdout + explicit_all.stderr)
+        self.assertEqual(len(json.loads(explicit_all.stdout)), 7)
+
+    def test_scope_read_is_lock_free_and_read_only(self) -> None:
+        """Routing a read-only summary through the writer path breaks this."""
+        self.install_severity_fixture()
+        lock_path = self.root / ".sast-write.lock"
+        lock_path.unlink()
+        before = {
+            path.relative_to(self.root): path.read_bytes()
+            for path in self.root.rglob("*")
+            if path.is_file()
+        }
+        proc = self.run_tool("scope")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        after = {
+            path.relative_to(self.root): path.read_bytes()
+            for path in self.root.rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(after, before)
+        self.assertFalse(lock_path.exists())
+
+    def test_stale_legacy_evidence_does_not_deadlock_scope_application_and_new_snapshot(self) -> None:
+        """Freshness auditing must not prevent configuring scope needed to refresh evidence."""
+        self.ready_inputs()
+        applied = self.run_tool(
+            "scope", "--min-risk", "high", "--set-by", "user", "--reason", "initial"
+        )
+        self.assertEqual(applied.returncode, 0, applied.stdout + applied.stderr)
+        snapshot = self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "application.py")
+        self.assertEqual(snapshot.returncode, 0, snapshot.stdout + snapshot.stderr)
+        result_path = self.root / "security-results/SAMPLE-001.json"
+        result = read_json(result_path)
+        result["resultFiles"] = ["application.py"]
+        result["verification"]["verifiedAt"] = datetime.now(timezone.utc).isoformat()
+        write_json(result_path, result)
+        sealed = self.run_state("seal-verification", "--id", "SAMPLE-001")
+        self.assertEqual(sealed.returncode, 0, sealed.stdout + sealed.stderr)
+
+        profile = read_json(self.data / "project-profile.json")
+        profile.pop("processingScope")
+        write_json(self.data / "project-profile.json", profile)
+        (self.root.parent / "application.py").write_text("value = 2\n", encoding="utf-8")
+
+        recovered = self.run_tool(
+            "scope", "--min-risk", "high", "--set-by", "user", "--reason", "refresh stale evidence"
+        )
+        self.assertEqual(recovered.returncode, 0, recovered.stdout + recovered.stderr)
+        renewed = self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "application.py")
+        self.assertEqual(renewed.returncode, 0, renewed.stdout + renewed.stderr)
+
+    def test_out_of_scope_stale_evidence_does_not_block_selected_query_or_sync(self) -> None:
+        """A stale low finding must remain preserved without blocking high-scope read paths."""
+        self.install_severity_fixture()
+        applied = self.run_tool(
+            "scope", "--min-risk", "low", "--set-by", "user", "--reason", "prepare binding"
+        )
+        self.assertEqual(applied.returncode, 0, applied.stdout + applied.stderr)
+        progress = read_json(self.data / "progress.json")
+        progress["items"]["LOW-1"] = dict(progress["items"]["HIGH-1"])
+        write_json(self.data / "progress.json", progress)
+        low_result = read_json(self.root / "security-results/HIGH-1.json")
+        low_result.update(id="LOW-1", sequence=5, resultFiles=["application.py"])
+        write_json(self.root / "security-results/LOW-1.json", low_result)
+        snapshot = self.run_state("snapshot", "--id", "LOW-1", "--path", "application.py")
+        self.assertEqual(snapshot.returncode, 0, snapshot.stdout + snapshot.stderr)
+        low_result = read_json(self.root / "security-results/LOW-1.json")
+        low_result["verification"]["verifiedAt"] = datetime.now(timezone.utc).isoformat()
+        write_json(self.root / "security-results/LOW-1.json", low_result)
+        sealed = self.run_state("seal-verification", "--id", "LOW-1")
+        self.assertEqual(sealed.returncode, 0, sealed.stdout + sealed.stderr)
+        narrowed = self.run_tool(
+            "scope", "--min-risk", "high", "--set-by", "user", "--reason", "narrowed"
+        )
+        self.assertEqual(narrowed.returncode, 0, narrowed.stdout + narrowed.stderr)
+        (self.root.parent / "application.py").write_text("value = 3\n", encoding="utf-8")
+
+        selected = self.run_tool("query", "--scope", "in-scope")
+        self.assertEqual(selected.returncode, 0, selected.stdout + selected.stderr)
+        self.assertIn("WARN:", selected.stderr)
+        self.assertIn("source changed", selected.stderr)
+        self.assertEqual(
+            [row["id"] for row in json.loads(selected.stdout)],
+            ["CRITICAL-1", "VERY-HIGH-1", "HIGH-1"],
+        )
+        progress_before = (self.data / "progress.json").read_bytes()
+        result_before = (self.root / "security-results/LOW-1.json").read_bytes()
+        synchronized = self.run_tool("sync")
+        self.assertEqual(synchronized.returncode, 0, synchronized.stdout + synchronized.stderr)
+        self.assertIn("WARN:", synchronized.stderr)
+        self.assertIn("source changed", synchronized.stderr)
+        self.assertEqual((self.data / "progress.json").read_bytes(), progress_before)
+        self.assertEqual(
+            (self.root / "security-results/LOW-1.json").read_bytes(), result_before
+        )
+
+    def test_explicit_null_source_binding_remains_a_structural_error(self) -> None:
+        """Only an absent sourceSnapshot is a legacy unbound record; null is damage."""
+        self.load_examples()
+        result_path = self.root / "security-results/SAMPLE-001.json"
+        result = read_json(result_path)
+        result["verification"]["sourceSnapshot"] = None
+        write_json(result_path, result)
+        queried = self.run_tool("query")
+        self.assertNotEqual(queried.returncode, 0)
+        self.assertIn("structure", queried.stdout + queried.stderr)
 
 
 class DashboardTests(ToolkitCase):

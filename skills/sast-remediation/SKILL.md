@@ -34,6 +34,8 @@ description: Manage and remediate SAST findings you already have — input gate,
 작업 규칙과 단계별 상세는 복사된 툴킷의 문서가 기준이다.
 
 1. `sast-remediation-toolkit/SECURITY_SAST_WORKFLOW.md`를 읽는다.
+   위험도 처리 범위를 사용하거나 재개·완료 집계를 할 때는
+   `sast-remediation-toolkit/docs/PROCESSING_SCOPE.md`도 읽는다.
 2. `sast-remediation-toolkit/prompts/00-preflight.md`부터 시작한다.
    게이트가 READY가 아니면 어떤 분석·조치도 시작하지 않는다.
 3. 이후 단계는 사용자의 요청에 맞는 프롬프트 파일을 따른다:
@@ -84,6 +86,11 @@ prompts/03의 위임 규칙을 따른다: 기계적 대량 작업은 bulk-worker
   기록하고 sync한다 — 미확인 기본안에 관찰 방법이 기록되지 않으면 validate 오류.
 - 큰 findings.json은 읽지 않는다. `tools/sast_toolkit.py query`로 그룹·
   상태별 항목만 받고, 현황은 `query --summary`로 본다.
+- 상세 분석·조치 전에 `tools/sast_toolkit.py scope`로 이번 차수의
+  `processingScope`를 확인한다. 미설정이면 사용자 선택을 scope 명령으로
+  기록하고, 상세 작업은 `query --scope in-scope` 결과에만 수행한다. 범위가
+  없다고 전체로 확대하거나 `unknown`을 범위 밖에 합치지 않는다. 전체 입력과
+  기존 상태는 보존하고, 혼합 작업 그룹은 항목별로 대상 여부를 나눈다.
 - 결과 정본은 `security-results/`다. `data/progress.json`은 결과와 일치해야
   하는 집계이며, 아직 결과가 없는 임시 진행상태·메모도 보관한다.
 - 수정 전·후 `tools/sast_state.py checkpoint`, 검증 직전 `snapshot`, 실제
@@ -95,6 +102,10 @@ prompts/03의 위임 규칙을 따른다: 기계적 대량 작업은 bulk-worker
   코드·정책·외부 조건을 대조한다. 새 차수 verified는 현재 소스에서 재검증한다 (06).
 - 제출 전에는 `validate --strict`와 검증 신선도, 실제 검증·증적을 함께
   확인한다. 자동 검사 성공을 취약점 해소·사용자 승인으로 확대하지 않는다.
+- 처리 범위 완료 보고는 전체·대상·범위 밖·미확인을 분리한다.
+  `status.processingScope.selectedComplete`는 workflowStatus 기반 집계일 뿐이고,
+  status 최상위 `status.selectedReadyForCompletion`과 실제 검증·한계까지 확인한다. 선택 완료를
+  전체 완료나 제출 승인으로 표현하지 않는다.
 - 실행 권한은 현재 요청 또는 확인 가능한 사용자 승인 범위에서 판단한다.
   같은 승인 범위는 재사용하되 파일 기록만으로 권한을 만들지 않는다.
 - 응답은 결론 → 근거 → 검증·한계 → 다음 작업 순서로 간결하게 쓴다.

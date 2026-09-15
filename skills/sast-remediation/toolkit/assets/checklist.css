@@ -141,6 +141,31 @@ main { padding: 16px 20px 30px; }
 .readiness-band ul { min-width: min(460px, 45%); margin: 0; padding-left: 20px; }
 .readiness-band li + li { margin-top: 3px; }
 
+.processing-scope-panel {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.1fr) minmax(360px, 1.4fr);
+  gap: 14px 20px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid #b9cff0;
+  border-radius: var(--radius);
+  background: #f7faff;
+}
+.processing-scope-panel.invalid { border-color: #f3b4ae; background: var(--red-soft); }
+.processing-scope-copy h2 { margin: 0 0 5px; font-size: 17px; }
+.scope-kicker { margin: 0 0 2px; color: var(--primary); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.scope-status { margin: 0; font-weight: 800; }
+.scope-meta { margin: 3px 0 8px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.scope-request-controls { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(220px, 1.3fr) auto; gap: 7px; align-items: end; }
+.scope-request-controls label span { display: block; margin-bottom: 4px; color: #344054; font-size: 12px; font-weight: 700; }
+.scope-request-controls select, .scope-request-controls input { width: 100%; }
+.scope-draft-status { grid-column: 1 / -1; margin: 0; color: var(--amber); font-size: 12px; font-weight: 700; }
+.scope-request-controls .message { grid-column: 1 / -1; margin: 0; }
+.scope-counts { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(6, minmax(100px, 1fr)); gap: 7px; margin: 0; }
+.scope-counts > div { padding: 8px 9px; border: 1px solid #d8e3f2; border-radius: 6px; background: #fff; }
+.scope-counts dt { color: var(--muted); font-size: 11px; font-weight: 700; }
+.scope-counts dd { margin: 2px 0 0; font-size: 17px; font-weight: 800; }
+
 .summary {
   display: grid;
   grid-template-columns: repeat(8, minmax(112px, 1fr));
@@ -339,6 +364,9 @@ td code { color: #344054; font-family: Consolas, "Courier New", monospace; font-
   .summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .controls { grid-template-columns: minmax(240px, 1fr) repeat(3, minmax(130px, 0.5fr)); }
   .controls select:nth-last-child(-n + 2) { grid-column: span 1; }
+  .scope-request-controls { grid-template-columns: minmax(140px, .7fr) minmax(180px, 1fr); }
+  .scope-request-controls button { grid-column: 1 / -1; }
+  .scope-counts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
@@ -350,6 +378,8 @@ td code { color: #344054; font-family: Consolas, "Courier New", monospace; font-
   main { padding: 12px; }
   .readiness-band { display: block; }
   .readiness-band ul { min-width: 0; margin-top: 8px; }
+  .processing-scope-panel { grid-template-columns: minmax(0, 1fr); }
+  .scope-counts { grid-column: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .summary { grid-template-columns: 1fr 1fr; }
   .insights { grid-template-columns: 1fr; }
   .recommendations-panel { grid-column: auto; }
@@ -390,6 +420,7 @@ td code { color: #344054; font-family: Consolas, "Courier New", monospace; font-
   .controls input { grid-column: auto; }
   .header-actions button { flex: 1 1 auto; }
   .metric-card { padding: 10px; }
+  .scope-request-controls, .scope-counts { grid-template-columns: minmax(0, 1fr); }
   .insights-disclosure > summary span { display: block; margin: 4px 0 0; }
   .recommendation { grid-template-columns: 42px 68px minmax(0, 1fr); }
   .recommendation .mapping-summary { grid-column: 3; justify-self: start; }

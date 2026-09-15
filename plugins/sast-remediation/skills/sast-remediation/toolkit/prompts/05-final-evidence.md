@@ -7,6 +7,7 @@
 - python3 tools/sast_toolkit.py gate
 - python3 tools/sast_toolkit.py validate --strict
 - python3 tools/sast_state.py status
+- python3 tools/sast_toolkit.py scope
 오류나 stale/unbound 검증을 숨기거나 새 passed로 바꾸지 않습니다.
 재검증하지 못한 항목은 미검증·추가 검토 워크북에 제한과 함께 남깁니다.
 최종 제출 판단은 자동 검사 외에 실제 근거와 사용자 검토가 필요합니다.
@@ -20,6 +21,7 @@
 
 컬럼 구성과 정렬은 `templates/evidence-columns.md` 정의를 그대로
 따릅니다. 임의로 컬럼을 추가·삭제·재배치하지 않습니다.
+처리 범위의 집계·완료 의미는 `../docs/PROCESSING_SCOPE.md`를 따릅니다.
 
 생성할 결과 (파일명은 data/project-profile.json의 evidence.outputs 설정을
 우선 사용하고, 설정이 없으면 아래 기본값을 사용합니다):
@@ -41,6 +43,12 @@
 결론을 수정으로 바꾸지 않습니다. 정책 승인·위험 수용은 소스에서 확인한 기술
 사실과 분리하고 결정 근거를 연결합니다.
 
-마지막으로 전체, 위험도별, 결론별, 검증상태별 건수를 보고하고 데이터 간
-불일치가 없는지 확인해 주세요. 실행한 검사와 미확인 범위, 남은 조치도 보고합니다.
+마지막으로 전체, 위험도별, 결론별, 검증상태별 건수와 함께 선택 범위,
+범위 밖(`info` 포함), 미확인(`unknown`·누락)을 분리해 보고하고 데이터 간
+불일치가 없는지 확인해 주세요. `status.processingScope.selectedComplete`는 작업 상태
+라벨 기반(`status.processingScope.completionBasis=workflow-status-only`) 집계일 뿐입니다.
+status 출력 최상위 `selectedReadyForCompletion`, 즉
+`status.selectedReadyForCompletion`의 정본 일치·fresh·미완료 체크포인트 없음도
+확인하되, 어느 값도 제출 승인이거나 전체 완료를 뜻하지 않습니다. 실행한 검사,
+미확인 범위와 남은 조치도 보고합니다.
 ```

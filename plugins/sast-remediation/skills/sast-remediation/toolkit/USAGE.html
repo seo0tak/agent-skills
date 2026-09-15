@@ -210,8 +210,8 @@ td code { white-space: nowrap; }
 <p>받은 SAST 검출 결과를 현재 소스와 대조하고, 조치·검증·증적까지 관리하는 가이드입니다. 처음에는 1번부터, 중단한 작업은 6번부터 확인하세요. 사용자 요청이 없을 때 스스로 실행하거나 배포하는 도구는 아닙니다.</p>
 <section id="s1">
 <h2>전체 흐름</h2>
-<pre><code>준비 → 00 입력 확인 → 01 초기 분석
-                       ↓
+<pre><code>준비 → 00 입력 확인 → 01 전체 등록·초기 분석 → 처리 범위 설정
+                                                   ↓
             06 이전 차수 대조 (자료가 있을 때)
                        ↓
             03 조치·검증 반복 ← 02 정책 질문 (수시)
@@ -247,6 +247,11 @@ td code { white-space: nowrap; }
 <tr><td><code>SECURITY_CHECKLIST.html</code></td><td>매핑 상태, 위험도, 작업 그룹과 미확인 항목</td></tr>
 </tbody></table></div>
 <p>“미확인”은 0건이나 문제가 없다는 뜻이 아닙니다. 소스에 매핑한 항목의 <code>fingerprint</code>는 차수 간 대조용 지문이며, 그 자체가 오탐·수정 완료의 증거는 아닙니다.</p>
+<h3>이번 차수의 처리 범위를 설정합니다</h3>
+<p>전체 항목을 등록하고 건수를 대조한 뒤 상세 분석·조치할 최소 위험도를 <code>data/project-profile.json</code>에 기록합니다. 범위가 없으면 전체로 자동 실행하지 않습니다. 예를 들어 “높음 이상”은 다음과 같이 설정합니다.</p>
+<pre><code>python3 tools/sast_toolkit.py scope --min-risk high --set-by user --reason &quot;이번 차수는 높음 이상 처리&quot;
+python3 tools/sast_toolkit.py scope</code></pre>
+<p><code>critical/very-high/high</code>는 대상, 더 낮은 5단계와 <code>info</code>는 범위 밖, <code>unknown</code>·등급 누락은 별도 미확인입니다. 전체 입력·기존 상태는 모두 보존합니다. 정본, 다른 임계값, 재개와 집계 계약은 <code>docs/PROCESSING_SCOPE.md</code>를 참고하세요.</p>
 <h3>오탐 판단과 조치 필요성은 따로 확인합니다</h3>
 <p>AI는 먼저 체커가 어떤 조건을 검출하는지 확인하고, 현재 소스의 영향·안전 조건과 조치 필요성을 구분해 설명합니다. 피해가 작거나 재현되지 않았어도 규칙 위반은 남을 수 있습니다. 반대로 실제 오탐이라도 안전 조건을 명확히 하는 예방 수정은 유용할 수 있습니다. 변경 목적과 승인 범위, 회귀 위험을 확인한 뒤 결정하며, 검출 건수를 줄이기 위한 불필요한 수정은 하지 않습니다.</p>
 <div class="table-scroll"><table><thead><tr><th scope="col">사례</th><th scope="col">결론 / 작업 상태</th></tr></thead><tbody>
@@ -266,12 +271,13 @@ td code { white-space: nowrap; }
 </section>
 <section id="s5">
 <h2>4. 조치와 검증 — 03</h2>
-<p>초기 분석을 검토한 뒤 처리 범위를 요청하세요.</p>
+<p>초기 분석을 검토하고 <code>scope</code>로 적용된 이번 차수의 처리 범위를 확인하세요.</p>
 <p>작업 그룹은 <code>grouping.workGroup</code>으로 묶은 분류 단위입니다. 조치 실행은 이번 요청에서 처리하도록 승인된 범위이며 하나 이상의 작업 그룹을 포함할 수 있습니다.</p>
-<pre><code>prompts/03-remediation-wave.md에 따라 WG-003을 처리해줘.</code></pre>
+<pre><code>prompts/03-remediation-wave.md에 따라 적용된 처리 범위 안에서 WG-003을 처리해줘.</code></pre>
 <pre><code>승인한 범위에서 그룹 3개를 연속 처리해줘. 정책 질문은 해당 항목을 보류하고 모아서 알려줘.</code></pre>
 <p>AI는 수정 직전과 직후에 체크포인트를 저장하고, 검증 직전에 소스 스냅샷을 저장합니다. 검증을 실제 실행한 뒤 그 결과를 소스와 연결합니다. 스냅샷을 만드는 것과 테스트가 통과하는 것은 별개의 일입니다.</p>
 <p>연속 실행도 승인 범위 안에서만 이어집니다. 추가 권한, 공통 컴포넌트· 외부 규격 영향, 해결되지 않는 오류, 안전한 저장 불가 또는 사용자 중단 요청이 있으면 멈춥니다. 정책 질문이 있는 항목만 보류하고 독립 작업은 계속할 수 있습니다.</p>
+<p>혼합 작업 그룹은 <code>query --scope in-scope --group &lt;WG&gt;</code>로 항목별 대상을 나눕니다. 공통 수정이 범위 밖 항목에도 영향을 줬다는 이유만으로 그 항목을 자동 완료하지 않습니다.</p>
 <p>중요 변경·공통 코드·오탐·예외는 근거를 직접 검토하세요. 일부 항목만 표본으로 검토했다면 확인한 ID와 선정 기준을 기록하세요. 표본 검토는 나머지 항목의 안전성을 보장하지 않습니다.</p>
 </section>
 <section id="s6">
@@ -286,8 +292,9 @@ td code { white-space: nowrap; }
 <tr><td>읽지 못한 저장본 백업</td><td>읽기에 실패한 원본이 있을 때만 표시; 그 원문을 보존용으로 내려받기</td></tr>
 <tr><td>필터 초기화</td><td>검색·필터를 초기화</td></tr>
 </tbody></table></div>
+<p>처리 범위 패널에서 값을 고르고 요청을 복사하는 것은 적용이 아닙니다. AI가 <code>scope --min-risk ...</code>를 실행해 정본을 갱신한 뒤 sync·새로고침해야 적용됩니다. 화면 위험도 필터와 필터 초기화, localStorage·백업은 처리 범위를 바꾸지 않습니다.</p>
 <p>진행상태별 “분석 완료”, “변경 완료”, “검증 완료” 건수는 서로 누적하지 않고 각각의 현재 상태만 셉니다. “검증 완료 상태 비율”은 전체 검출 항목 중 현재 상태가 <code>verified</code>인 항목의 비율입니다. 검색·위험도·체커·언어 필터로 검토 범위를 줄일 수 있습니다. 작업 그룹은 화면 필터가 아니라 <code>grouping.workGroup</code> 분류와 <code>query --group &lt;WG&gt;</code>로 확인합니다.</p>
-<p>“분포 및 추천 작업 보기”를 펼치면 추천 작업의 표시 개수를 선택할 수 있습니다. 추천 목록은 전체 항목에서 검증 완료·보류를 제외한 대상으로, 표 필터와는 별개입니다. 목록이 길면 화면 높이의 절반(최대 480px) 안에서 세로로 스크롤합니다. 제목과 개수 선택기는 목록 밖에 남습니다. Tab으로 목록에 초점을 둔 뒤 키보드로도 스크롤할 수 있습니다. 표시 개수를 바꾸면 목록 맨 위로 이동하며, 표 필터 변경이나 상세 처리 중 목록을 다시 그릴 때는 기존 스크롤 위치를 유지합니다. 항목이 줄어들면 남은 목록의 스크롤 가능 범위로 조정됩니다.</p>
+<p>“분포 및 추천 작업 보기”를 펼치면 추천 작업의 표시 개수를 선택할 수 있습니다. 추천 목록은 적용된 <code>in-scope</code> 항목에서 검증 완료·보류를 제외한 대상으로, 표의 검색·위험도·체커·언어 표시 필터와는 별개입니다. 처리 범위가 미설정· 잘못된 상태이면 추천 작업을 제공하지 않습니다. 목록이 길면 화면 높이의 절반(최대 480px) 안에서 세로로 스크롤합니다. 제목과 개수 선택기는 목록 밖에 남습니다. Tab으로 목록에 초점을 둔 뒤 키보드로도 스크롤할 수 있습니다. 표시 개수를 바꾸면 목록 맨 위로 이동하며, 표 필터 변경이나 상세 처리 중 목록을 다시 그릴 때는 기존 스크롤 위치를 유지합니다. 항목이 줄어들면 남은 목록의 스크롤 가능 범위로 조정됩니다.</p>
 <p>JSON 정본이나 항목별 결과를 바꾼 뒤에는 <code>sync</code>로 JS 미러와 결과 인덱스를 먼저 갱신하세요. 그런 다음 <code>파일 결과 다시 읽기</code>로 생성된 인덱스를 다시 읽습니다. 이 버튼만 눌러서는 JSON 변경이 화면에 반영되지 않습니다.</p>
 <h3>브라우저 저장과 파일 저장은 다릅니다</h3>
 <p>답변을 붙여넣을 때는 <code>조치 결론:</code>에 결론만, <code>작업 상태:</code>에 작업 단계만 씁니다. 자세한 설명은 <code>판단 이유:</code>에 남깁니다. 예를 들어 예방 수정을 마친 오탐은 <code>조치 결론: false-positive</code>, <code>작업 상태: change-complete</code>입니다. 작업 상태가 빠진 옛 답변은 분석 완료 초안으로 저장합니다. 결론이 모호하거나 텍스트로 검증 완료를 지정하면 경고를 표시하고 기존 결과를 유지합니다. 변경 완료를 지정했다면 <code>적용 내용:</code>에 실제 변경을 적어야 합니다. 빈 내용은 받지 않지만, 내용이 있다는 사실만으로 실제 변경을 확인한 것은 아닙니다. 파일 결과와 백업은 이 규칙 때문에 자동 재분류되지 않습니다.</p>
@@ -303,7 +310,7 @@ td code { white-space: nowrap; }
 </section>
 <section id="s7">
 <h2>6. 중단한 작업 재개 — 07</h2>
-<pre><code>prompts/07-resume.md로 상태를 확인하고, 이전에 승인한 WG-003 범위에서 이어서 해줘.</code></pre>
+<pre><code>prompts/07-resume.md로 상태와 이번 차수 처리 범위를 확인하고, 대상인 WG-003 항목부터 이어서 해줘.</code></pre>
 <p>재개 시에는 게이트와 원본 상태를 먼저 검사합니다. 손상된 진행상태를 조회하거나 오래된 인덱스로 완료율부터 계산하지 않습니다.</p>
 <ul>
 <li><p>복구는 먼저 미리보기로 확인하고 <code>--apply</code>를 붙일 때만 반영합니다.</p></li>
@@ -312,7 +319,10 @@ td code { white-space: nowrap; }
 <li><p><code>stale</code>: 검증과 연결한 소스 또는 근거가 바뀌었습니다.</p></li>
 <li><p><code>unbound</code>: 옛 검증에 소스 연결이 없습니다. 현재 소스에서 재검증해야 합니다.</p></li>
 <li><p><code>fresh</code>: 지정한 파일과 저장된 검증 근거가 일치합니다. 외부 시스템·DB·정책의 유효성까지 보장하지는 않습니다.</p></li>
+<li><p><code>resumeCandidates</code>: 범위와 관계없는 전체 복구 후보입니다.</p></li>
+<li><p><code>inScopeResumeCandidates</code>: 현재 처리 범위 안에서 실행할 재개 후보입니다.</p></li>
 </ul>
+<p>복구는 전체 후보를 보존한 뒤 대상 후보만 상세 실행합니다. 처리 범위가 미설정·손상됐거나 다른 차수의 기록이면 새 상세 작업을 시작하지 않습니다.</p>
 <p>자동 재시작·네트워크 재연결·정책 로그 감시는 제공하지 않습니다. 세션을 다시 열어 요청하면 마지막으로 온전히 저장된 기록부터 확인합니다.</p>
 </section>
 <section id="s8">
@@ -324,8 +334,9 @@ td code { white-space: nowrap; }
 <li><p><code>sast_state.py status</code>의 중간 작업·오래된 검증·연결 없는 검증</p></li>
 <li><p>실제 테스트 결과, 미검증·예외·운영 조치의 표시</p></li>
 <li><p>제출 파일의 수치·근거·표현과 사용자 검토</p></li>
+<li><p>전체·선택 범위·범위 밖(<code>info</code> 포함)·미확인(<code>unknown</code>·누락)의 분리 집계</p></li>
 </ol>
-<p>자동 검사 <code>OK</code>는 데이터 검사 통과입니다. 취약점 해소나 제출 승인을 대신하지 않습니다. 미검증 항목이 있으면 미검증 목록에 명확히 남깁니다.</p>
+<p>자동 검사 <code>OK</code>는 데이터 검사 통과입니다. 취약점 해소나 제출 승인을 대신하지 않습니다. 미검증 항목이 있으면 미검증 목록에 명확히 남깁니다. status 출력의 <code>processingScope.selectedComplete</code>는 workflowStatus 기반 단계 집계입니다. 이 값은 <code>status.processingScope.selectedComplete</code> 경로에 있고, <code>selectedReadyForCompletion</code>은 status 출력의 최상위 필드입니다. 완료 보고 전에는 <code>status.selectedReadyForCompletion</code>의 대상 존재·정본 일치· fresh·미완료 체크포인트 없음과 실제 검증 한계를 함께 확인합니다. 선택 범위가 준비돼도 전체 완료나 제출 승인을 뜻하지 않습니다.</p>
 </section>
 <section id="s9">
 <h2>명령어 요약</h2>
@@ -333,9 +344,14 @@ td code { white-space: nowrap; }
 <div class="table-scroll"><table><thead><tr><th scope="col">명령</th><th scope="col">용도</th></tr></thead><tbody>
 <tr><td><code>python3 tools/sast_toolkit.py preflight</code></td><td>입력 기계 점검</td></tr>
 <tr><td><code>python3 tools/sast_toolkit.py gate</code></td><td>입력 승인과 현재 파일 대조</td></tr>
+<tr><td><code>python3 tools/sast_toolkit.py scope</code></td><td>이번 차수 처리 범위와 분리 집계 확인</td></tr>
+<tr><td><code>python3 tools/sast_toolkit.py scope --min-risk high --set-by user --reason &quot;...&quot;</code></td><td>사용자 승인 범위 기록</td></tr>
 <tr><td><code>python3 tools/sast_toolkit.py sync</code></td><td>정본에서 미러·인덱스·가이드 HTML 생성</td></tr>
 <tr><td><code>python3 tools/sast_toolkit.py validate --strict</code></td><td>제출 전 데이터 검사</td></tr>
 <tr><td><code>python3 tools/sast_toolkit.py query --summary</code></td><td>파일을 도구로 읽어 상태별 현황 집계</td></tr>
+<tr><td><code>python3 tools/sast_toolkit.py query --scope in-scope</code></td><td>상세 분석·조치 대상만 조회</td></tr>
+<tr><td><code>python3 tools/sast_toolkit.py query --scope out-of-scope</code></td><td>범위 밖(<code>info</code> 포함) 조회</td></tr>
+<tr><td><code>python3 tools/sast_toolkit.py query --scope unknown</code></td><td>위험도 미확인·누락 조회</td></tr>
 <tr><td><code>python3 tools/sast_toolkit.py query --group &lt;WG&gt;</code></td><td>해당 그룹의 모든 진행상태 조회</td></tr>
 <tr><td><code>python3 tools/sast_state.py status</code></td><td>재개 후보·체크포인트·검증 신선도 확인</td></tr>
 <tr><td><code>python3 tools/sast_state.py recover-progress --backup &lt;파일&gt;</code></td><td>복구 미리보기; 실제 반영은 <code>--apply</code> 추가</td></tr>

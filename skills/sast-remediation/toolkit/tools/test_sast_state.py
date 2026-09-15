@@ -30,6 +30,7 @@ class StateTests(unittest.TestCase):
             "note": "Investigating boundary", "draftDetail": {"hypothesis": "null input"},
         }
         self.write(self.progress_path, self.progress)
+        self.set_scope("high")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -67,6 +68,152 @@ class StateTests(unittest.TestCase):
         record = self.result()
         record["verification"]["verifiedAt"] = datetime.now(timezone.utc).isoformat()
         self.store_result(record)
+
+    def set_scope(self, minimum):
+        path = self.root / "data/project-profile.json"
+        profile = self.read(path)
+        if minimum is None:
+            profile.pop("processingScope", None)
+        else:
+            profile["processingScope"] = {
+                "workspaceId": profile["workspaceId"], "reportId": profile["report"]["id"],
+                "minRisk": minimum, "updatedAt": "2026-09-15T00:00:00Z",
+                "updatedBy": "fixture-user", "reason": "Explicit synthetic scope",
+            }
+        self.write(path, profile)
+
+    def add_scope_findings(self):
+        import copy
+        path = self.root / "data/findings.json"
+        findings = self.read(path)
+        for index, level in enumerate(("low", "unknown"), 2):
+            item = copy.deepcopy(findings[0])
+            item.update(id=f"SAMPLE-00{index}", sequence=index)
+            item["risk"] = {"level": level, "label": level, "rank": 100}
+            findings.append(item)
+            self.progress["items"][item["id"]] = {
+                "workflowStatus": "todo", "conclusion": "unreviewed", "note": "preserve me",
+            }
+        self.write(path, findings)
+        self.write(self.progress_path, self.progress)
+
+    def test_scope_blocks_outside_actions_without_changing_existing_state(self):
+        self.add_scope_findings()
+        self.run_state("checkpoint", "--id", "SAMPLE-001")
+        before = self.tree()
+        for finding_id in ("SAMPLE-002", "SAMPLE-003"):
+            for args in (("checkpoint", "--phase", "before-edit"),
+                         ("snapshot", "--path", "service.py"), ("seal-verification",)):
+                with self.subTest(id=finding_id, command=args[0]):
+                    rejected = self.run_state(*args, "--id", finding_id, ok=False)
+                    self.assertIn("scope", rejected["error"])
+                    self.assertEqual(self.tree(), before)
+
+    def test_unset_scope_blocks_new_actions_but_preserves_read_only_recovery(self):
+        self.set_scope(None)
+        before = self.tree()
+        for args in (("checkpoint",), ("snapshot", "--path", "service.py"), ("seal-verification",)):
+            rejected = self.run_state(*args, "--id", "SAMPLE-001", ok=False)
+            self.assertIn("scope", rejected["error"])
+        status = self.run_state("status")
+        self.assertEqual(status["resumeCandidates"], ["SAMPLE-001"])
+        self.assertEqual(status["inScopeResumeCandidates"], [])
+        self.assertFalse(status["processingScope"]["scope"]["configured"])
+        self.run_state("recover-progress")
+        self.assertEqual(self.tree(), before)
+
+    def test_scope_narrowing_does_not_block_preserving_an_existing_edit(self):
+        self.run_state("checkpoint", "--id", "SAMPLE-001", "--path", "service.py")
+        self.set_scope("critical")
+        self.source.write_text("value = 2\n")
+        self.run_state("checkpoint", "--id", "SAMPLE-001", "--phase", "after-edit",
+                       "--note", "Already made edit; do not continue outside scope")
+        self.progress_path.write_text("broken")
+        self.run_state("recover-progress", "--apply")
+        self.assertEqual(self.read(self.progress_path)["items"]["SAMPLE-001"],
+                         self.progress["items"]["SAMPLE-001"])
+        status = self.run_state("status")
+        self.assertIn("SAMPLE-001", status["resumeCandidates"])
+        self.assertEqual(status["inScopeResumeCandidates"], [])
+        self.assertFalse(status["selectedReadyForCompletion"])
+
+    def test_status_separates_mixed_group_scope_without_hiding_recovery_candidates(self):
+        self.add_scope_findings()
+        before = self.tree()
+        status = self.run_state("status")
+        self.assertEqual(status["resumeCandidates"], ["SAMPLE-001", "SAMPLE-002", "SAMPLE-003"])
+        self.assertEqual(status["inScopeResumeCandidates"], ["SAMPLE-001"])
+        counts = status["processingScope"]["counts"]
+        self.assertEqual((counts["total"], counts["inScope"], counts["outOfScope"], counts["unknown"]), (3, 1, 1, 1))
+        self.assertEqual(self.tree(), before)
+        self.set_scope("low")
+        self.assertEqual(self.run_state("status")["inScopeResumeCandidates"], ["SAMPLE-001", "SAMPLE-002"])
+        self.assertEqual(self.read(self.progress_path), self.progress)
+
+    def test_damaged_scope_preserves_read_only_recovery_diagnostics(self):
+        import copy
+        self.add_scope_findings()
+        self.run_state("checkpoint", "--id", "SAMPLE-001", "--path", "service.py")
+        self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "service.py")
+        self.mark_verified_now()
+        self.run_state("seal-verification", "--id", "SAMPLE-001")
+        self.source.write_text("value = 8\n")
+        baseline = self.run_state("status")
+        path = self.root / "data/project-profile.json"
+        original = self.read(path)
+        for damaged in (None, {}, {**original["processingScope"], "reportId": "other-report"},
+                        {**original["processingScope"], "minRisk": "constructor"}):
+            with self.subTest(scope=damaged):
+                profile = copy.deepcopy(original)
+                profile["processingScope"] = damaged
+                self.write(path, profile)
+                before = self.tree()
+                status = self.run_state("status")
+                for field in ("resumeCandidates", "checkpoints", "pendingCheckpoints",
+                              "checkpointSourceChanges", "verification"):
+                    self.assertEqual(status[field], baseline[field])
+                self.assertFalse(status["processingScope"]["scope"]["configured"])
+                self.assertIn("processingScope", status["processingScope"]["error"])
+                self.assertEqual(status["processingScope"]["counts"]["unconfigured"], 2)
+                self.assertEqual(status["processingScope"]["counts"]["unknown"], 1)
+                self.assertEqual(status["inScopeResumeCandidates"], [])
+                self.assertFalse(status["selectedReadyForCompletion"])
+                self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "service.py", ok=False)
+                self.assertEqual(self.tree(), before)
+
+    def test_scope_completion_requires_fresh_evidence_not_only_verified_labels(self):
+        self.progress["items"]["SAMPLE-001"].update(workflowStatus="verified", conclusion="fix")
+        self.write(self.progress_path, self.progress)
+        status = self.run_state("status")
+        self.assertTrue(status["processingScope"]["selectedComplete"])
+        self.assertFalse(status["selectedReadyForCompletion"])
+        self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "service.py")
+        self.mark_verified_now()
+        self.run_state("seal-verification", "--id", "SAMPLE-001")
+        self.assertTrue(self.run_state("status")["selectedReadyForCompletion"])
+        self.source.write_text("value = 9\n")
+        self.assertFalse(self.run_state("status")["selectedReadyForCompletion"])
+
+    def test_scope_rechecked_after_risk_changes_before_verification_seal(self):
+        self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "service.py")
+        self.mark_verified_now()
+        path = self.root / "data/findings.json"
+        findings = self.read(path)
+        findings[0]["risk"] = {"level": "low", "label": "낮음", "rank": 100}
+        self.write(path, findings)
+        before = self.tree()
+        rejected = self.run_state("seal-verification", "--id", "SAMPLE-001", ok=False)
+        self.assertIn("scope", rejected["error"])
+        self.assertEqual(self.tree(), before)
+
+    def test_invalid_scope_cannot_authorize_actions_but_can_preserve_checkpoint(self):
+        self.run_state("checkpoint", "--id", "SAMPLE-001")
+        self.set_scope("constructor")
+        before = self.tree()
+        self.assertIn("scope", self.run_state("checkpoint", "--id", "SAMPLE-001", ok=False)["error"].lower())
+        self.assertEqual(self.tree(), before)
+        self.run_state("checkpoint", "--id", "SAMPLE-001", "--phase", "after-edit")
+        self.run_state("recover-progress")
 
     def test_checkpoint_restores_provisional_progress_and_notes_without_preview_writes(self):
         self.run_state("checkpoint", "--id", "SAMPLE-001", "--note", "Stopped before edit",
@@ -171,20 +318,51 @@ class StateTests(unittest.TestCase):
                 process.kill()
                 process.communicate(timeout=5)
 
-    def test_validator_reports_stale_binding_and_sync_refuses_to_publish_it(self):
+    def test_stale_source_remains_a_validation_error_but_does_not_block_reading_or_sync(self):
         self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "service.py")
         self.mark_verified_now()
         self.run_state("seal-verification", "--id", "SAMPLE-001")
+        self.progress["items"]["SAMPLE-001"].update(workflowStatus="verified", conclusion="fix")
+        self.write(self.progress_path, self.progress)
         self.source.write_text("value = 4\n")
+        progress_before = self.progress_path.read_bytes()
+        result_path = self.root / "security-results/SAMPLE-001.json"
+        result_before = result_path.read_bytes()
         for command in ("validate", "sync", "query"):
             with self.subTest(command=command):
                 before = self.tree()
                 result = subprocess.run([sys.executable, "tools/sast_toolkit.py", command],
                                         cwd=self.root, text=True, capture_output=True,
                                         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
-                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                if command == "validate":
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(self.tree(), before)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("WARN:", result.stderr)
+                    if command == "query":
+                        self.assertEqual(self.tree(), before)
                 self.assertIn("source changed", result.stdout + result.stderr)
-                self.assertEqual(self.tree(), before)
+                self.assertEqual(self.progress_path.read_bytes(), progress_before)
+                self.assertEqual(result_path.read_bytes(), result_before)
+        self.assertFalse(self.run_state("status")["selectedReadyForCompletion"])
+
+    def test_malformed_verification_binding_still_blocks_query_and_sync(self):
+        self.progress["items"]["SAMPLE-001"].update(workflowStatus="verified", conclusion="fix")
+        self.write(self.progress_path, self.progress)
+        for binding in (None, [], {}, {"files": []}):
+            with self.subTest(binding=binding):
+                result = self.result()
+                result["verification"]["sourceSnapshot"] = binding
+                self.store_result(result)
+                for command in ("query", "sync"):
+                    before = self.tree()
+                    checked = subprocess.run([sys.executable, "tools/sast_toolkit.py", command],
+                                             cwd=self.root, text=True, capture_output=True,
+                                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+                    self.assertNotEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+                    self.assertNotIn("Traceback", checked.stdout + checked.stderr)
+                    self.assertEqual(self.tree(), before)
 
     def test_identifier_and_source_path_boundaries(self):
         # No outside writes: point a source symlink at an existing shipped file.

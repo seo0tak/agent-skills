@@ -53,8 +53,11 @@
 4. 요청문은 `GATE: READY`인 경우 `prompts/01-initialize.md` 절차까지
    자동으로 계속합니다. `BLOCKED`이면 부족하거나 불일치한 입력을 먼저
    바로잡고 다시 실행합니다.
-5. 생성된 `project/PROJECT_ANALYSIS.md`와
-   `SECURITY_CHECKLIST.html`을 확인합니다.
+5. 전체 검출 목록이 등록되면 "이번 차수는 높음 이상"처럼 처리 범위를 지정합니다.
+   전체 5단계도 명시적으로 선택합니다. 생성된 `project/PROJECT_ANALYSIS.md`와
+   `SECURITY_CHECKLIST.html`을 확인합니다. 화면의 범위 선택은 적용 요청이며
+   파일에 저장한 정본을 다시 읽어야 확정됩니다. 상세 절차는
+   [위험도별 처리 범위](docs/PROCESSING_SCOPE.md)를 따릅니다.
 6. AI가 코드와 증거로 결정할 수 없는 정책을 업무 사실로 질문하면 한
    번에 하나씩 답합니다("모르겠다"도 답입니다). 답변은
    `project/PROJECT_SECURITY_POLICY.md`와 `data/decisions.json`에

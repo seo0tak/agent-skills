@@ -7,8 +7,8 @@
 ## 전체 흐름
 
 ```text
-준비 → 00 입력 확인 → 01 초기 분석
-                       ↓
+준비 → 00 입력 확인 → 01 전체 등록·초기 분석 → 처리 범위 설정
+                                                   ↓
             06 이전 차수 대조 (자료가 있을 때)
                        ↓
             03 조치·검증 반복 ← 02 정책 질문 (수시)
@@ -68,6 +68,22 @@ AI는 먼저 입력 개수·실제 파일 형식·소스 존재를 검사하고,
 소스에 매핑한 항목의 `fingerprint`는 차수 간 대조용 지문이며,
 그 자체가 오탐·수정 완료의 증거는 아닙니다.
 
+### 이번 차수의 처리 범위를 설정합니다
+
+전체 항목을 등록하고 건수를 대조한 뒤 상세 분석·조치할 최소 위험도를
+`data/project-profile.json`에 기록합니다. 범위가 없으면 전체로 자동 실행하지
+않습니다. 예를 들어 “높음 이상”은 다음과 같이 설정합니다.
+
+```text
+python3 tools/sast_toolkit.py scope --min-risk high --set-by user --reason "이번 차수는 높음 이상 처리"
+python3 tools/sast_toolkit.py scope
+```
+
+`critical/very-high/high`는 대상, 더 낮은 5단계와 `info`는 범위 밖,
+`unknown`·등급 누락은 별도 미확인입니다. 전체 입력·기존 상태는 모두
+보존합니다. 정본, 다른 임계값, 재개와 집계 계약은
+`docs/PROCESSING_SCOPE.md`를 참고하세요.
+
 ### 오탐 판단과 조치 필요성은 따로 확인합니다
 
 AI는 먼저 체커가 어떤 조건을 검출하는지 확인하고, 현재 소스의 영향·안전
@@ -109,14 +125,14 @@ AI는 자료로 확인할 수 없는 업무 사실만 한 번에 하나씩 묻�
 
 ## 4. 조치와 검증 — 03
 
-초기 분석을 검토한 뒤 처리 범위를 요청하세요.
+초기 분석을 검토하고 `scope`로 적용된 이번 차수의 처리 범위를 확인하세요.
 
 작업 그룹은 `grouping.workGroup`으로 묶은 분류 단위입니다. 조치 실행은
 이번 요청에서 처리하도록 승인된 범위이며 하나 이상의 작업 그룹을 포함할
 수 있습니다.
 
 ```text
-prompts/03-remediation-wave.md에 따라 WG-003을 처리해줘.
+prompts/03-remediation-wave.md에 따라 적용된 처리 범위 안에서 WG-003을 처리해줘.
 ```
 
 ```text
@@ -132,6 +148,10 @@ AI는 수정 직전과 직후에 체크포인트를 저장하고, 검증 직전�
 외부 규격 영향, 해결되지 않는 오류, 안전한 저장 불가 또는 사용자 중단
 요청이 있으면 멈춥니다. 정책 질문이 있는 항목만 보류하고 독립 작업은
 계속할 수 있습니다.
+
+혼합 작업 그룹은 `query --scope in-scope --group <WG>`로 항목별 대상을
+나눕니다. 공통 수정이 범위 밖 항목에도 영향을 줬다는 이유만으로 그 항목을
+자동 완료하지 않습니다.
 
 중요 변경·공통 코드·오탐·예외는 근거를 직접 검토하세요. 일부 항목만
 표본으로 검토했다면 확인한 ID와 선정 기준을 기록하세요. 표본 검토는
@@ -152,6 +172,10 @@ AI는 수정 직전과 직후에 체크포인트를 저장하고, 검증 직전�
 | 읽지 못한 저장본 백업 | 읽기에 실패한 원본이 있을 때만 표시; 그 원문을 보존용으로 내려받기 |
 | 필터 초기화 | 검색·필터를 초기화 |
 
+처리 범위 패널에서 값을 고르고 요청을 복사하는 것은 적용이 아닙니다. AI가
+`scope --min-risk ...`를 실행해 정본을 갱신한 뒤 sync·새로고침해야 적용됩니다.
+화면 위험도 필터와 필터 초기화, localStorage·백업은 처리 범위를 바꾸지 않습니다.
+
 진행상태별 “분석 완료”, “변경 완료”, “검증 완료” 건수는 서로 누적하지
 않고 각각의 현재 상태만 셉니다. “검증 완료 상태 비율”은 전체 검출 항목 중
 현재 상태가 `verified`인 항목의 비율입니다. 검색·위험도·체커·언어
@@ -159,7 +183,9 @@ AI는 수정 직전과 직후에 체크포인트를 저장하고, 검증 직전�
 `grouping.workGroup` 분류와 `query --group <WG>`로 확인합니다.
 
 “분포 및 추천 작업 보기”를 펼치면 추천 작업의 표시 개수를 선택할 수 있습니다.
-추천 목록은 전체 항목에서 검증 완료·보류를 제외한 대상으로, 표 필터와는 별개입니다.
+추천 목록은 적용된 `in-scope` 항목에서 검증 완료·보류를 제외한 대상으로,
+표의 검색·위험도·체커·언어 표시 필터와는 별개입니다. 처리 범위가 미설정·
+잘못된 상태이면 추천 작업을 제공하지 않습니다.
 목록이 길면 화면 높이의 절반(최대 480px) 안에서 세로로 스크롤합니다. 제목과
 개수 선택기는 목록 밖에 남습니다. Tab으로 목록에 초점을 둔 뒤 키보드로도
 스크롤할 수 있습니다. 표시 개수를 바꾸면 목록 맨 위로 이동하며, 표 필터 변경이나
@@ -210,7 +236,7 @@ JSON 정본이나 항목별 결과를 바꾼 뒤에는 `sync`로 JS 미러와 �
 ## 6. 중단한 작업 재개 — 07
 
 ```text
-prompts/07-resume.md로 상태를 확인하고, 이전에 승인한 WG-003 범위에서 이어서 해줘.
+prompts/07-resume.md로 상태와 이번 차수 처리 범위를 확인하고, 대상인 WG-003 항목부터 이어서 해줘.
 ```
 
 재개 시에는 게이트와 원본 상태를 먼저 검사합니다.
@@ -223,6 +249,11 @@ prompts/07-resume.md로 상태를 확인하고, 이전에 승인한 WG-003 범�
 - `unbound`: 옛 검증에 소스 연결이 없습니다. 현재 소스에서 재검증해야 합니다.
 - `fresh`: 지정한 파일과 저장된 검증 근거가 일치합니다.
   외부 시스템·DB·정책의 유효성까지 보장하지는 않습니다.
+- `resumeCandidates`: 범위와 관계없는 전체 복구 후보입니다.
+- `inScopeResumeCandidates`: 현재 처리 범위 안에서 실행할 재개 후보입니다.
+
+복구는 전체 후보를 보존한 뒤 대상 후보만 상세 실행합니다. 처리 범위가
+미설정·손상됐거나 다른 차수의 기록이면 새 상세 작업을 시작하지 않습니다.
 
 자동 재시작·네트워크 재연결·정책 로그 감시는 제공하지 않습니다.
 세션을 다시 열어 요청하면 마지막으로 온전히 저장된 기록부터 확인합니다.
@@ -239,9 +270,16 @@ prompts/07-resume.md로 상태를 확인하고, 이전에 승인한 WG-003 범�
 2. `sast_state.py status`의 중간 작업·오래된 검증·연결 없는 검증
 3. 실제 테스트 결과, 미검증·예외·운영 조치의 표시
 4. 제출 파일의 수치·근거·표현과 사용자 검토
+5. 전체·선택 범위·범위 밖(`info` 포함)·미확인(`unknown`·누락)의 분리 집계
 
 자동 검사 `OK`는 데이터 검사 통과입니다. 취약점 해소나 제출 승인을
 대신하지 않습니다. 미검증 항목이 있으면 미검증 목록에 명확히 남깁니다.
+status 출력의 `processingScope.selectedComplete`는 workflowStatus 기반 단계
+집계입니다. 이 값은 `status.processingScope.selectedComplete` 경로에 있고,
+`selectedReadyForCompletion`은 status 출력의 최상위 필드입니다. 완료 보고
+전에는 `status.selectedReadyForCompletion`의 대상 존재·정본 일치·
+fresh·미완료 체크포인트 없음과 실제 검증 한계를 함께 확인합니다. 선택 범위가
+준비돼도 전체 완료나 제출 승인을 뜻하지 않습니다.
 
 ## 명령어 요약
 
@@ -252,9 +290,14 @@ prompts/07-resume.md로 상태를 확인하고, 이전에 승인한 WG-003 범�
 |---|---|
 | `python3 tools/sast_toolkit.py preflight` | 입력 기계 점검 |
 | `python3 tools/sast_toolkit.py gate` | 입력 승인과 현재 파일 대조 |
+| `python3 tools/sast_toolkit.py scope` | 이번 차수 처리 범위와 분리 집계 확인 |
+| `python3 tools/sast_toolkit.py scope --min-risk high --set-by user --reason "..."` | 사용자 승인 범위 기록 |
 | `python3 tools/sast_toolkit.py sync` | 정본에서 미러·인덱스·가이드 HTML 생성 |
 | `python3 tools/sast_toolkit.py validate --strict` | 제출 전 데이터 검사 |
 | `python3 tools/sast_toolkit.py query --summary` | 파일을 도구로 읽어 상태별 현황 집계 |
+| `python3 tools/sast_toolkit.py query --scope in-scope` | 상세 분석·조치 대상만 조회 |
+| `python3 tools/sast_toolkit.py query --scope out-of-scope` | 범위 밖(`info` 포함) 조회 |
+| `python3 tools/sast_toolkit.py query --scope unknown` | 위험도 미확인·누락 조회 |
 | `python3 tools/sast_toolkit.py query --group <WG>` | 해당 그룹의 모든 진행상태 조회 |
 | `python3 tools/sast_state.py status` | 재개 후보·체크포인트·검증 신선도 확인 |
 | `python3 tools/sast_state.py recover-progress --backup <파일>` | 복구 미리보기; 실제 반영은 `--apply` 추가 |

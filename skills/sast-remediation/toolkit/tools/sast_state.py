@@ -14,8 +14,10 @@ import uuid
 
 try:
     from .sast_io import writer_lock, write_text_atomic, write_bytes_atomic
+    from .sast_scope import resolve_scope, scope_bucket, scope_summary
 except ImportError:
     from sast_io import writer_lock, write_text_atomic, write_bytes_atomic
+    from sast_scope import resolve_scope, scope_bucket, scope_summary
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = {"todo", "in-progress", "analyzed", "change-complete", "verified", "deferred"}
@@ -104,6 +106,7 @@ class Workspace:
         profile = read_json(safe_record(self.root, "data/project-profile.json"))
         if not isinstance(profile, dict) or profile.get("schemaVersion") != "1.0":
             raise ValueError("unsupported project profile")
+        self.profile = profile
         self.workspace_id = profile.get("workspaceId")
         if not isinstance(self.workspace_id, str) or not self.workspace_id.strip() or self.workspace_id == "uninitialized":
             raise ValueError("workspaceId is not initialized")
@@ -113,6 +116,7 @@ class Workspace:
         self.ids = {identifier(item.get("id")) for item in findings if isinstance(item, dict)}
         if len(self.ids) != len(findings):
             raise ValueError("unsupported or duplicate findings")
+        self.findings = {item["id"]: item for item in findings}
         self.sequences = {item["id"]: item.get("sequence") for item in findings}
         self.state_path = safe_record(self.root, "data/resume-state.json")
         self.progress_path = safe_record(self.root, "data/progress.json")
@@ -121,6 +125,15 @@ class Workspace:
         identifier(finding_id)
         if finding_id not in self.ids:
             raise ValueError(f"unknown finding: {finding_id}")
+
+    def require_processing_scope(self, finding_id):
+        self.check_id(finding_id)
+        scope = resolve_scope(self.profile)
+        if not scope["configured"]:
+            raise ValueError("processing scope is not configured; record the user's range with sast_toolkit.py scope first")
+        bucket = scope_bucket(self.findings[finding_id], scope)
+        if bucket != "in-scope":
+            raise ValueError(f"finding {finding_id} is {bucket}; it is not an authorized processing scope target")
 
     def envelope(self, record):
         if not isinstance(record, dict) or record.get("schemaVersion") != "1.0" or record.get("workspaceId") != self.workspace_id:
@@ -232,6 +245,9 @@ class Workspace:
 
     def checkpoint(self, args):
         self.check_id(args.id)
+        # A narrowed scope must not strand the record of work already done.
+        if args.phase == "before-edit":
+            self.require_processing_scope(args.id)
         state = self.state()
         progress = self.progress(read_json(self.progress_path))
         item = progress["items"].get(args.id, {"workflowStatus": "todo", "conclusion": "unreviewed", "note": ""})
@@ -295,6 +311,7 @@ class Workspace:
                 "scope": sorted(binding["files"])}
 
     def snapshot(self, args):
+        self.require_processing_scope(args.id)
         state = self.state()
         snapshot = self.capture(args.id, args.path)
         state["snapshots"][args.id] = snapshot
@@ -303,7 +320,7 @@ class Workspace:
         return {"ok": True, "snapshot": snapshot}
 
     def seal(self, args):
-        self.check_id(args.id)
+        self.require_processing_scope(args.id)
         snapshot = self.state()["snapshots"].get(args.id)
         if snapshot is None:
             raise ValueError("capture a snapshot before running verification")
@@ -419,10 +436,29 @@ class Workspace:
             if fresh.get("status") != "fresh" or timestamp(checkpoint["recordedAt"]) > timestamp(fresh["sealedAt"]):
                 candidates.add(key)
                 pending.append(key)
+        scope_error = None
+        summary_profile = self.profile
+        try:
+            resolve_scope(self.profile)
+        except ValueError as error:
+            # Invalid execution scope must not hide otherwise readable recovery
+            # evidence. Keep the error explicit and authorize no selected work.
+            scope_error = str(error)
+            summary_profile = {key: value for key, value in self.profile.items()
+                               if key != "processingScope"}
+        processing = scope_summary(summary_profile, list(self.findings.values()), progress)
+        if scope_error is not None:
+            processing["error"] = scope_error
+        in_scope = {key for key, item in self.findings.items()
+                    if scope_bucket(item, processing["scope"]) == "in-scope"}
         return {"ok": True, "workspaceId": self.workspace_id,
                 "resumeCandidates": sorted(candidates), "checkpoints": state["checkpoints"],
                 "pendingCheckpoints": sorted(pending), "checkpointSourceChanges": changes,
-                "verification": verification}
+                "verification": verification, "processingScope": processing,
+                "inScopeResumeCandidates": sorted(candidates & in_scope),
+                # Unlike progress-only counts, this also checks canonical evidence,
+                # freshness, agreement and unfinished checkpoints. Policy review remains separate.
+                "selectedReadyForCompletion": bool(in_scope) and not bool(candidates & in_scope)}
 
 
 def parse_args():

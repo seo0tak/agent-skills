@@ -11,17 +11,25 @@
 | `python3 tools/sast_toolkit.py preflight` | 소스·선택 입력 세트·파일 형식과 해시 점검 |
 | `python3 tools/sast_toolkit.py gate` | 의미 대조 승인과 현재 입력을 확인 |
 | `python3 tools/sast_toolkit.py init` | READY 이후 없는 프로젝트 기록을 초기화 |
+| `python3 tools/sast_toolkit.py scope` | 이번 차수 처리 범위와 분리 집계를 읽기 전용 확인 |
+| `python3 tools/sast_toolkit.py scope --min-risk high --set-by user --reason "..."` | READY 입력에 사용자 승인 범위를 기록하고 sync |
 | `python3 tools/sast_toolkit.py sync` | JSON에서 JS 미러·index·문서 생성 |
 | `python3 tools/sast_toolkit.py validate` | 산출물과 스키마·미러·상태 정합성 검사 |
 | `python3 tools/sast_toolkit.py validate --strict` | 입력·초기화 누락도 오류로 보는 제출 전 검사 |
 | `python3 tools/sast_toolkit.py query --summary` | 도구가 findings·progress를 읽어 집계 |
 | `python3 tools/sast_toolkit.py query --group WG-003` | 그룹의 모든 진행상태 조회 |
+| `python3 tools/sast_toolkit.py query --scope in-scope --group WG-003` | 그룹에서 상세 실행할 선택 항목만 조회 |
+| `python3 tools/sast_toolkit.py query --scope out-of-scope` | 범위 밖(`info` 포함) 항목 조회 |
+| `python3 tools/sast_toolkit.py query --scope unknown` | 위험도 미확인·누락 항목 조회 |
 | `python3 tools/sast_toolkit.py query --ids A,B --fields id,location,progress` | 필요한 ID·필드만 조회 |
 
 query의 표준 출력은 JSON입니다. 오류·경고를 JSON에 섞지 않습니다.
 `ERROR`는 해결할 오류, `WARN`은 원인과 제한을 확인할 경고입니다.
 성공 종료 코드는 0이며, 오류는 0이 아닌 값입니다.
 검사 성공은 실제 테스트 실행이나 제출 승인이 아닙니다.
+일반 query와 `--scope all`은 전체 조회가 기본입니다. 범위가 미설정·손상됐으면
+`--scope in-scope`는 실패하며 전체 조회를 실행 범위로 사용하지 않습니다.
+정본과 실행 경계는 `../docs/PROCESSING_SCOPE.md`를 참고하세요.
 
 ## 중단 지점과 소스 검증 연결
 
@@ -60,6 +68,11 @@ python3 tools/sast_state.py recover-progress --backup <백업파일>
 
 sast_state.py의 stdout은 JSON이며 정상 명령은 0, 거부·입력 오류는 2입니다.
 status의 `ok`와 후보·오류 목록도 함께 확인하세요. 종료 코드만으로 완료를 판단하지 않습니다.
+`resumeCandidates`는 전체, `inScopeResumeCandidates`는 선택 범위 후보입니다.
+`status.processingScope.selectedComplete`는 workflowStatus 기반이고,
+`status.selectedReadyForCompletion`은 status 출력의 최상위에서 정본 일치·
+fresh·미완료 체크포인트 없음까지 본 준비 조건입니다. 어느 값도 제출 승인을
+뜻하지 않습니다.
 
 ## 저장과 회귀 검사
 

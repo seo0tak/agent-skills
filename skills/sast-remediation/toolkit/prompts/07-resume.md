@@ -14,15 +14,28 @@
    현재 요청 또는 확인 가능한 승인 근거의 범위만 사용합니다.
    과거 파일 기록만으로 연속 실행·배포·추가 소스 변경 권한을 추정하지 않습니다.
    동일한 승인 범위가 확인되면 세션이 바뀌었다는 이유만으로 다시 묻지 않습니다.
+   `../docs/PROCESSING_SCOPE.md`에 따라
+   python3 tools/sast_toolkit.py scope로 이번 차수 정본을 읽습니다.
+   미설정·손상·다른 차수 범위이면 전체로 확대하지 않고 상세 실행을 멈춥니다.
 
 2. 집계를 사용하기 전에 정본 상태를 검사합니다.
    python3 tools/sast_state.py status
    python3 tools/sast_toolkit.py validate
-   두 명령의 오류, resumeCandidates, pendingCheckpoints와
+   두 명령의 오류, 최상위 resumeCandidates, inScopeResumeCandidates,
+   selectedReadyForCompletion, pendingCheckpoints와 processingScope,
    verification의 fresh/stale/unbound 상태를 읽습니다.
+   status.processingScope.selectedComplete는 workflowStatus 라벨 기반이고,
+   status.selectedReadyForCompletion은 최상위 완료 보고 준비 필드입니다.
+   어느 쪽도 제출 승인이 아닙니다.
+   processingScope.error가 있으면 status가 성공했어도 범위가 유효한 것이
+   아닙니다. 전체 resumeCandidates·checkpoints·verification은 보존·복구하되,
+   inScopeResumeCandidates가 빈 상태에서 선택 실행을 추정하지 않습니다.
+   독립 scope와 query --scope in-scope가 유효해질 때까지 새 작업은 멈춥니다.
    손상된 progress를 먼저 query하거나 오래된 index로 완료를 판단하지 않습니다.
 
 3. 필요한 항목만 복구합니다.
+   복구는 처리 범위와 관계없이 전체 기존 후보와 원본을 보존합니다. after-edit
+   체크포인트도 이미 발생한 작업 보존에는 허용되지만 추가 수정 권한은 아닙니다.
    - progress 손상·누락:
      python3 tools/sast_state.py recover-progress
      먼저 미리보기를 읽습니다. 같은 작업공간의 백업이 있으면 --backup <파일>로
@@ -55,7 +68,8 @@
 
 5. 원본이 정리된 뒤 sync, validate, query --summary 순서로 현황을 봅니다.
    project/WORK_GROUPS.md와 새 security-results/index.json을 대조하고,
-   query --group <WG>로 재개 후보를 확인합니다. todo뿐 아니라 in-progress,
+   query --scope in-scope --group <WG>로 선택 재개 후보를 확인합니다.
+   혼합 그룹은 항목별로 나누고 범위 밖 멤버를 자동 완료하지 않습니다. todo뿐 아니라 in-progress,
    deferred, needs-review와 소스 재검증 후보를 포함합니다.
 
 6. data/decisions.json과 project/PROJECT_SECURITY_POLICY.md를 읽습니다.
@@ -72,9 +86,10 @@
 보고할 내용
 - 복구한 기록, 보존한 원본, 복구하지 못한 정보
 - 상태별 건수와 검증 신선도, 중간 수정이 발견된 항목
+- 전체·선택 범위·범위 밖·미확인 건수와 최상위 selectedReadyForCompletion
 - 남은 그룹·정책 질문·다음 작업
 - 계속 사용할 승인 범위 또는 추가로 필요한 사용자 결정
 
-범위가 확인되면 prompts/03의 체크포인트 → 수정 → 스냅샷 → 실제 검증 →
+범위가 확인되면 inScopeResumeCandidates에 대해 prompts/03의 체크포인트 → 수정 → 스냅샷 → 실제 검증 →
 결과 기록·연결 → sync/validate 순서로 이어갑니다.
 ```

@@ -25,6 +25,11 @@ SAST 처리 규칙을 적용할 수 있습니다. 기존 프로젝트 지침을 
   증거로 삼지 않는다. 사용할 수 없으면 텍스트 탐색·실제 소스·컴파일/린트/테스트로
   대체하고 중요한 불확실성을 알린다.
 - 초기 분석 승인 전에는 현재 소스 파일을 수정하지 않는다.
+- 상세 분석·조치 전에 `tools/sast_toolkit.py scope`로 이번 차수의
+  `processingScope` 정본을 확인한다. 미설정이면 전체로 자동 확대하지 않고,
+  설정된 뒤 `query --scope in-scope` 결과만 새로 처리한다. 혼합 그룹은
+  항목별로 나누며 범위 밖·미확인 항목을 자동 완료하지 않는다. 세부 계약은
+  `sast-remediation-toolkit/docs/PROCESSING_SCOPE.md`를 따른다.
 - 수정 전·후 `tools/sast_state.py checkpoint`로 메모·대상·다음 작업을 저장한다.
 - 검증 직전에 snapshot을 만들고 실제 빌드·테스트를 실행한 뒤 결과를
   seal-verification으로 연결한다. `seal-verification`은 테스트를 실행하지

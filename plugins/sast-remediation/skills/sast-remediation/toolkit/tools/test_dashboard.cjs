@@ -13,6 +13,13 @@ const DAY_1 = "2026-09-01T00:00:00Z";
 const DAY_2 = "2026-09-02T00:00:00Z";
 const DAY_3 = "2026-09-03T00:00:00Z";
 
+function processingScope({
+  workspaceId = "project-A", reportId = "report-A", minRisk = "high",
+  updatedAt = DAY_3, updatedBy = "user", reason = "approved scope",
+} = {}) {
+  return { workspaceId, reportId, minRisk, updatedAt, updatedBy, reason };
+}
+
 function item(workflowStatus = "todo", conclusion = "unreviewed", note = "", updatedAt = DAY_1) {
   return { workflowStatus, conclusion, note, updatedAt };
 }
@@ -40,6 +47,7 @@ function draft(resultValue, savedAt = DAY_3) {
 
 function loadDashboard({
   workspaceId = "project-A", fileItems = {}, fileResults = {}, storage = new Map(),
+  reportId = "report-A", scope, findings: suppliedFindings,
   findingCount = 1, bootstrap = false, inputStatus = "ready", scriptLoadSucceeds = false,
 } = {}) {
   const elements = new Map();
@@ -91,8 +99,16 @@ function loadDashboard({
   const window = {
     SAST_TOOLKIT_DATA: {
       inputValidation: { status: inputStatus, blockers: [] },
-      projectProfile: { workspaceId },
-      findings: Array.from({ length: findingCount }, (_, index) => ({ id: "F-" + String(index + 1).padStart(3, "0"), sequence: index + 1 })),
+      projectProfile: Object.assign(
+        { workspaceId, report: { id: reportId } },
+        scope === null ? {} : {
+          processingScope: scope === undefined ? processingScope({ workspaceId, reportId }) : scope,
+        },
+      ),
+      findings: suppliedFindings || Array.from({ length: findingCount }, (_, index) => ({
+        id: "F-" + String(index + 1).padStart(3, "0"), sequence: index + 1,
+        risk: { level: "high", label: "높음", rank: 60 },
+      })),
       progress: backup(fileItems, workspaceId),
     },
     SAST_ITEM_RESULTS: fileResults,
@@ -134,6 +150,8 @@ function loadDashboard({
       parseAnswer, exportCurrentResult, bindEvents, renderSyncNotice, openDetail,
       closeDetail, renderDashboardFilter, updateSortIndicators, renderTable,
       resultProvenance, formatCheckerGuide, renderStats, renderRecommendations,
+      resolveProcessingScope, scopeBucket, scopeSummary, buildTaskPrompt,
+      buildScopeRequest, initializeProcessingScope, clearFilters, highRisk, renderSummary,
       importAccounting: function () { return lastImportAccounting; },
       setCurrent: function (id) { currentFindingId = id; } };
     ${bootstrap ? "" : "return;"}
@@ -163,6 +181,235 @@ ${seam}`), context, { filename: scriptPath });
       });
     } };
 }
+
+const SCOPE_FINDINGS = [
+  { id: "CRITICAL-1", sequence: 1, groupId: "WG-1", risk: { level: "critical", label: "매우 위험", rank: 1 } },
+  { id: "VERY-HIGH-1", sequence: 2, groupId: "WG-1", risk: { level: "very-high", label: "위험", rank: 999 } },
+  { id: "HIGH-1", sequence: 3, groupId: "WG-2", risk: { level: "high", label: "높음", rank: -10 } },
+  { id: "MEDIUM-1", sequence: 4, groupId: "WG-2", risk: { level: "medium", label: "보통", rank: 1000 } },
+  { id: "LOW-1", sequence: 5, groupId: "WG-3", risk: { level: "low", label: "낮음", rank: 5000 } },
+  { id: "INFO-1", sequence: 6, groupId: "WG-3", risk: { level: "info", label: "정보", rank: 9999 } },
+  { id: "UNKNOWN-1", sequence: 7, groupId: "WG-3", risk: { level: "unknown", label: "미확인", rank: 10000 } },
+];
+
+test("applied high scope recommends only critical through high regardless of numeric rank", () => {
+  const dashboard = loadDashboard({ findings: SCOPE_FINDINGS });
+  dashboard.useRecommendationRendering();
+  dashboard.element("recommendationLimit").value = "all";
+  dashboard.api.renderRecommendations();
+
+  const recommendedIds = dashboard.element("recommendations").children.map((row) => row.children.at(-1).dataset.findingId);
+  assert.deepEqual(recommendedIds, ["CRITICAL-1", "VERY-HIGH-1", "HIGH-1"]);
+  assert.equal(dashboard.storage.size, 0);
+});
+
+test("the legacy high-pending metric uses canonical levels rather than numeric ranks", () => {
+  const dashboard = loadDashboard({ findings: SCOPE_FINDINGS });
+  assert.equal(dashboard.api.highRisk(SCOPE_FINDINGS[3]), false, "medium must stay below high even with a large rank");
+  assert.equal(dashboard.api.highRisk(SCOPE_FINDINGS[0]), true, "critical must stay high even with a small rank");
+  dashboard.api.renderSummary(SCOPE_FINDINGS);
+  assert.equal(dashboard.element("highPendingCount").textContent, "3");
+});
+
+test("scope selection and request copying do not change canonical scope or browser progress", async () => {
+  const dashboard = loadDashboard({ findings: SCOPE_FINDINGS, bootstrap: true });
+  const storageBeforeSelection = Array.from(dashboard.storage.entries());
+  dashboard.element("scopeMinRisk").value = "medium";
+  dashboard.element("scopeMinRisk").listeners.input();
+  dashboard.element("scopeReason").value = "이번 차수는 보통 이상 처리";
+  dashboard.element("scopeReason").listeners.input();
+  await dashboard.element("copyScopeRequest").listeners.click();
+
+  assert.deepEqual(Array.from(dashboard.storage.entries()), storageBeforeSelection);
+  const copiedScopeRequest = dashboard.copiedText.at(-1);
+  assert.match(copiedScopeRequest, /python3 tools\/sast_toolkit\.py scope/);
+  assert.match(copiedScopeRequest, /--min-risk medium/);
+  assert.match(copiedScopeRequest, /--set-by user/);
+  assert.match(copiedScopeRequest, /--reason '이번 차수는 보통 이상 처리'/);
+  assert.match(copiedScopeRequest, /workspaceId: "project-A"/);
+  assert.match(copiedScopeRequest, /reportId: "report-A"/);
+  assert.match(dashboard.element("scopeMessage").textContent, /복사.*적용.*아니|정본.*새로고침/);
+  assert.equal(dashboard.api.resolveProcessingScope().minRisk, "high", "selection must not replace profile scope");
+});
+
+test("scope summary separates recorded workflow counts without claiming fresh verification", () => {
+  const dashboard = loadDashboard({
+    findings: SCOPE_FINDINGS,
+    fileItems: {
+      "CRITICAL-1": item("verified"), "VERY-HIGH-1": item("verified"), "HIGH-1": item("todo"),
+      "LOW-1": item("verified"), "UNKNOWN-1": item("verified"),
+    },
+  });
+  const summary = dashboard.api.scopeSummary();
+  assert.deepEqual({ ...summary.counts }, {
+    total: 7, inScope: 3, outOfScope: 3, unknown: 1, unconfigured: 0,
+    inScopeVerified: 2, inScopeRemaining: 1, totalVerified: 4,
+  });
+  assert.equal(summary.selectedComplete, false);
+  assert.equal(summary.allComplete, false);
+  assert.equal(summary.completionBasis, "workflow-status-only");
+  dashboard.api.initializeProcessingScope();
+  assert.match(dashboard.element("scopeCompletionNote").textContent, /기록|단계|신선|증명/);
+});
+
+test("unconfigured invalid and identity-mismatched scopes disable every AI action path", async () => {
+  const invalidScopes = [
+    null,
+    processingScope({ minRisk: "info" }),
+    processingScope({ workspaceId: "foreign" }),
+    processingScope({ reportId: "foreign" }),
+    { ...processingScope(), reason: "" },
+  ];
+  for (const scope of invalidScopes) {
+    const dashboard = loadDashboard({ findings: SCOPE_FINDINGS, scope, bootstrap: true });
+    dashboard.useRecommendationRendering();
+    dashboard.api.renderRecommendations();
+    assert.equal(dashboard.element("recommendations").children.length, 1);
+    assert.match(dashboard.element("recommendations").children[0].textContent, /범위|정본|설정/);
+    dashboard.api.setCurrent("HIGH-1");
+    assert.throws(() => dashboard.api.buildTaskPrompt(SCOPE_FINDINGS[2]), /범위|처리 대상/);
+    await dashboard.element("copyTaskPrompt").listeners.click();
+    assert.equal(dashboard.copiedText.length, 0);
+    assert.match(dashboard.element("taskMessage").textContent, /범위|처리 대상/);
+    assert.equal(dashboard.storage.size, 0);
+    if (scope === null) {
+      assert.equal(dashboard.element("scopeUnconfiguredCount").textContent, "6");
+      assert.equal(dashboard.element("scopeUnknownCount").textContent, "1");
+    }
+  }
+});
+
+test("the strict JavaScript summary rejects a damaged scope like Python resolve_scope", () => {
+  const dashboard = loadDashboard();
+  const invalidProfile = {
+    workspaceId: "project-A", report: { id: "report-A" },
+    processingScope: { ...processingScope(), minRisk: "info" },
+  };
+  assert.throws(
+    () => dashboard.api.scopeSummary(invalidProfile, SCOPE_FINDINGS, { items: {} }),
+    /처리 범위|필수 필드|값/,
+  );
+});
+
+test("invalid calendar dates, times, and UTC offsets are rejected consistently", () => {
+  const dashboard = loadDashboard();
+  for (const updatedAt of [
+    "2026-02-30T00:00:00Z",
+    "2026-09-15T24:00:00Z",
+    "2026-09-15T00:00:00+00:99",
+    "2026-09-15T00:00:00+24:00",
+    "2026-09-15T00:00:00-24:00",
+  ]) {
+    const profile = {
+      workspaceId: "project-A", report: { id: "report-A" },
+      processingScope: processingScope({ updatedAt }),
+    };
+    assert.throws(() => dashboard.api.resolveProcessingScope(profile), /처리 범위|필수 필드|값/);
+    const pythonCode = "import json,sys; from tools.sast_scope import resolve_scope; resolve_scope(json.loads(sys.argv[1]))";
+    assert.throws(() => childProcess.execFileSync(
+      "python3", ["-B", "-c", pythonCode, JSON.stringify(profile)],
+      { cwd: path.resolve(__dirname, ".."), encoding: "utf8", stdio: "pipe" },
+    ));
+  }
+});
+
+test("scope request command shell-quotes an untrusted reason and renders identities as JSON strings", () => {
+  const dashboard = loadDashboard({ workspaceId: "project\nspoof", reportId: "report\nspoof" });
+  const request = dashboard.api.buildScopeRequest("high", "review 'quoted' $(touch nope); value");
+  assert.match(request, /workspaceId: "project\\nspoof"/);
+  assert.match(request, /reportId: "report\\nspoof"/);
+  assert.match(request, /--reason 'review '"'"'quoted'"'"' \$\(touch nope\); value'/);
+});
+
+test("out-of-scope and unknown findings remain readable but cannot create task prompts", async () => {
+  const dashboard = loadDashboard({
+    findings: SCOPE_FINDINGS,
+    fileResults: { "LOW-1": result({ id: "LOW-1" }), "UNKNOWN-1": result({ id: "UNKNOWN-1" }) },
+    bootstrap: true,
+  });
+  for (const id of ["LOW-1", "UNKNOWN-1"]) {
+    dashboard.api.setCurrent(id);
+    assert.ok(dashboard.api.resultProvenance(id).file.includes("정본"));
+    assert.throws(() => dashboard.api.buildTaskPrompt(SCOPE_FINDINGS.find((finding) => finding.id === id)), /범위|처리 대상/);
+    await dashboard.element("copyTaskPrompt").listeners.click();
+  }
+  assert.equal(dashboard.copiedText.length, 0);
+  assert.equal(dashboard.api.stateFor("LOW-1").workflowStatus, "change-complete", "existing result is still loaded");
+});
+
+test("scope thresholds expand and shrink per finding including mixed groups", () => {
+  const expected = {
+    critical: ["CRITICAL-1"],
+    "very-high": ["CRITICAL-1", "VERY-HIGH-1"],
+    high: ["CRITICAL-1", "VERY-HIGH-1", "HIGH-1"],
+    medium: ["CRITICAL-1", "VERY-HIGH-1", "HIGH-1", "MEDIUM-1"],
+    low: ["CRITICAL-1", "VERY-HIGH-1", "HIGH-1", "MEDIUM-1", "LOW-1"],
+  };
+  for (const [minRisk, ids] of Object.entries(expected)) {
+    const dashboard = loadDashboard({ findings: SCOPE_FINDINGS, scope: processingScope({ minRisk }) });
+    const resolved = dashboard.api.resolveProcessingScope();
+    assert.deepEqual(
+      SCOPE_FINDINGS.filter((finding) => dashboard.api.scopeBucket(finding, resolved) === "in-scope").map((finding) => finding.id),
+      ids,
+    );
+  }
+});
+
+test("JavaScript and Python scope classifiers return the same buckets and counts", () => {
+  const profile = {
+    workspaceId: "project-A", report: { id: "report-A" },
+    processingScope: processingScope({ minRisk: "high" }),
+  };
+  const progress = { schemaVersion: "1.0", workspaceId: "project-A", items: {
+    "CRITICAL-1": item("verified"), "HIGH-1": item("verified"), "LOW-1": item("verified"),
+  } };
+  const dashboard = loadDashboard({ findings: SCOPE_FINDINGS });
+  const jsScope = dashboard.api.resolveProcessingScope(profile);
+  const jsValue = {
+    buckets: SCOPE_FINDINGS.map((finding) => dashboard.api.scopeBucket(finding, jsScope)),
+    summary: dashboard.api.scopeSummary(profile, SCOPE_FINDINGS, progress),
+  };
+  const pythonCode = [
+    "import json, sys",
+    "from tools.sast_scope import resolve_scope, scope_bucket, scope_summary",
+    "value = json.loads(sys.argv[1])",
+    "scope = resolve_scope(value['profile'])",
+    "print(json.dumps({'buckets': [scope_bucket(x, scope) for x in value['findings']], 'summary': scope_summary(value['profile'], value['findings'], value['progress'])}))",
+  ].join("; ");
+  const pythonValue = JSON.parse(childProcess.execFileSync(
+    "python3", ["-B", "-c", pythonCode, JSON.stringify({ profile, findings: SCOPE_FINDINGS, progress })],
+    { cwd: path.resolve(__dirname, ".."), encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } },
+  ));
+
+  assert.deepEqual(JSON.parse(JSON.stringify(jsValue)), pythonValue);
+});
+
+test("zero selected targets never render as complete", () => {
+  const dashboard = loadDashboard({
+    findings: [SCOPE_FINDINGS[4], SCOPE_FINDINGS[5], SCOPE_FINDINGS[6]],
+    scope: processingScope({ minRisk: "critical" }),
+    fileItems: { "LOW-1": item("verified"), "INFO-1": item("verified"), "UNKNOWN-1": item("verified") },
+  });
+  const summary = dashboard.api.scopeSummary();
+  assert.equal(summary.counts.inScope, 0);
+  assert.equal(summary.selectedComplete, false);
+});
+
+test("ordinary filter reset and progress backup remain independent of pending scope selection", () => {
+  const dashboard = loadDashboard({ findings: SCOPE_FINDINGS });
+  dashboard.api.bindEvents();
+  dashboard.element("scopeMinRisk").value = "low";
+  dashboard.element("scopeReason").value = "확대 요청";
+  dashboard.element("riskFilter").value = "critical";
+  dashboard.element("resetFilters").listeners.click();
+  dashboard.api.exportProgress();
+
+  assert.equal(dashboard.element("riskFilter").value, "");
+  assert.equal(dashboard.element("scopeMinRisk").value, "low");
+  assert.equal(dashboard.element("scopeReason").value, "확대 요청");
+  assert.equal(Object.hasOwn(dashboard.downloads[0].data, "processingScope"), false);
+  assert.equal(dashboard.storage.size, 0);
+});
 
 test("copying a ready prompt preserves the fixed parser labels without changing state", async () => {
   const dashboard = loadDashboard({ bootstrap: true });

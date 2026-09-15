@@ -77,6 +77,14 @@
       className: "blocked"
     }
   };
+  var PROCESSING_SCOPE_LEVELS = ["critical", "very-high", "high", "medium", "low"];
+  var PROCESSING_SCOPE_LABELS = {
+    "critical": "매우 위험만",
+    "very-high": "위험 이상",
+    "high": "높음 이상",
+    "medium": "보통 이상",
+    "low": "전체 5단계"
+  };
 
   var currentFindingId = null;
   var detailReturnFocus = null;
@@ -100,6 +108,129 @@
   function impact(item) { return item && item.impact ? item.impact : { level: "unknown", label: "미확인", rank: 0 }; }
   function checker(item) { return item && item.checker ? item.checker : { code: "", name: "", category: "" }; }
   function gateReady() { return inputValidation.status === "ready"; }
+
+  function own(object, key) {
+    return Object.prototype.hasOwnProperty.call(object, key);
+  }
+
+  function plainObject(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function nonEmptyString(value) {
+    return typeof value === "string" && value.trim().length > 0;
+  }
+
+  function initializedIdentifier(value) {
+    return nonEmptyString(value) && value.trim().toLowerCase() !== "uninitialized";
+  }
+
+  function scopeTimestamp(value) {
+    if (!nonEmptyString(value)) return false;
+    var match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/.exec(value);
+    if (!match) return false;
+    var year = Number(match[1]);
+    var month = Number(match[2]);
+    var day = Number(match[3]);
+    var hour = Number(match[4]);
+    var minute = Number(match[5]);
+    var second = Number(match[6]);
+    var offsetHour = match[8] == null ? 0 : Number(match[8]);
+    var offsetMinute = match[9] == null ? 0 : Number(match[9]);
+    var leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    var days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1]
+      && hour <= 23 && minute <= 59 && second <= 59 && offsetHour <= 23 && offsetMinute <= 59;
+  }
+
+  function resolveProcessingScope(profileValue) {
+    var sourceProfile = arguments.length ? profileValue : profile;
+    if (!plainObject(sourceProfile)) throw new Error("프로젝트 프로필 형식이 올바르지 않습니다.");
+    if (!own(sourceProfile, "processingScope")) return { configured: false };
+    var value = sourceProfile.processingScope;
+    var keys = ["workspaceId", "reportId", "minRisk", "updatedAt", "updatedBy", "reason"];
+    if (!plainObject(value)
+      || Object.keys(value).length !== keys.length
+      || !keys.every(function (key) { return own(value, key); })
+      || !initializedIdentifier(value.workspaceId)
+      || !initializedIdentifier(value.reportId)
+      || PROCESSING_SCOPE_LEVELS.indexOf(value.minRisk) < 0
+      || !scopeTimestamp(value.updatedAt)
+      || !nonEmptyString(value.updatedBy)
+      || !nonEmptyString(value.reason)) {
+      throw new Error("처리 범위 기록의 필수 필드와 값이 올바르지 않습니다.");
+    }
+    var report = sourceProfile.report;
+    if (!initializedIdentifier(sourceProfile.workspaceId)
+      || !plainObject(report) || !initializedIdentifier(report.id)) {
+      throw new Error("현재 작업공간 또는 보고서 식별자가 초기화되지 않았습니다.");
+    }
+    if (value.workspaceId !== sourceProfile.workspaceId || value.reportId !== report.id) {
+      throw new Error("처리 범위의 작업공간 또는 보고서 식별자가 현재 차수와 일치하지 않습니다.");
+    }
+    return Object.assign({ configured: true }, value);
+  }
+
+  function processingScopeState() {
+    try {
+      return resolveProcessingScope();
+    } catch (error) {
+      return { configured: false, invalid: true, error: error.message || "처리 범위 기록이 손상되었습니다." };
+    }
+  }
+
+  function scopeBucket(item, scope) {
+    var level = risk(item).level;
+    if (PROCESSING_SCOPE_LEVELS.indexOf(level) < 0 && level !== "info") return "unknown";
+    if (!scope || !scope.configured) return "unconfigured";
+    if (level === "info") return "out-of-scope";
+    return PROCESSING_SCOPE_LEVELS.indexOf(level) <= PROCESSING_SCOPE_LEVELS.indexOf(scope.minRisk)
+      ? "in-scope" : "out-of-scope";
+  }
+
+  function scopeSummary(profileValue, findingValues, progressValue) {
+    var sourceProfile = arguments.length ? profileValue : profile;
+    var sourceFindings = arguments.length > 1 ? findingValues : findings;
+    var sourceProgress = arguments.length > 2 ? progressValue : { items: state };
+    var scope = resolveProcessingScope(sourceProfile);
+    if (!Array.isArray(sourceFindings)) throw new Error("검출 항목은 배열이어야 합니다.");
+    if (!plainObject(sourceProgress) || !plainObject(sourceProgress.items)) {
+      throw new Error("진행상태 items는 객체여야 합니다.");
+    }
+    return summarizeScope(scope, sourceFindings, sourceProgress);
+  }
+
+  function summarizeScope(scope, sourceFindings, sourceProgress) {
+    var counts = {
+      total: sourceFindings.length, inScope: 0, outOfScope: 0, unknown: 0, unconfigured: 0,
+      inScopeVerified: 0, inScopeRemaining: 0, totalVerified: 0
+    };
+    var progressItems = plainObject(sourceProgress) && plainObject(sourceProgress.items) ? sourceProgress.items : {};
+    sourceFindings.forEach(function (item) {
+      var bucket = scopeBucket(item, scope);
+      if (bucket === "in-scope") counts.inScope += 1;
+      else if (bucket === "out-of-scope") counts.outOfScope += 1;
+      else if (bucket === "unknown") counts.unknown += 1;
+      else counts.unconfigured += 1;
+      var record = own(progressItems, item.id) && plainObject(progressItems[item.id]) ? progressItems[item.id] : {};
+      if (record.workflowStatus === "verified") {
+        counts.totalVerified += 1;
+        if (bucket === "in-scope") counts.inScopeVerified += 1;
+      }
+    });
+    counts.inScopeRemaining = counts.inScope - counts.inScopeVerified;
+    return {
+      scope: scope,
+      counts: counts,
+      selectedComplete: counts.inScope > 0 && counts.inScopeRemaining === 0,
+      allComplete: scope.configured && counts.total > 0 && counts.unknown === 0 && counts.totalVerified === counts.total,
+      completionBasis: "workflow-status-only"
+    };
+  }
+
+  function findingInAppliedScope(item) {
+    return scopeBucket(item, processingScopeState()) === "in-scope";
+  }
 
   var workspaceId = profile.workspaceId || (profile.report && profile.report.id) || "uninitialized";
   // Storage IDs must be lossless; filename sanitizing can collapse distinct
@@ -459,6 +590,74 @@
     document.title = projectName && reportId ? projectName + " SAST 검출 항목 체크리스트" : "SAST 검출 항목 체크리스트";
   }
 
+  function shellQuote(value) {
+    return "'" + asString(value).replace(/'/g, "'\"'\"'") + "'";
+  }
+
+  function buildScopeRequest(minRisk, reason) {
+    var report = profile.report || {};
+    if (PROCESSING_SCOPE_LEVELS.indexOf(minRisk) < 0) throw new Error("요청할 최소 위험도를 선택하세요.");
+    if (!initializedIdentifier(profile.workspaceId) || !initializedIdentifier(report.id)) {
+      throw new Error("현재 작업공간과 보고서 식별자를 먼저 초기화하세요.");
+    }
+    if (!nonEmptyString(reason)) throw new Error("범위 적용 요청 사유를 입력하세요.");
+    return [
+      "[SAST 위험도 처리 범위 적용 요청]",
+      "workspaceId: " + JSON.stringify(profile.workspaceId),
+      "reportId: " + JSON.stringify(report.id),
+      "minRisk: " + minRisk + " (" + PROCESSING_SCOPE_LABELS[minRisk] + ")",
+      "setBy: user",
+      "reason: " + JSON.stringify(reason.trim()),
+      "",
+      "현재 toolkit 정본에서 입력 게이트와 위 식별자를 다시 확인한 뒤 아래 명령과 같은 값으로 처리 범위를 기록하세요.",
+      "python3 tools/sast_toolkit.py scope --min-risk " + minRisk
+        + " --set-by user --reason " + shellQuote(reason.trim()),
+      "이 복사본은 승인이나 저장이 아닙니다. 정본 data/project-profile.json 반영과 sync가 끝난 뒤 체크리스트를 새로고침해 적용 상태를 확인하세요."
+    ].join("\n");
+  }
+
+  function renderScopeSummary() {
+    var appliedScope = processingScopeState();
+    var summary = summarizeScope(appliedScope, findings, { items: state });
+    var scope = summary.scope;
+    var counts = summary.counts;
+    var panel = byId("processingScopePanel");
+    panel.classList.toggle("invalid", !!scope.invalid);
+    if (scope.invalid) {
+      setText("appliedScopeStatus", "정본 처리 범위 오류 — AI 작업 요청 차단");
+      setText("appliedScopeMeta", scope.error || "data/project-profile.json의 processingScope를 확인하세요.");
+    } else if (!scope.configured) {
+      setText("appliedScopeStatus", "처리 범위 미설정 — AI 작업 요청 차단");
+      setText("appliedScopeMeta", "기존 자료는 계속 읽을 수 있지만 상세 분석·조치 요청 전에 정본에 범위를 기록해야 합니다.");
+    } else {
+      setText("appliedScopeStatus", "적용됨: " + PROCESSING_SCOPE_LABELS[scope.minRisk]);
+      setText("appliedScopeMeta", "정본 기록 " + scope.updatedAt + " · " + scope.updatedBy + " · " + scope.reason);
+    }
+    setText("scopeTotalCount", counts.total);
+    setText("scopeInCount", counts.inScope);
+    setText("scopeOutCount", counts.outOfScope);
+    setText("scopeUnknownCount", counts.unknown);
+    setText("scopeUnconfiguredCount", counts.unconfigured);
+    setText("scopeVerifiedCount", counts.inScopeVerified);
+    setText("scopeRemainingCount", counts.inScopeRemaining);
+    setText(
+      "scopeCompletionNote",
+      counts.inScope === 0
+        ? "처리 대상이 0건이므로 완료로 계산하지 않습니다. 이 숫자는 기록된 작업 단계이며 현재 소스의 검증 신선도나 제출 승인을 증명하지 않습니다."
+        : "대상 " + counts.inScope + "건 중 검증 완료 단계 기록 " + counts.inScopeVerified
+          + "건, 남은 기록 " + counts.inScopeRemaining
+          + "건입니다. 현재 소스의 검증 신선도나 제출 승인을 증명하지 않습니다."
+    );
+  }
+
+  function initializeProcessingScope() {
+    var scope = processingScopeState();
+    byId("scopeMinRisk").value = scope.configured ? scope.minRisk : "high";
+    byId("scopeReason").value = "";
+    setText("scopeDraftStatus", "선택과 복사는 적용이 아닙니다. 정본 반영 후 새로고침해야 적용됩니다.");
+    renderScopeSummary();
+  }
+
   function updateRejectedStorageAction() {
     var button = byId("exportRejectedStorage");
     if (button) button.hidden = rejectedStorageRaw === null;
@@ -532,7 +731,7 @@
   }
 
   function highRisk(item) {
-    return risk(item).rank >= 60 || ["critical", "very-high", "high"].indexOf(risk(item).level) >= 0;
+    return ["critical", "very-high", "high"].indexOf(risk(item).level) >= 0;
   }
 
   function dashboardMatch(item) {
@@ -668,7 +867,9 @@
   }
 
   function recommendationCompare(a, b) {
-    var riskDiff = risk(b).rank - risk(a).rank;
+    var levelA = PROCESSING_SCOPE_LEVELS.indexOf(risk(a).level);
+    var levelB = PROCESSING_SCOPE_LEVELS.indexOf(risk(b).level);
+    var riskDiff = (levelA < 0 ? 99 : levelA) - (levelB < 0 ? 99 : levelB);
     if (riskDiff) return riskDiff;
     var impactDiff = impact(b).rank - impact(a).rank;
     if (impactDiff) return impactDiff;
@@ -683,9 +884,11 @@
 
   function renderRecommendations() {
     var limitValue = byId("recommendationLimit").value;
+    var appliedScope = processingScopeState();
     var candidates = findings.filter(function (item) {
       var value = stateFor(item.id).workflowStatus;
-      return value !== "verified" && value !== "deferred";
+      return scopeBucket(item, appliedScope) === "in-scope"
+        && value !== "verified" && value !== "deferred";
     }).sort(recommendationCompare);
     if (limitValue !== "all") candidates = candidates.slice(0, Number(limitValue));
 
@@ -694,7 +897,9 @@
     container.textContent = "";
     if (!candidates.length) {
       var empty = document.createElement("p");
-      empty.textContent = "추천할 진행 대상이 없습니다. 검출 항목이 없거나 모든 항목이 검증 완료·보류 상태인지 확인하세요.";
+      empty.textContent = !appliedScope.configured
+        ? "정본 처리 범위가 미설정이거나 올바르지 않아 추천 작업을 제공하지 않습니다. 범위를 정본에 반영하고 새로고침하세요."
+        : "적용된 처리 범위에서 추천할 진행 대상이 없습니다. 대상이 0건이거나 모든 대상이 검증 완료·보류 상태인지 확인하세요.";
       container.appendChild(empty);
       container.scrollTop = 0;
       return;
@@ -815,6 +1020,7 @@
     renderDashboardFilter();
     renderSummary(filtered);
     renderInsights(filtered);
+    renderScopeSummary();
     renderRecommendations();
     renderTable(filtered);
     updateSortIndicators();
@@ -941,6 +1147,8 @@
     var location = reportedLocation(item);
     var report = item.report || {};
     var guide = checkerGuides[checker(item).code] || null;
+    var taskAllowed = gateReady() && findingInAppliedScope(item);
+    byId("copyTaskPrompt").disabled = !taskAllowed;
 
     setText("detailKicker", "#" + item.sequence + " · " + item.id);
     setText("detailTitle", checker(item).code + (checker(item).name ? " - " + checker(item).name : ""));
@@ -992,11 +1200,12 @@
     renderCurrentDetail();
     byId("taskPrompt").classList.add("hidden");
     byId("taskPrompt").value = "";
-    setMessage(
-      "taskMessage",
-      gateReady() ? "" : "입력 검증이 완료되지 않았습니다. 상단 ‘작업 시작 조건’을 확인하세요(GATE: READY 필요).",
-      gateReady() ? "" : "warning"
-    );
+    var taskAllowed = gateReady() && findingInAppliedScope(item);
+    setMessage("taskMessage", taskAllowed ? "" : (
+      gateReady()
+        ? "이 항목은 적용된 처리 범위의 대상이 아니므로 AI 처리 요청을 만들 수 없습니다. 기존 결과와 기록은 계속 볼 수 있습니다."
+        : "입력 검증이 완료되지 않았습니다. 상단 ‘작업 시작 조건’을 확인하세요(GATE: READY 필요)."
+    ), taskAllowed ? "" : "warning");
     setMessage("answerMessage", "", "");
     byId("answerInput").value = "";
     byId("detailDrawer").classList.add("open");
@@ -1165,6 +1374,11 @@
   }
 
   function buildTaskPrompt(item) {
+    var canonicalItem = item && findingById(item.id);
+    if (!canonicalItem || !findingInAppliedScope(canonicalItem)) {
+      throw new Error("이 항목은 적용된 처리 범위의 대상이 아니므로 AI 처리 요청을 만들 수 없습니다.");
+    }
+    item = canonicalItem;
     var itemState = stateFor(item.id);
     var mapping = sourceMapping(item);
     var location = reportedLocation(item);
@@ -1603,6 +1817,37 @@
       render();
     });
 
+    ["scopeMinRisk", "scopeReason"].forEach(function (id) {
+      byId(id).addEventListener("input", function () {
+        var applied = processingScopeState();
+        var selected = byId("scopeMinRisk").value;
+        setText(
+          "scopeDraftStatus",
+          applied.configured && selected === applied.minRisk
+            ? "정본과 같은 선택입니다. 복사만으로 재승인·저장되지는 않습니다."
+            : "미적용 선택: " + (PROCESSING_SCOPE_LABELS[selected] || selected)
+              + ". 정본 반영 후 새로고침해야 추천과 AI 요청에 적용됩니다."
+        );
+        setMessage("scopeMessage", "", "");
+      });
+    });
+
+    byId("copyScopeRequest").addEventListener("click", async function () {
+      try {
+        var prompt = buildScopeRequest(byId("scopeMinRisk").value, byId("scopeReason").value);
+        var copied = await copyText(prompt);
+        setMessage(
+          "scopeMessage",
+          copied
+            ? "범위 적용 요청을 복사했습니다. 복사는 적용이 아니며, AI가 정본에 반영한 뒤 새로고침해 확인하세요."
+            : "자동 복사가 막혔습니다. 선택은 아직 적용되지 않았습니다.",
+          copied ? "success" : "warning"
+        );
+      } catch (error) {
+        setMessage("scopeMessage", error.message || "범위 적용 요청을 만들지 못했습니다.", "warning");
+      }
+    });
+
     byId("pageSize").addEventListener("input", function () { pageIndex = 0; render(); });
     byId("prevPage").addEventListener("click", function () { pageIndex -= 1; render(); });
     byId("nextPage").addEventListener("click", function () { pageIndex += 1; render(); });
@@ -1670,6 +1915,10 @@
       }
       var item = findingById(currentFindingId);
       if (!item) return;
+      if (!findingInAppliedScope(item)) {
+        setMessage("taskMessage", "이 항목은 적용된 처리 범위의 대상이 아니므로 AI 처리 요청을 만들 수 없습니다. 기존 결과와 기록은 유지됩니다.", "warning");
+        return;
+      }
       var prompt = buildTaskPrompt(item);
       byId("taskPrompt").value = prompt;
       byId("taskPrompt").classList.remove("hidden");
@@ -1742,6 +1991,7 @@
   renderSyncNotice();
   initializeFilters();
   initializeReadiness();
+  initializeProcessingScope();
   bindEvents();
   render();
 })();

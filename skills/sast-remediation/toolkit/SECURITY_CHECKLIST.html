@@ -68,6 +68,43 @@
       <ul id="readinessBlockers"></ul>
     </section>
 
+    <section id="processingScopePanel" class="processing-scope-panel" aria-labelledby="processingScopeTitle">
+      <div class="processing-scope-copy">
+        <p class="scope-kicker">상세 분석·조치·검증 대상</p>
+        <h2 id="processingScopeTitle">위험도 처리 범위</h2>
+        <p id="appliedScopeStatus" class="scope-status" role="status">정본 처리 범위를 확인하는 중입니다.</p>
+        <p id="appliedScopeMeta" class="scope-meta"></p>
+        <p id="scopeCompletionNote" class="scope-note">이 집계는 브라우저에 기록된 작업 단계이며 현재 소스의 검증 신선도나 제출 승인을 증명하지 않습니다.</p>
+      </div>
+      <div class="scope-request-controls">
+        <label>
+          <span>요청할 최소 위험도</span>
+          <select id="scopeMinRisk" aria-describedby="scopeDraftStatus">
+            <option value="critical">매우 위험만</option>
+            <option value="very-high">위험 이상</option>
+            <option value="high">높음 이상</option>
+            <option value="medium">보통 이상</option>
+            <option value="low">전체 5단계</option>
+          </select>
+        </label>
+        <label class="scope-reason-label">
+          <span>요청 사유</span>
+          <input id="scopeReason" type="text" placeholder="이번 차수의 처리 범위 사유">
+        </label>
+        <button id="copyScopeRequest" type="button">범위 적용 요청 복사</button>
+        <p id="scopeDraftStatus" class="scope-draft-status">선택과 복사는 적용이 아닙니다.</p>
+        <p id="scopeMessage" class="message" role="status" aria-live="polite"></p>
+      </div>
+      <dl class="scope-counts" aria-label="처리 범위별 기록 현황">
+        <div><dt>전체</dt><dd id="scopeTotalCount">0</dd></div>
+        <div><dt>대상</dt><dd id="scopeInCount">0</dd></div>
+        <div><dt>범위 밖</dt><dd id="scopeOutCount">0</dd></div>
+        <div><dt>미확인</dt><dd id="scopeUnknownCount">0</dd></div>
+        <div><dt>범위 미설정</dt><dd id="scopeUnconfiguredCount">0</dd></div>
+        <div><dt>대상 단계 기록</dt><dd>완료 <span id="scopeVerifiedCount">0</span>건 · 남음 <span id="scopeRemainingCount">0</span>건</dd></div>
+      </dl>
+    </section>
+
     <p class="scope-note">현황 숫자는 전체 항목의 현재 단계별 스냅샷이며 서로 누적되지 않습니다. <strong>필터 결과</strong>와 아래 목록에만 선택한 조건이 적용됩니다.</p>
     <section class="summary" aria-label="전체 항목 처리 현황">
       <button class="metric-card active" type="button" data-dashboard-filter="all" title="전체 항목으로 목록 필터링">
@@ -98,7 +135,7 @@
     </section>
 
     <details class="insights-disclosure">
-      <summary>분포 및 추천 작업 보기 <span>분포: 현재 필터 기준 · 추천: 전체 미처리 항목 기준</span></summary>
+      <summary>분포 및 추천 작업 보기 <span>분포: 현재 필터 기준 · 추천: 적용된 처리 범위 기준</span></summary>
     <section class="insights" aria-label="분포 및 추천 작업">
       <article class="panel">
         <div class="panel-head"><h2>위험도</h2></div>

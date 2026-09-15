@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import io
 import json
 import os
 import re
@@ -19,8 +21,10 @@ from typing import Any, Iterable
 
 try:
     from .sast_io import writer_lock, write_text_atomic
+    from .sast_scope import RISK_LEVELS, resolve_scope, scope_bucket, scope_summary
 except ImportError:
     from sast_io import writer_lock, write_text_atomic
+    from sast_scope import RISK_LEVELS, resolve_scope, scope_bucket, scope_summary
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1434,6 +1438,11 @@ def validate_profile(
     report.schema_version(profile_map, "project profile", "error")
     if not validate_schema_contract(report, profile, "project-profile.schema.json", "project profile"):
         return ""
+    if "processingScope" in profile_map:
+        try:
+            resolve_scope(profile_map)
+        except ValueError as error:
+            report.error(str(error))
     workspace_id = str(profile_map.get("workspaceId", ""))
     if strict and (not workspace_id or workspace_id == "uninitialized"):
         report.error("project profile workspaceId is not initialized")
@@ -2043,8 +2052,94 @@ def validate_resume_state(report: ValidationReport, project_root: Path,
                 report.error(f"result {finding_id} verification is {status['status']}: {status.get('reason', '')}")
 
 
+def validate_resume_structure(
+    report: ValidationReport, project_root: Path, results: dict[str, Any]
+) -> None:
+    """Validate persisted resume/evidence shape without requiring current source hashes.
+
+    Scope application, queries, and mirror synchronization must remain available
+    to recover stale evidence. Full validate and state status separately audit
+    whether the bound source content is still fresh.
+    """
+    needs_workspace = (DATA_DIR / "resume-state.json").exists() or any(
+        isinstance(value.get("verification"), dict)
+        and "sourceSnapshot" in value["verification"]
+        for value in results.values()
+    )
+    if not needs_workspace:
+        for finding_id, value in results.items():
+            verification = value.get("verification")
+            if (
+                isinstance(verification, dict)
+                and "sourceSnapshot" not in verification
+                and (
+                    value.get("workflowStatus") == "verified"
+                    or verification.get("status") == "passed"
+                )
+            ):
+                report.warn(
+                    f"result {finding_id} verification is unbound; capture a source "
+                    "snapshot and reverify before trusting legacy evidence"
+                )
+        return
+    try:
+        try:
+            from .sast_state import (
+                Workspace,
+                evidence_digest,
+                passed_evidence,
+                timestamp as state_timestamp,
+            )
+        except ImportError:
+            from sast_state import (
+                Workspace,
+                evidence_digest,
+                passed_evidence,
+                timestamp as state_timestamp,
+            )
+        workspace = Workspace(ROOT, project_root)
+        workspace.state()
+        for finding_id, value in results.items():
+            verification = value.get("verification")
+            if not isinstance(verification, dict):
+                continue
+            if "sourceSnapshot" not in verification:
+                if (
+                    value.get("workflowStatus") == "verified"
+                    or verification.get("status") == "passed"
+                ):
+                    report.warn(
+                        f"result {finding_id} verification is unbound; capture a source "
+                        "snapshot and reverify before trusting legacy evidence"
+                    )
+                continue
+            binding = verification["sourceSnapshot"]
+            if not isinstance(binding, dict):
+                raise ValueError(
+                    f"result {finding_id} sourceSnapshot must be an object"
+                )
+            workspace.validate_snapshot(binding, finding_id)
+            captured_at = state_timestamp(binding.get("capturedAt"))
+            sealed_at = state_timestamp(binding.get("sealedAt"))
+            verified_at = state_timestamp(verification.get("verifiedAt"))
+            if not passed_evidence(verification):
+                raise ValueError("binding has no passed verification evidence")
+            if not captured_at < verified_at <= sealed_at:
+                raise ValueError("verification timestamp is outside snapshot/seal interval")
+            if binding.get("evidenceDigest") != evidence_digest(value):
+                raise ValueError("result evidence changed since sealing")
+            status = workspace.verification_status(finding_id, value)
+            if status["status"] != "fresh":
+                report.warn(
+                    f"result {finding_id} verification is {status['status']}: "
+                    f"{status.get('reason', '')}"
+                )
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        report.error(f"resume state structure: {error}")
+
+
 def check_state_before_use(project_root: Path) -> None:
-    """Read inputs before publishing mirrors or querying a damaged/stale state."""
+    """Read inputs before publishing mirrors or querying structurally damaged state."""
     report = ValidationReport()
     try:
         try:
@@ -2072,7 +2167,7 @@ def check_state_before_use(project_root: Path) -> None:
         finding_ids = {item.get("id") for item in findings if isinstance(item, dict)}
         validate_progress(report, progress, finding_ids, str(profile.get("workspaceId", "")), False)
         validate_progress_result_consistency(report, progress, records)
-        validate_resume_state(report, project_root, records)
+        validate_resume_structure(report, project_root, records)
     except (OSError, ValueError, TypeError) as error:
         report.error(f"state cannot be used: {error}")
     for message in report.errors:
@@ -2171,6 +2266,15 @@ def run_query(args: argparse.Namespace) -> int:
     if not isinstance(findings, list) or not isinstance(progress_items, dict):
         print("findings.json must be a list and progress.json items a mapping", file=sys.stderr)
         return 1
+    selected_scope = None
+    if args.scope_filter and args.scope_filter != "all":
+        try:
+            selected_scope = resolve_scope(load_json_or_exit(DATA_DIR / "project-profile.json"))
+            if not selected_scope["configured"]:
+                raise ValueError("processing scope is not configured")
+        except ValueError as error:
+            print(f"SCOPE ERROR: {error}", file=sys.stderr)
+            return 1
     wanted_ids = (
         {piece.strip() for piece in args.ids.split(",") if piece.strip()}
         if args.ids
@@ -2200,6 +2304,8 @@ def run_query(args: argparse.Namespace) -> int:
         if args.checker and (item.get("checker") or {}).get("code") != args.checker:
             continue
         if args.file and args.file not in current_file:
+            continue
+        if selected_scope is not None and scope_bucket(item, selected_scope) != args.scope_filter:
             continue
         row = dict(item)
         row["progress"] = {
@@ -2240,12 +2346,80 @@ def run_query(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_scope(args: argparse.Namespace, project_root: Path) -> int:
+    setting_values = (args.min_risk, args.set_by, args.reason)
+    setting = any(value is not None for value in setting_values)
+    if setting and not all(value is not None for value in setting_values):
+        print("SCOPE ERROR: --min-risk, --set-by, and --reason are required together", file=sys.stderr)
+        return 2
+    try:
+        if setting:
+            with writer_lock(ROOT):
+                check_state_before_use(project_root)
+                input_validation = load_json_or_exit(DATA_DIR / "input-validation.json")
+                gate_report = ValidationReport()
+                recorded_set = (
+                    input_validation["inputs"].get("set")
+                    if isinstance(input_validation, dict)
+                    and isinstance(input_validation.get("inputs"), dict)
+                    else None
+                )
+                mechanical = build_preflight_record(project_root, recorded_set)
+                for blocker in mechanical["blockers"]:
+                    gate_report.error(f"mechanical preflight failed: {blocker}")
+                validated = validate_input_validation(gate_report, input_validation, True)
+                if not gate_report.errors:
+                    compare_current_preflight(gate_report, validated, mechanical)
+                if gate_report.errors:
+                    raise ValueError("; ".join(gate_report.errors))
+
+                profile = load_json_or_exit(DATA_DIR / "project-profile.json")
+                if not isinstance(profile, dict):
+                    raise ValueError("project profile must be an object")
+                workspace_id = profile.get("workspaceId")
+                report = profile.get("report")
+                report_id = report.get("id") if isinstance(report, dict) else None
+                record = {
+                    "workspaceId": workspace_id,
+                    "reportId": report_id,
+                    "minRisk": args.min_risk,
+                    "updatedAt": utc_now(),
+                    "updatedBy": args.set_by,
+                    "reason": args.reason,
+                }
+                candidate = dict(profile)
+                candidate["processingScope"] = record
+                findings = load_json_or_exit(DATA_DIR / "findings.json")
+                profile_report = ValidationReport()
+                validate_profile(
+                    profile_report,
+                    candidate,
+                    findings if isinstance(findings, list) else [],
+                    True,
+                    input_validation,
+                )
+                if profile_report.errors:
+                    raise ValueError("; ".join(profile_report.errors))
+                write_text_atomic(DATA_DIR / "project-profile.json", json_text(candidate))
+                with contextlib.redirect_stdout(io.StringIO()):
+                    sync_all(project_root)
+        check_state_before_use(project_root)
+        profile = load_json_or_exit(DATA_DIR / "project-profile.json")
+        findings = load_json_or_exit(DATA_DIR / "findings.json")
+        progress = load_json_or_exit(DATA_DIR / "progress.json")
+        print(json_text(scope_summary(profile, findings, progress)), end="")
+        return 0
+    except ValueError as error:
+        print(f"SCOPE ERROR: {error}", file=sys.stderr)
+        return 1
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Check inputs, initialize, synchronize, and validate SAST toolkit data."
     )
     parser.add_argument(
-        "command", choices=("preflight", "gate", "init", "sync", "validate", "query")
+        "command", choices=("preflight", "gate", "init", "sync", "validate", "query", "scope")
     )
     parser.add_argument(
         "--project-root",
@@ -2270,6 +2444,12 @@ def parse_args() -> argparse.Namespace:
     query.add_argument("--risk", help="risk.level to match (critical/very-high/high/medium/low).")
     query.add_argument("--checker", help="checker.code to match.")
     query.add_argument("--file", help="Substring of the current (or reported) file path.")
+    query.add_argument(
+        "--scope",
+        dest="scope_filter",
+        choices=("all", "in-scope", "out-of-scope", "unknown"),
+        help="Intersect the query with the configured processing scope.",
+    )
     query.add_argument("--limit", type=int, help="Return at most N items.")
     query.add_argument(
         "--fields",
@@ -2280,6 +2460,10 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print counts by status/conclusion/risk/workGroup instead of items.",
     )
+    scope = parser.add_argument_group("scope", "Read or apply the risk processing scope.")
+    scope.add_argument("--min-risk", choices=RISK_LEVELS)
+    scope.add_argument("--set-by")
+    scope.add_argument("--reason")
     return parser.parse_args()
 
 
@@ -2290,6 +2474,8 @@ def main() -> int:
         if args.project_root
         else ROOT.parent.resolve()
     )
+    if args.command == "scope":
+        return run_scope(args, project_root)
     if args.command in {"preflight", "gate", "init", "sync"}:
         with writer_lock(ROOT):
             if args.command == "gate":

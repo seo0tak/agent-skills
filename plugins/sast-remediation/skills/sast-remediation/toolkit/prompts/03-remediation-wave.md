@@ -14,6 +14,10 @@
   있으면 prompts/07 절차부터 수행합니다.
 - 기존 승인 범위가 현재 작업에도 유효한지 확인합니다. 사용자 요청이나
   확인 가능한 승인 근거를 사용하며, 파일의 상태 이름만으로 권한을 추정하지 않습니다.
+- `python3 tools/sast_toolkit.py scope`로 이번 차수 처리 범위를 확인합니다.
+  미설정·손상·다른 차수 범위이면 상세 작업을 시작하지 않고 범위를 설정하거나
+  바로잡도록 요청합니다. 범위가 없다고 전체로 확대하지 않습니다. 정본과 분류
+  계약은 `../docs/PROCESSING_SCOPE.md`를 따릅니다.
 - "연속으로", "N개 그룹", "끝까지" 요청이면 그 범위 내에서 그룹 사이에
   재승인을 묻지 않습니다. 범위 밖 변경, 정책 결정, 공통 컴포넌트·외부 규격
   영향, 해결되지 않는 검증 오류, 안전한 저장 불가, 사용자 중단 요청에서는
@@ -32,9 +36,12 @@
   총괄 AI가 같은 절차를 직접 수행하며, 실행 성능이나 비용이 같다고 가정하지 않습니다.
 
 진행 순서
-1. python3 tools/sast_toolkit.py query --group <WG>로 현재 그룹을 조회합니다.
+1. python3 tools/sast_toolkit.py query --scope in-scope --group <WG>로 현재
+   그룹의 선택 항목만 조회합니다. 혼합 그룹의 범위 밖·미확인 멤버는 기존 상태를
+   보존하고 공통 수정의 부수 효과로 자동 완료하지 않습니다.
    todo만 조회하면 in-progress·보류·재검토 항목을 놓칩니다. status의
-   resumeCandidates와 함께 보고, 높은 위험도와 미완료 항목을 우선합니다.
+   inScopeResumeCandidates와 전체 resumeCandidates를 함께 보고, 선택 범위의
+   높은 위험도와 미완료 항목을 우선합니다.
    필요하면 --fields id,risk.level,checker.code,location,progress로 범위를 줄입니다.
 2. 현재 소스와 선택 보고서의 검출 코드를 대조합니다. 항목별
    security-guides/<ID>.json에 분석·영향 범위·검증 계획을 먼저 작성합니다.
@@ -53,6 +60,8 @@
      --next-action "<다음 작업>"
    명령은 한 줄로 실행하고, 관련 파일이 여럿이면 --path를 반복합니다.
    체크포인트 저장 실패 시 소스 수정을 시작하지 않습니다.
+   before-edit는 현재 `in-scope` 항목에만 허용됩니다. 범위 확인 실패를
+   우회해 직접 수정하지 않습니다.
 4. 승인된 범위에서 기존 동작을 보존하는 최소 수정을 합니다.
    중요한 미확인 정책은 needs-review와 policyQuestions에 남깁니다.
    사용자가 관찰 방법이 적힌 기본안을 선택했고 해당 변경이 승인 범위에
@@ -63,6 +72,8 @@
    대상으로 다룹니다. 진짜 오탐의 예방 변경은 선택 사항이며, 스캐너만 만족시키는
    무의미한 변경을 강제하거나 예방 변경 때문에 오탐 결론을 바꾸지 않습니다.
 5. 수정 후 checkpoint --phase after-edit로 현재 판단과 다음 작업을 저장합니다.
+   범위가 좁아져 대상에서 빠졌더라도 이미 생긴 작업을 보존하기 위한 after-edit는
+   기록하고 추가 수정은 멈춥니다. 이 보존 경로를 새 권한으로 해석하지 않습니다.
    사용할 수 있고 최신 파일을 반영해 정상 응답하면 변경 파일과 관련 범위의 LSP 진단을
    확인하고 이번 변경으로 생긴 오류와 기존 오류를 구분합니다. 사용할 수 없거나
    신뢰할 수 없으면 컴파일러·타입 검사·린트로 확인합니다. 이번 변경으로 생긴
@@ -74,6 +85,7 @@
    python3 tools/sast_state.py snapshot --id <ID> --path <관련 파일>
    관련 파일은 --path로 모두 지정합니다. 지정하지 않은 외부 서비스·DB·운영
    설정까지 해시가 보장하지 않으므로 적용 범위와 한계를 따로 기록합니다.
+   snapshot과 seal-verification도 현재 선택 항목에만 수행합니다.
 6. 위험과 영향 범위에 맞는 검증을 실제로 실행합니다.
    profile의 validation.verificationMeans에 선언된 수단을 사용하고,
    verification.method, commands, results, limitations와 실제 verifiedAt을
@@ -100,7 +112,10 @@
 항목별 응답 라벨은 SECURITY_SAST_WORKFLOW.md의 형식을 그대로 사용합니다.
 
 보고
-- 이번에 완료한 범위와 아직 검증되지 않은 항목
+- 전체 건수와 선택 범위·범위 밖(`info` 포함)·미확인(`unknown`·누락) 건수
+- 선택 범위에서 완료한 항목과 아직 검증되지 않은 항목; 선택 완료를 전체 완료로 쓰지 않음
+- status 최상위 selectedReadyForCompletion과 실제 검증·한계;
+  status.processingScope.selectedComplete만으로 완료 선언 금지
 - 실제 변경 파일, 결론, 실행한 검증과 확인 범위
 - 저장한 체크포인트·결과, 중복으로 해소된 ID
 - 남은 위험·정책 질문과 다음 작업

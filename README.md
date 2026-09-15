@@ -21,7 +21,7 @@
 
 | 스킬 | 버전 |
 |---|---|
-| **sast-remediation** | 1.12.4 |
+| **sast-remediation** | 1.13.0 |
 | **skill-architect** | 0.4.3 |
 
 - **sast-remediation** — 기존 SAST 보고서(PDF·스프레드시트 또는 SARIF)의
@@ -106,6 +106,8 @@ test ! -e ~/.agents/skills/skill-architect && \
 - **SAST 결과 조치** — "SAST 결과 조치해줘"
   (PDF·엑셀 또는 SARIF를 `input/`에 넣으라고 안내합니다.)
 - **이어서 작업** — "SAST 조치 이어서 해줘"
+- **처리 범위 지정** — "이번 차수는 높음 이상만 분석·조치해줘"
+  (전체 검출 목록은 보존하고, 선택 범위와 전체의 진행 현황을 구분합니다.)
 - **스킬 품질 점검** — "이 스킬 감사해줘" / "sast-remediation 스킬 감사해줘"
 
 ## 설치본 업데이트
@@ -162,6 +164,8 @@ Codex는 다음 세 단계를 구분합니다.
   단계별 사용법, AI 요청 예, 명령어 요약, 자주 겪는 상황
 - [동작 원리와 재개](skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md) —
   저장되는 정보, 중단 후 재개, 검증 결과의 재사용 조건과 한계
+- [위험도별 처리 범위](skills/sast-remediation/toolkit/docs/PROCESSING_SCOPE.md) —
+  처리할 위험도 선택, 적용 요청과 저장의 차이, 범위 밖·미확인 관리
 - [정책 확인 가이드](skills/sast-remediation/toolkit/SECURITY_GRILL_GUIDE.md) —
   업무 사실을 중심으로 정책을 확인하는 방법과 확인이 어려울 때의 처리
 - [버전·업그레이드 정책](skills/sast-remediation/toolkit/docs/VERSIONING.md) —

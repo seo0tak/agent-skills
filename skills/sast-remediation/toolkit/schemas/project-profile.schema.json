@@ -274,6 +274,44 @@
     "analysisSummary": {
       "type": "object",
       "additionalProperties": true
+    },
+    "processingScope": {
+      "type": "object",
+      "required": [
+        "workspaceId",
+        "reportId",
+        "minRisk",
+        "updatedAt",
+        "updatedBy",
+        "reason"
+      ],
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reportId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minRisk": {
+          "enum": ["critical", "very-high", "high", "medium", "low"]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "minLength": 1
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": true
