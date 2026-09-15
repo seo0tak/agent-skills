@@ -93,4 +93,8 @@ root README/HANDOFF, two SAST plugin manifests; sync generated/mirror files.
   `node --test tools/test_dashboard.cjs tools/test_activity_dashboard.cjs`, Architect/packaging
   tests, validate, mirror/version checks. Verify generated output and actual browser at narrow/wide width.
 - [x] Independent final code review; fix blocking defects with focused regression tests.
-- [ ] Commit, integrate to main only after clean verification, push without force and verify remote SHA.
+- [x] Commit, integrate to main only after clean verification, push without force and verify remote SHA.
+
+Release verification: implementation commit `7cd250ce73c05200f86e2dde310184e450f1fde6`
+was fast-forwarded to main, retested (269 canonical tests), and pushed. Local HEAD and
+remote `refs/heads/main` matched after the push. This completion note changes documentation only.
