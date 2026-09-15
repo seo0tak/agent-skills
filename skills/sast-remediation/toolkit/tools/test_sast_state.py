@@ -55,6 +55,15 @@ class StateTests(unittest.TestCase):
         return {str(p.relative_to(self.root)): p.read_bytes()
                 for p in self.root.rglob("*") if p.is_file()}
 
+    def assert_business_unchanged(self, before):
+        # Rejected mutation attempts retain audit evidence, but cannot change
+        # business/source records. Read-only tests still compare the full tree.
+        def business(snapshot):
+            return {path: contents for path, contents in snapshot.items()
+                    if path not in {"data/activity.js", ".sast-write.lock"}
+                    and not path.startswith("data/activity/")}
+        self.assertEqual(business(self.tree()), business(before))
+
     def result(self):
         record = self.read(self.root / "examples/result.json")
         record["resultFiles"] = ["service.py"]
@@ -107,7 +116,7 @@ class StateTests(unittest.TestCase):
                 with self.subTest(id=finding_id, command=args[0]):
                     rejected = self.run_state(*args, "--id", finding_id, ok=False)
                     self.assertIn("scope", rejected["error"])
-                    self.assertEqual(self.tree(), before)
+                    self.assert_business_unchanged(before)
 
     def test_unset_scope_blocks_new_actions_but_preserves_read_only_recovery(self):
         self.set_scope(None)
@@ -115,6 +124,8 @@ class StateTests(unittest.TestCase):
         for args in (("checkpoint",), ("snapshot", "--path", "service.py"), ("seal-verification",)):
             rejected = self.run_state(*args, "--id", "SAMPLE-001", ok=False)
             self.assertIn("scope", rejected["error"])
+        self.assert_business_unchanged(before)
+        before = self.tree()
         status = self.run_state("status")
         self.assertEqual(status["resumeCandidates"], ["SAMPLE-001"])
         self.assertEqual(status["inScopeResumeCandidates"], [])
@@ -178,8 +189,9 @@ class StateTests(unittest.TestCase):
                 self.assertEqual(status["processingScope"]["counts"]["unknown"], 1)
                 self.assertEqual(status["inScopeResumeCandidates"], [])
                 self.assertFalse(status["selectedReadyForCompletion"])
-                self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "service.py", ok=False)
                 self.assertEqual(self.tree(), before)
+                self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "service.py", ok=False)
+                self.assert_business_unchanged(before)
 
     def test_scope_completion_requires_fresh_evidence_not_only_verified_labels(self):
         self.progress["items"]["SAMPLE-001"].update(workflowStatus="verified", conclusion="fix")
@@ -204,14 +216,14 @@ class StateTests(unittest.TestCase):
         before = self.tree()
         rejected = self.run_state("seal-verification", "--id", "SAMPLE-001", ok=False)
         self.assertIn("scope", rejected["error"])
-        self.assertEqual(self.tree(), before)
+        self.assert_business_unchanged(before)
 
     def test_invalid_scope_cannot_authorize_actions_but_can_preserve_checkpoint(self):
         self.run_state("checkpoint", "--id", "SAMPLE-001")
         self.set_scope("constructor")
         before = self.tree()
         self.assertIn("scope", self.run_state("checkpoint", "--id", "SAMPLE-001", ok=False)["error"].lower())
-        self.assertEqual(self.tree(), before)
+        self.assert_business_unchanged(before)
         self.run_state("checkpoint", "--id", "SAMPLE-001", "--phase", "after-edit")
         self.run_state("recover-progress")
 
@@ -274,7 +286,7 @@ class StateTests(unittest.TestCase):
                 self.write(backup, value)
                 before = self.tree()
                 self.run_state("recover-progress", "--backup", str(backup), "--apply", ok=False)
-                self.assertEqual(self.tree(), before)
+                self.assert_business_unchanged(before)
 
     def test_browser_drafts_are_retained_when_merging_a_backup(self):
         backup = self.project / "backup.json"
@@ -362,7 +374,10 @@ class StateTests(unittest.TestCase):
                                              env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
                     self.assertNotEqual(checked.returncode, 0, checked.stdout + checked.stderr)
                     self.assertNotIn("Traceback", checked.stdout + checked.stderr)
-                    self.assertEqual(self.tree(), before)
+                    if command == "sync":
+                        self.assert_business_unchanged(before)
+                    else:
+                        self.assertEqual(self.tree(), before)
 
     def test_identifier_and_source_path_boundaries(self):
         # No outside writes: point a source symlink at an existing shipped file.
@@ -408,14 +423,14 @@ class StateTests(unittest.TestCase):
         other.mkdir()
         before = self.tree()
         self.run_state("recover-progress", "--project-root", str(other), "--apply", ok=False)
-        self.assertEqual(self.tree(), before)
+        self.assert_business_unchanged(before)
         path = self.root / "data/resume-state.json"
         state = self.read(path)
         state["checkpoints"]["SAMPLE-001"]["progress"]["workflowStatus"] = "finished"
         self.write(path, state)
         before = self.tree()
         self.run_state("recover-progress", "--apply", ok=False)
-        self.assertEqual(self.tree(), before)
+        self.assert_business_unchanged(before)
 
     def test_conflicting_notes_reject_recovery_instead_of_discarding_either(self):
         self.run_state("checkpoint", "--id", "SAMPLE-001")
@@ -423,7 +438,7 @@ class StateTests(unittest.TestCase):
         self.write(self.progress_path, self.progress)
         before = self.tree()
         self.assertIn("conflict", self.run_state("recover-progress", "--apply", ok=False)["error"])
-        self.assertEqual(self.tree(), before)
+        self.assert_business_unchanged(before)
 
     def test_result_evidence_change_invalidates_binding_without_running_commands(self):
         self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "service.py")
@@ -519,7 +534,7 @@ class StateTests(unittest.TestCase):
                 self.write(self.progress_path, record)
                 before = self.tree()
                 self.run_state("recover-progress", "--apply", ok=False)
-                self.assertEqual(self.tree(), before)
+                self.assert_business_unchanged(before)
 
     def test_malformed_browser_drafts_are_rejected_before_recovery_writes(self):
         import copy
@@ -543,7 +558,7 @@ class StateTests(unittest.TestCase):
                 self.write(backup, {**self.progress, "draftResults": drafts})
                 before = self.tree()
                 self.run_state("recover-progress", "--backup", str(backup), "--apply", ok=False)
-                self.assertEqual(self.tree(), before)
+                self.assert_business_unchanged(before)
 
     def test_seal_rejects_blank_evidence_and_equal_snapshot_timestamp(self):
         snapshot = self.run_state("snapshot", "--id", "SAMPLE-001", "--path", "service.py")["snapshot"]
@@ -572,7 +587,10 @@ class StateTests(unittest.TestCase):
                                         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("progress and result disagree", result.stdout + result.stderr)
-                self.assertEqual(self.tree(), before)
+                if command == "sync":
+                    self.assert_business_unchanged(before)
+                else:
+                    self.assertEqual(self.tree(), before)
 
     def test_provisional_progress_without_result_remains_usable(self):
         for command in ("query", "sync"):

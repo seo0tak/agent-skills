@@ -15,9 +15,11 @@ import uuid
 try:
     from .sast_io import writer_lock, write_text_atomic, write_bytes_atomic
     from .sast_scope import resolve_scope, scope_bucket, scope_summary
+    from .sast_activity import ActivityJournal, record_action, validate_browser_events
 except ImportError:
     from sast_io import writer_lock, write_text_atomic, write_bytes_atomic
     from sast_scope import resolve_scope, scope_bucket, scope_summary
+    from sast_activity import ActivityJournal, record_action, validate_browser_events
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = {"todo", "in-progress", "analyzed", "change-complete", "verified", "deferred"}
@@ -141,6 +143,8 @@ class Workspace:
 
     def progress(self, record):
         self.envelope(record)
+        if "activityEvents" in record:
+            validate_browser_events(record["activityEvents"], self.workspace_id)
         if "draftResults" in record:
             self.drafts(record["draftResults"])
         if not isinstance(record.get("items"), dict):
@@ -362,6 +366,8 @@ class Workspace:
             self.envelope(current)
             if "draftResults" in current:
                 self.drafts(current["draftResults"])
+            if "activityEvents" in current:
+                validate_browser_events(current["activityEvents"], self.workspace_id)
             current = copy.deepcopy(current)
             items = current.get("items")
             current["items"] = {}
@@ -499,13 +505,18 @@ def main():
             return workspace.seal(args)
         if args.command in {"status", "recover-progress"} and not getattr(args, "apply", False):
             result = execute()
+            result["activity"] = ActivityJournal(ROOT).status()
         else:
             with writer_lock(ROOT):
-                result = execute()
+                details = {key: value for key, value in vars(args).items()
+                           if key in {"phase", "note", "next_action", "path", "apply"} and value is not None}
+                result = record_action(ROOT, "state." + args.command, execute,
+                                       item_ids=[args.id] if hasattr(args, "id") else [],
+                                       details=details, automatic=True, locked=True)
         print(json.dumps(result, ensure_ascii=False))
         return 0
-    except (OSError, ValueError, TypeError) as error:
-        print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        print(json.dumps({"ok": False, "error": str(error), "activity": ActivityJournal(ROOT).status()}, ensure_ascii=False))
         return 2
 
 

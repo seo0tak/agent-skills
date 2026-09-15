@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/sast/activity-event.schema.json",
+  "title": "SAST durable activity event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "recordedAt", "workspaceId", "reportId", "operationId", "attemptId", "kind", "action", "outcome", "source", "actor", "itemIds", "summary", "before", "after", "evidence", "important"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "eventId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$"},
+    "recordedAt": {"type": "string", "format": "date-time"},
+    "workspaceId": {"type": ["string", "null"], "minLength": 1},
+    "reportId": {"type": ["string", "null"], "minLength": 1},
+    "operationId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$"},
+    "attemptId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$"},
+    "kind": {"enum": ["started", "finished", "changed", "observation"]},
+    "action": {"type": "string", "minLength": 1},
+    "outcome": {"enum": ["running", "succeeded", "failed", "blocked", "stopped", "info"]},
+    "source": {"enum": ["toolkit", "agent", "browser", "external"]},
+    "actor": {"type": "string", "minLength": 1},
+    "itemIds": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "summary": {"type": "string", "minLength": 1},
+    "before": {"type": "object"},
+    "after": {"type": "object"},
+    "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "important": {"type": "boolean"}
+  }
+}

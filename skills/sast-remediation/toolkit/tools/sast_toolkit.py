@@ -22,9 +22,11 @@ from typing import Any, Iterable
 try:
     from .sast_io import writer_lock, write_text_atomic
     from .sast_scope import RISK_LEVELS, resolve_scope, scope_bucket, scope_summary
+    from .sast_activity import ActivityJournal, record_action, validate_browser_events
 except ImportError:
     from sast_io import writer_lock, write_text_atomic
     from sast_scope import RISK_LEVELS, resolve_scope, scope_bucket, scope_summary
+    from sast_activity import ActivityJournal, record_action, validate_browser_events
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -554,6 +556,7 @@ def sync_all(project_root: Path | None = None) -> None:
     sync_usage()
     sync_records(GUIDE_DIR, "SAST_ITEM_GUIDES")
     sync_records(RESULT_DIR, "SAST_ITEM_RESULTS")
+    ActivityJournal(ROOT).refresh()
     print("Synchronized dashboard data, decision log, usage page, and item indexes.")
 
 
@@ -1585,6 +1588,11 @@ def validate_progress(
     progress_workspace = str(progress_map.get("workspaceId", ""))
     if workspace_id and progress_workspace != workspace_id:
         report.error("progress workspaceId does not match project profile")
+    if "activityEvents" in progress_map:
+        try:
+            validate_browser_events(progress_map["activityEvents"], progress_workspace)
+        except (ValueError, TypeError, RecursionError) as error:
+            report.error("progress activityEvents: " + str(error))
     items = require_mapping(report, progress_map.get("items"), "progress items")
     for finding_id, raw in items.items():
         if finding_id not in finding_ids:
@@ -2185,6 +2193,8 @@ def validate_all(strict: bool, project_root: Path) -> int:
     validate_schema_versions(report)
     validate_dashboard(report)
     validate_inputs(report, strict)
+    for warning in ActivityJournal(ROOT).projection()["warnings"]:
+        report.error("activity journal: " + warning)
     def load_data(relative: str) -> Any:
         try:
             return load_json(DATA_DIR / relative)
@@ -2354,7 +2364,8 @@ def run_scope(args: argparse.Namespace, project_root: Path) -> int:
         return 2
     try:
         if setting:
-            with writer_lock(ROOT):
+            # main holds the shared writer lock while journaling the whole attempt.
+            with contextlib.nullcontext():
                 check_state_before_use(project_root)
                 input_validation = load_json_or_exit(DATA_DIR / "input-validation.json")
                 gate_report = ValidationReport()
@@ -2475,9 +2486,14 @@ def main() -> int:
         else ROOT.parent.resolve()
     )
     if args.command == "scope":
+        if any(value is not None for value in (args.min_risk, args.set_by, args.reason)):
+            with writer_lock(ROOT):
+                return record_action(ROOT, "toolkit.scope", lambda: run_scope(args, project_root),
+                                     details={"minRisk": args.min_risk, "setBy": args.set_by, "reason": args.reason},
+                                     automatic=True, locked=True)
         return run_scope(args, project_root)
     if args.command in {"preflight", "gate", "init", "sync"}:
-        with writer_lock(ROOT):
+        def execute():
             if args.command == "gate":
                 return run_gate(project_root)
             if args.command == "preflight":
@@ -2486,6 +2502,8 @@ def main() -> int:
                 return initialize(project_root)
             sync_all(project_root)
             return 0
+        with writer_lock(ROOT):
+            return record_action(ROOT, "toolkit." + args.command, execute, automatic=True, locked=True)
     if args.command == "query":
         check_state_before_use(project_root)
         return run_query(args)
@@ -2497,3 +2515,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except BrokenPipeError:
         sys.exit(0)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        sys.exit(2)
