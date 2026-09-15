@@ -386,6 +386,32 @@ class ActivityTests(unittest.TestCase):
             journal.import_browser(backup)
         self.assertEqual(journal.projection()["events"], before)
 
+    def test_browser_progress_validation_rejects_conflicting_logical_operations(self):
+        first = {"schemaVersion": "1.0", "eventId": "browser-state", "recordedAt": "2026-09-15T00:00:00Z",
+                 "workspaceId": "sample-workspace", "reportId": "sample-report", "operationId": "browser-operation",
+                 "attemptId": "browser-state-attempt", "kind": "changed", "action": "browser.state", "outcome": "info",
+                 "source": "browser", "actor": "user", "itemIds": ["SAMPLE-001"], "summary": "State changed",
+                 "before": {"workflowStatus": "todo"}, "after": {"workflowStatus": "in-progress"},
+                 "evidence": [], "important": True}
+        second = {**first, "eventId": "browser-note", "attemptId": "browser-note-attempt", "action": "browser.note"}
+        before = json.dumps([first, second])
+        with self.assertRaisesRegex(ValueError, "operation.*conflicting"):
+            sast_activity.validate_browser_events([first, second], "sample-workspace")
+        self.assertEqual(json.dumps([first, second]), before)
+
+    def test_browser_progress_validation_preserves_unfinished_and_changed_events(self):
+        journal = sast_activity.ActivityJournal(self.root)
+        start = journal.start("browser.analysis", "Analysis started", "user", source="browser")
+        changed = journal.note("browser.note", "Note changed", "user", source="browser", kind="changed",
+                               before={"note": "earlier"}, after={"note": "later"})
+        events = [start, changed]
+        serialized = json.dumps(events)
+        before = self.tree()
+        self.assertEqual(sast_activity.validate_browser_events(events, "sample-workspace"), events)
+        self.assertEqual(json.dumps(events), serialized)
+        self.assertEqual(self.tree(), before)
+        self.assertEqual(journal.status()["unfinishedCount"], 1)
+
     def test_import_contract_rejects_unsafe_metadata_and_loose_timestamps(self):
         journal = sast_activity.ActivityJournal(self.root)
         base = journal.note("browser.state", "fixture", "user", source="browser")

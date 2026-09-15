@@ -296,6 +296,40 @@ class StateTests(unittest.TestCase):
         self.assertEqual(self.read(self.progress_path)["draftResults"]["SAMPLE-001"], draft)
         self.assertFalse((self.root / "security-results/SAMPLE-001.json").exists())
 
+    def test_recovery_rejects_conflicting_browser_operations_without_state_mutation(self):
+        first = {"schemaVersion": "1.0", "eventId": "browser-state", "recordedAt": "2026-09-15T00:00:00Z",
+                 "workspaceId": "sample-workspace", "reportId": "sample-report", "operationId": "browser-operation",
+                 "attemptId": "browser-state-attempt", "kind": "changed", "action": "browser.state", "outcome": "info",
+                 "source": "browser", "actor": "user", "itemIds": ["SAMPLE-001"], "summary": "State changed",
+                 "before": {"workflowStatus": "todo"}, "after": {"workflowStatus": "in-progress"},
+                 "evidence": [], "important": True}
+        second = {**first, "eventId": "browser-note", "attemptId": "browser-note-attempt", "action": "browser.note"}
+        backup = self.project / "conflicting-activity-backup.json"
+        self.write(backup, {**self.progress, "activityEvents": [first, second]})
+        before = self.tree()
+        rejected = self.run_state("recover-progress", "--backup", str(backup), "--apply", ok=False)
+        self.assertIn("operation", rejected["error"])
+        self.assert_business_unchanged(before)
+
+    def test_recovery_preserves_unfinished_and_changed_browser_events(self):
+        started = {"schemaVersion": "1.0", "eventId": "browser-analysis", "recordedAt": "2026-09-15T00:00:00Z",
+                   "workspaceId": "sample-workspace", "reportId": "sample-report", "operationId": "browser-analysis-operation",
+                   "attemptId": "browser-analysis-attempt", "kind": "started", "action": "browser.analysis", "outcome": "running",
+                   "source": "browser", "actor": "user", "itemIds": ["SAMPLE-001"], "summary": "Analysis started",
+                   "before": {}, "after": {}, "evidence": [], "important": False}
+        changed = {**started, "eventId": "browser-note", "operationId": "browser-note-operation",
+                   "attemptId": "browser-note-attempt", "kind": "changed", "action": "browser.note", "outcome": "info",
+                   "summary": "Note changed", "before": {"note": "earlier"}, "after": {"note": "later"}, "important": True}
+        events = [started, changed]
+        backup = self.project / "valid-activity-backup.json"
+        self.write(backup, {**self.progress, "activityEvents": events})
+        applied = self.run_state("recover-progress", "--backup", str(backup), "--apply")
+        self.assertTrue(applied["applied"])
+        self.assertEqual(self.read(self.progress_path)["activityEvents"], events)
+        before = self.tree()
+        self.run_state("status")
+        self.assertEqual(self.tree(), before)
+
     def test_parallel_atomic_writers_and_serialized_updates(self):
         script = (
             "import json, sys; from pathlib import Path; "

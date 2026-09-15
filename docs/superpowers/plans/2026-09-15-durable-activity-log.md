@@ -92,5 +92,5 @@ root README/HANDOFF, two SAST plugin manifests; sync generated/mirror files.
 - [x] Run `python3 -B -m unittest tools.test_toolkit tools.test_sast_state tools.test_usage_renderer tools.test_activity`,
   `node --test tools/test_dashboard.cjs tools/test_activity_dashboard.cjs`, Architect/packaging
   tests, validate, mirror/version checks. Verify generated output and actual browser at narrow/wide width.
-- [ ] Independent final code review; fix blocking defects with focused regression tests.
+- [x] Independent final code review; fix blocking defects with focused regression tests.
 - [ ] Commit, integrate to main only after clean verification, push without force and verify remote SHA.

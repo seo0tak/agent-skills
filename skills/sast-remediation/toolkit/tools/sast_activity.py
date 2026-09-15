@@ -658,6 +658,9 @@ def validate_browser_events(value, workspace_id):
         if event["eventId"] in seen:
             raise ValueError("activityEvents contains duplicate eventId")
         seen[event["eventId"]] = event
+    issues = lifecycle_issues(value)
+    if issues:
+        raise ValueError("; ".join(issues))
     return value
 
 
