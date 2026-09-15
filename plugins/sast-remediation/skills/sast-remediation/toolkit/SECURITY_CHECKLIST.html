@@ -170,23 +170,41 @@
     </section>
     </details>
 
-    <details class="activity-panel" id="activityPanel">
-      <summary><strong>전체 작업 로그</strong><span id="activityCount">작업 이력 불러오는 중</span></summary>
+    <details class="activity-panel" id="activityPanel" open>
+      <summary><strong>작업 이력</strong><span id="activityCount">작업 이력 불러오는 중</span></summary>
       <div class="activity-panel-body">
         <p id="activityTimes" class="scope-note"></p>
         <p class="scope-note">실시간 감시 화면이 아닙니다. 최신 파일 기록은 sync 후 페이지를 다시 열어 확인하세요. 종료 미확인은 실행 중·비정상 종료를 단정하지 않습니다. 명령 성공과 취약점 검증 완료는 다릅니다.</p>
         <p id="activityWarning" class="message warning" role="status"></p>
-        <div class="activity-controls" aria-label="작업 로그 전용 필터">
-          <label><span>로그 검색</span><input id="activitySearch" type="search" placeholder="작업, 항목 ID, 사유, 차수 검색"></label>
-          <label><span>기록 종류</span><select id="activityMode"><option value="">전체 기록</option><option value="errors">실패·차단·중단</option><option value="unfinished">종료 미확인</option><option value="important">중요 기록</option></select></label>
+        <div class="activity-controls" aria-label="작업 이력 필터">
+          <label><span>작업 검색</span><input id="activitySearch" type="search" placeholder="작업, 항목 ID, 사유, 차수 검색"></label>
+          <label><span>작업 상태</span><select id="activityMode"><option value="">전체 작업</option><option value="errors">실패·차단·중단 포함</option><option value="unfinished">종료 미확인 포함</option><option value="important">중요 기록 포함</option></select></label>
           <label><span>원래 출처</span><select id="activitySource"><option value="">전체 출처</option><option value="toolkit">툴킷</option><option value="agent">에이전트</option><option value="browser">브라우저</option><option value="external">외부 변경</option></select></label>
           <label><span>시작일 (UTC)</span><input id="activityFrom" type="date"></label>
           <label><span>종료일 (UTC)</span><input id="activityTo" type="date"></label>
-          <button id="activityReset" type="button">로그 필터 초기화</button>
+          <button id="activityReset" type="button">작업 필터 초기화</button>
         </div>
-        <p class="scope-note">최신순, 페이지당 최대 50건입니다. 목록 안에서 스크롤하고 각 기록을 펼쳐 전후 상태·사유·근거를 확인하세요. 필터는 검출 목록이나 이력 보존에 영향을 주지 않습니다.</p>
-        <div id="activityList" class="activity-list" role="region" aria-label="전체 작업 로그, 내부 스크롤 가능" tabindex="0"></div>
-        <div class="pager"><span id="activityPageInfo" role="status" aria-live="polite"></span><button id="activityPrev" type="button">이전 로그</button><button id="activityNext" type="button">다음 로그</button></div>
+        <p class="scope-note">필터와 날짜가 작업 안의 기록 하나와 일치하면 시작·종료·재시도를 포함한 작업 전체를 보여줍니다. 최신순, 페이지당 최대 50개 작업이며 필터는 검출 목록·저장 데이터·원본 이력을 바꾸지 않습니다.</p>
+        <div id="activityList" class="activity-list" role="region" aria-label="작업 이력, 내부 스크롤 가능" tabindex="0"></div>
+        <div class="pager"><span id="activityPageInfo" role="status" aria-live="polite"></span><button id="activityPrev" type="button">이전 작업</button><button id="activityNext" type="button">다음 작업</button></div>
+
+        <details class="system-activity-panel" id="systemActivityPanel">
+          <summary><strong>시스템 운영 기록</strong><span id="systemActivityCount">운영 기록 불러오는 중</span></summary>
+          <div class="system-activity-body">
+            <p class="scope-note">동기화·체크포인트·스냅샷·기준 관측 등 내부 운영 기록과 분류하지 못한 과거 기록입니다. 각 행의 진단 상세에서 원본 로그를 확인할 수 있습니다.</p>
+            <div class="activity-controls" aria-label="시스템 운영 기록 필터">
+              <label><span>운영 기록 검색</span><input id="systemActivitySearch" type="search" placeholder="작업, 항목 ID, 원본 내용 검색"></label>
+              <label><span>기록 상태</span><select id="systemActivityMode"><option value="">전체 운영 기록</option><option value="errors">실패·차단·중단 포함</option><option value="unfinished">종료 미확인 포함</option><option value="important">중요 기록 포함</option></select></label>
+              <label><span>원래 출처</span><select id="systemActivitySource"><option value="">전체 출처</option><option value="toolkit">툴킷</option><option value="agent">에이전트</option><option value="browser">브라우저</option><option value="external">외부 변경</option></select></label>
+              <label><span>시작일 (UTC)</span><input id="systemActivityFrom" type="date"></label>
+              <label><span>종료일 (UTC)</span><input id="systemActivityTo" type="date"></label>
+              <button id="systemActivityReset" type="button">운영 필터 초기화</button>
+            </div>
+            <p class="scope-note">필터와 날짜는 조건이 맞는 기록이 포함된 작업 전체를 표시합니다. 조회와 필터 변경은 로그를 추가하거나 저장 내용을 바꾸지 않습니다.</p>
+            <div id="systemActivityList" class="activity-list" role="region" aria-label="시스템 운영 기록, 내부 스크롤 가능" tabindex="0"></div>
+            <div class="pager"><span id="systemActivityPageInfo" role="status" aria-live="polite"></span><button id="systemActivityPrev" type="button">이전 운영 기록</button><button id="systemActivityNext" type="button">다음 운영 기록</button></div>
+          </div>
+        </details>
       </div>
     </details>
 
@@ -318,9 +336,16 @@
 
       <section class="item-activity-panel" aria-labelledby="itemActivityTitle">
         <h3 id="itemActivityTitle">이 항목의 작업 이력</h3>
-        <p class="scope-note">현재 작업공간·검사 차수의 같은 항목 ID만 표시합니다. 이전 차수 기록은 전체 작업 로그에서 확인하세요. 브라우저 기록은 정본 반영 여부와 구분합니다.</p>
+        <p class="scope-note">현재 작업공간·검사 차수의 같은 항목 ID에 연결된 작업을 표시합니다. 이전 차수 기록은 전체 작업 이력에서 확인하세요. 브라우저 기록은 정본 반영 여부와 구분합니다.</p>
         <div id="itemActivityList" class="activity-list" role="region" aria-labelledby="itemActivityTitle" tabindex="0"></div>
         <div class="pager"><span id="itemActivityPageInfo" role="status" aria-live="polite"></span><button id="itemActivityPrev" type="button">이전 항목 이력</button><button id="itemActivityNext" type="button">다음 항목 이력</button></div>
+        <details class="system-activity-panel item-system-activity">
+          <summary><strong>관련 시스템 운영 기록</strong></summary>
+          <div class="system-activity-body">
+            <div id="itemSystemActivityList" class="activity-list" role="region" aria-label="이 항목의 관련 시스템 운영 기록" tabindex="0"></div>
+            <div class="pager"><span id="itemSystemActivityPageInfo" role="status" aria-live="polite"></span><button id="itemSystemActivityPrev" type="button">이전 운영 기록</button><button id="itemSystemActivityNext" type="button">다음 운영 기록</button></div>
+          </div>
+        </details>
       </section>
 
       <section class="answer-panel">

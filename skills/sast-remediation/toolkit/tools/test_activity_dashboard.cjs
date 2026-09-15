@@ -86,6 +86,296 @@ test("activity filtering is independent, pages are limited to 50, and item histo
   assert.equal(helper.select(events, { source: "toolkit" }).total, 0);
 });
 
+test("work view aggregates retries without letting an old failure hide the latest success", () => {
+  const helper = api();
+  const records = [
+    event({ eventId: "start-1", kind: "started", outcome: "running", action: "remediation", source: "agent" }),
+    event({ eventId: "finish-1", kind: "finished", outcome: "failed", action: "remediation", source: "agent",
+      summary: "첫 시도 실패" }),
+    event({ eventId: "start-2", attemptId: "a-2", kind: "started", outcome: "running", action: "remediation",
+      source: "agent", recordedAt: "2026-09-15T02:00:00Z" }),
+    event({ eventId: "finish-2", attemptId: "a-2", kind: "finished", outcome: "succeeded", action: "remediation",
+      source: "agent", summary: "수정 적용", recordedAt: "2026-09-15T03:00:00Z" }),
+  ];
+  const selected = helper.selectAudience(records, { audience: "work" });
+  assert.equal(selected.total, 1);
+  assert.equal(selected.rows[0].outcome, "succeeded");
+  assert.equal(selected.rows[0].attemptCount, 2);
+  assert.deepEqual(Array.from(selected.rows[0].records, record => record.eventId),
+    ["start-1", "finish-1", "start-2", "finish-2"]);
+});
+
+test("audience views separate routine operations while preserving important reconciliation and unknown records", () => {
+  const helper = api();
+  const records = [
+    event({ eventId: "baseline", operationId: "baseline-op", attemptId: "baseline-a", action: "canonical.reconcile",
+      kind: "observation", outcome: "info", source: "external", important: false, itemIds: [],
+      summary: "기준 상태 관측", before: {}, after: { record: "data/progress.json" } }),
+    event({ eventId: "drift", operationId: "drift-op", attemptId: "drift-a", action: "canonical.reconcile",
+      kind: "changed", outcome: "info", source: "external", important: true,
+      summary: "정본 변경 발견", after: { record: "data/progress.json", value: { workflowStatus: "analyzed" } } }),
+    event({ eventId: "legacy", operationId: "legacy-op", attemptId: "legacy-a", action: "legacy.magic",
+      source: "toolkit", important: false, summary: "과거 기록" }),
+    event({ eventId: "work", operationId: "work-op", attemptId: "work-a", action: "verification",
+      source: "agent", summary: "검증 실행" }),
+  ];
+  const original = JSON.stringify(records);
+  const work = helper.selectAudience(records, { audience: "work" });
+  const system = helper.selectAudience(records, { audience: "system" });
+  assert.deepEqual(Array.from(work.rows, row => row.records[0].eventId), ["work", "drift"]);
+  assert.deepEqual(Array.from(system.rows, row => [row.records[0].eventId, row.classification]),
+    [["legacy", "unknown"], ["baseline", "system"]]);
+  assert.equal(JSON.stringify(records), original);
+});
+
+test("audience filters return whole matching operations and never merge reports", () => {
+  const helper = api();
+  const records = [
+    event({ eventId: "start-current", kind: "started", outcome: "running", action: "verification", source: "agent",
+      recordedAt: "2026-09-14T23:59:00Z", summary: "검증 시작" }),
+    event({ eventId: "finish-current", kind: "finished", outcome: "failed", action: "verification", source: "agent",
+      recordedAt: "2026-09-15T01:00:00Z", summary: "테스트 실패" }),
+    event({ eventId: "finish-other-report", reportId: "r-2", operationId: "op-2", kind: "finished", outcome: "failed",
+      action: "verification", source: "agent", recordedAt: "2026-09-15T02:00:00Z", summary: "다른 차수 실패" }),
+  ];
+  const selected = helper.selectAudience(records, { audience: "work", mode: "errors", from: "2026-09-15",
+    reportId: "r-1" });
+  assert.equal(selected.total, 1);
+  assert.deepEqual(Array.from(selected.rows[0].records, record => record.eventId), ["start-current", "finish-current"]);
+});
+
+test("audience date ranges require one underlying record inside both boundaries", () => {
+  const helper = api();
+  const records = [
+    event({ eventId: "before-range", kind: "started", outcome: "running", action: "verification", source: "agent",
+      recordedAt: "2026-09-14T23:59:00Z" }),
+    event({ eventId: "after-range", kind: "finished", outcome: "succeeded", action: "verification", source: "agent",
+      recordedAt: "2026-09-16T00:01:00Z" }),
+  ];
+  assert.equal(helper.selectAudience(records, { audience: "work", from: "2026-09-15", to: "2026-09-15" }).total, 0);
+});
+
+test("current operation outcome keeps the latest attempt terminal result after later detail records", () => {
+  const helper = api();
+  const records = [
+    event({ eventId: "started", kind: "started", outcome: "running", action: "verification", source: "agent" }),
+    event({ eventId: "failed", kind: "finished", outcome: "failed", action: "verification", source: "agent",
+      recordedAt: "2026-09-15T02:00:00Z", summary: "검증 실패" }),
+    event({ eventId: "detail", kind: "observation", outcome: "info", action: "verification", source: "agent",
+      recordedAt: "2026-09-15T03:00:00Z", summary: "다음 확인 사항 기록" }),
+  ];
+  const row = helper.selectAudience(records, { audience: "work" }).rows[0];
+  assert.equal(row.outcome, "failed");
+  const document = dom(), container = document.createElement("div");
+  helper.renderAudience(document, container, [row], {});
+  assert.match(container.textContent, /최신 시도가 실패했습니다/);
+});
+
+test("canonical rows expose checkpoint guidance while system diagnostics label truncated detail as unknown", () => {
+  const helper = api();
+  const records = [
+    event({ eventId: "checkpoint", operationId: "checkpoint-op", attemptId: "checkpoint-a",
+      action: "canonical.reconcile", kind: "changed", source: "external", important: true,
+      before: { record: "data/resume-state.json#F-001", value: { note: "이전 판단", nextAction: "소스 확인" } },
+      after: { record: "data/resume-state.json#F-001", value: { note: "새 판단", nextAction: "관련 테스트 실행" } },
+      summary: "정본 변경 발견" }),
+    event({ eventId: "truncated", operationId: "truncated-op", attemptId: "truncated-a",
+      action: "canonical.reconcile", kind: "changed", source: "external", important: true,
+      before: { truncated: true, reason: "size limit" }, after: { truncated: true, reason: "size limit" },
+      summary: "정본 변경 상세 생략" }),
+  ];
+  const work = helper.selectAudience(records, { audience: "work" });
+  const system = helper.selectAudience(records, { audience: "system" });
+  const document = dom(), container = document.createElement("div");
+  helper.renderAudience(document, container, Array.from(work.rows).concat(Array.from(system.rows)), {});
+  assert.match(container.textContent, /비고: 이전 판단 → 새 판단/);
+  assert.match(container.textContent, /다음 확인: 소스 확인 → 관련 테스트 실행/);
+  assert.match(container.textContent, /변경 상세가 생략되어.*원본.*대조/);
+  assert.doesNotMatch(container.textContent, /수정자|실제 변경 시각/);
+});
+
+test("unfinished or failed system operations surface in work view without orphaning lifecycle records", () => {
+  const helper = api();
+  const records = [
+    event({ eventId: "snapshot-start", operationId: "snapshot-op", attemptId: "snapshot-a", action: "snapshot",
+      kind: "started", outcome: "running", source: "toolkit", summary: "스냅샷 시작" }),
+    event({ eventId: "snapshot-failed", operationId: "snapshot-op", attemptId: "snapshot-a", action: "snapshot",
+      kind: "finished", outcome: "failed", source: "toolkit", summary: "스냅샷 실패", recordedAt: "2026-09-15T02:00:00Z" }),
+    event({ eventId: "sync-start", operationId: "sync-op", attemptId: "sync-a", action: "sync",
+      kind: "started", outcome: "running", source: "toolkit", summary: "동기화 시작", recordedAt: "2026-09-15T03:00:00Z" }),
+  ];
+  const work = helper.selectAudience(records, { audience: "work" });
+  const system = helper.selectAudience(records, { audience: "system" });
+  assert.deepEqual(Array.from(work.rows, row => Array.from(row.records, record => record.eventId)),
+    [["sync-start"], ["snapshot-start", "snapshot-failed"]]);
+  assert.deepEqual(Array.from(system.rows, row => Array.from(row.records, record => record.eventId)),
+    [["sync-start"], ["snapshot-start", "snapshot-failed"]]);
+});
+
+test("later informational detail cannot mask the latest unfinished lifecycle attempt", () => {
+  const helper = api();
+  const records = [
+    event({ eventId: "sync-start", operationId: "sync-op", attemptId: "sync-a", action: "sync",
+      kind: "started", outcome: "running", source: "toolkit", summary: "동기화 시작" }),
+    event({ eventId: "sync-note", operationId: "sync-op", attemptId: "note-a", action: "sync",
+      kind: "observation", outcome: "info", source: "toolkit", summary: "추가 확인 기록",
+      recordedAt: "2026-09-15T02:00:00Z" }),
+  ];
+  const row = helper.selectAudience(records, { audience: "work" }).rows[0];
+  assert.ok(row);
+  assert.equal(row.currentUnfinished, true);
+  assert.equal(row.outcome, "running");
+});
+
+test("work rows keep successful attempts separate from recorded verification status", () => {
+  const helper = api();
+  const value = event({ kind: "finished", outcome: "succeeded", action: "remediation", source: "agent",
+    before: { verification: { status: "not-run" } }, after: { verification: { status: "passed" } },
+    summary: "조치 저장 완료" });
+  const row = helper.selectAudience([value], { audience: "work" }).rows[0];
+  const document = dom(), container = document.createElement("div");
+  helper.renderAudience(document, container, [row], {});
+  assert.match(container.textContent, /현재 결과 시도 성공.*검증 완료 상태와 별도/);
+  assert.match(container.textContent, /검증 상태: 미실행 → 통과/);
+});
+
+test("work rows explain field changes without claiming a browser status edit changed code", () => {
+  const helper = api();
+  const document = dom(), container = document.createElement("div");
+  const value = event({ before: { workflowStatus: "todo", conclusion: "unreviewed" },
+    after: { workflowStatus: "analyzed", conclusion: "needs-review" } });
+  const row = helper.selectAudience([value], { audience: "work" }).rows[0];
+  helper.renderAudience(document, container, [row], {});
+  assert.match(container.textContent, /작업 단계: 미착수 → 분석 완료/);
+  assert.match(container.textContent, /조치 결론: 미판정 → 추가 검토/);
+  assert.match(container.textContent, /진단 상세/);
+  assert.match(container.textContent, /이벤트: e-1/);
+  assert.doesNotMatch(container.textContent, /코드 (?:수정|변경)|소스 (?:수정|변경)/);
+});
+
+test("native producer action names separate routine system operations from user-significant state work", () => {
+  const helper = api();
+  const events = [
+    ...["state.checkpoint", "state.snapshot", "toolkit.gate"].map((action, index) => event({
+      eventId: "system-" + index, operationId: "system-op-" + index, attemptId: "system-a-" + index,
+      action, kind: "finished", outcome: "succeeded", source: "toolkit", important: action !== "toolkit.gate",
+      summary: "작업 종료: " + action,
+    })),
+    ...["state.seal-verification", "state.recover-progress", "toolkit.scope"].map((action, index) => event({
+      eventId: "work-" + index, operationId: "work-op-" + index, attemptId: "work-a-" + index,
+      action, kind: "finished", outcome: "succeeded", source: "toolkit", important: true,
+      summary: "작업 종료: " + action,
+    })),
+    event({ eventId: "checkpoint-failed", operationId: "failed-op", attemptId: "failed-a",
+      action: "state.checkpoint", kind: "finished", outcome: "failed", source: "toolkit", important: true,
+      summary: "작업 종료: 체크포인트 저장 (실패)" }),
+  ];
+  assert.deepEqual(Array.from(helper.selectAudience(events, { audience: "system" }).rows, row => row.action).sort(),
+    ["state.checkpoint", "state.checkpoint", "state.snapshot", "toolkit.gate"].sort());
+  assert.deepEqual(Array.from(helper.selectAudience(events, { audience: "work" }).rows, row => row.action).sort(),
+    ["state.checkpoint", "state.recover-progress", "state.seal-verification", "toolkit.scope"].sort());
+});
+
+test("producer lifecycle halves pair within an attempt instead of inventing deletion and re-addition", () => {
+  const helper = api();
+  const events = [
+    event({ eventId: "producer-start", action: "remediation", source: "agent", kind: "started", outcome: "running",
+      before: { workflowStatus: "analyzed", note: "검토 완료" }, after: {}, summary: "조치 시작" }),
+    event({ eventId: "producer-finish", action: "remediation", source: "agent", kind: "finished", outcome: "succeeded",
+      before: {}, after: { workflowStatus: "change-complete", note: "수정 적용" }, summary: "조치 종료" }),
+  ];
+  const document = dom(), container = document.createElement("div");
+  helper.renderAudience(document, container, helper.selectAudience(events, { audience: "work" }).rows, {});
+  assert.match(container.textContent, /작업 단계: 분석 완료 → 변경 완료/);
+  assert.match(container.textContent, /비고: 검토 완료 → 수정 적용/);
+  assert.doesNotMatch(container.textContent, /undefined|분석 완료 → 미확인|미확인 → 변경 완료|검토 완료 → 미확인|미확인 → 수정 적용/);
+});
+
+test("paired lifecycle snapshots render nonmatching producer fields as one-sided observations", () => {
+  const helper = api();
+  const events = [
+    event({ eventId: "scope-start", action: "toolkit.scope", source: "toolkit", kind: "started", outcome: "running",
+      before: { minRisk: "high", reason: "승인 범위" }, after: {}, summary: "작업 시작: 처리 범위 변경" }),
+    event({ eventId: "scope-finish", action: "toolkit.scope", source: "toolkit", kind: "finished", outcome: "succeeded",
+      before: {}, after: { returnCode: 0 }, summary: "작업 종료: 처리 범위 변경 (성공)" }),
+  ];
+  const document = dom(), container = document.createElement("div");
+  helper.renderAudience(document, container, helper.selectAudience(events, { audience: "work" }).rows, {});
+  assert.match(container.textContent, /시작 시 최소 위험도: 높음/);
+  assert.match(container.textContent, /시작 시 판단 이유: 승인 범위/);
+  assert.doesNotMatch(container.textContent, /높음 → 미확인|승인 범위 → 미확인/);
+});
+
+test("attempt chronology keeps newer unfinished work current and surfaces any unresolved attempt", () => {
+  const helper = api();
+  const interleaved = [
+    event({ eventId: "a-start", action: "toolkit.sync", source: "toolkit", kind: "started", outcome: "running",
+      attemptId: "attempt-a", recordedAt: "2026-09-15T01:00:00Z" }),
+    event({ eventId: "b-start", action: "toolkit.sync", source: "toolkit", kind: "started", outcome: "running",
+      attemptId: "attempt-b", recordedAt: "2026-09-15T02:00:00Z" }),
+    event({ eventId: "a-finish", action: "toolkit.sync", source: "toolkit", kind: "finished", outcome: "succeeded",
+      attemptId: "attempt-a", recordedAt: "2026-09-15T03:00:00Z" }),
+  ];
+  const current = helper.selectAudience(interleaved, { audience: "work" }).rows[0];
+  assert.equal(current.outcome, "running");
+  assert.equal(current.currentUnfinished, true);
+
+  const olderUnresolved = [interleaved[0], interleaved[1],
+    event({ eventId: "b-finish", action: "toolkit.sync", source: "toolkit", kind: "finished", outcome: "succeeded",
+      attemptId: "attempt-b", recordedAt: "2026-09-15T03:00:00Z" })];
+  const selected = helper.selectAudience(olderUnresolved, { audience: "work", mode: "unfinished" });
+  assert.equal(selected.total, 1);
+  assert.equal(selected.rows[0].outcome, "succeeded");
+  assert.equal(selected.rows[0].unfinishedAttemptCount, 1);
+});
+
+test("canonical audience classification uses recorded meaning rather than the important flag alone", () => {
+  const helper = api();
+  const events = [
+    event({ eventId: "baseline", operationId: "baseline-op", attemptId: "baseline-a", action: "canonical.reconcile",
+      kind: "observation", outcome: "info", source: "external", important: true, summary: "기준 상태 관측",
+      before: {}, after: { record: "data/progress.json#F-001", value: { workflowStatus: "analyzed" } } }),
+    event({ eventId: "hash", operationId: "hash-op", attemptId: "hash-a", action: "canonical.reconcile",
+      kind: "changed", outcome: "info", source: "external", important: true, summary: "정본 변경 발견: src/a.c",
+      before: { record: "src/a.c", sha256: "old", value: {} }, after: { record: "src/a.c", sha256: "new", value: {} } }),
+    event({ eventId: "checkpoint", operationId: "checkpoint-op", attemptId: "checkpoint-a", action: "canonical.reconcile",
+      kind: "changed", outcome: "info", source: "external", important: false, summary: "정본 변경 발견: data/resume-state.json",
+      before: { record: "data/resume-state.json#F-001", value: { note: "이전", nextAction: "분석" } },
+      after: { record: "data/resume-state.json#F-001", value: { note: "현재", nextAction: "테스트" } } }),
+    event({ eventId: "unknown-shape", operationId: "unknown-op", attemptId: "unknown-a", action: "canonical.reconcile",
+      kind: "changed", outcome: "info", source: "external", important: true, summary: "정본 변경 발견: custom.json",
+      before: { record: "custom.json", value: { customDecision: "a" } },
+      after: { record: "custom.json", value: { customDecision: "b" } } }),
+  ];
+  assert.deepEqual(Array.from(helper.selectAudience(events, { audience: "work" }).rows, row => row.records[0].eventId),
+    ["checkpoint"]);
+  assert.deepEqual(Array.from(helper.selectAudience(events, { audience: "system" }).rows, row => [row.records[0].eventId, row.classification]),
+    [["unknown-shape", "unknown"], ["hash", "system"], ["baseline", "system"]]);
+});
+
+test("audience headings and risk values use plain Korean while diagnostics retain canonical identity", () => {
+  const helper = api();
+  const value = event({ action: "canonical.reconcile", kind: "changed", outcome: "info", source: "external", important: true,
+    summary: "정본 변경 발견: data/project-profile.json", before: { record: "data/project-profile.json", value: { processingScope: { minRisk: "high" } } },
+    after: { record: "data/project-profile.json", value: { processingScope: { minRisk: "critical" } } } });
+  const document = dom(), container = document.createElement("div");
+  helper.renderAudience(document, container, helper.selectAudience([value], { audience: "work" }).rows, {});
+  assert.match(container.textContent, /^처리 범위 변경/);
+  assert.match(container.textContent, /최소 위험도: 높음 → 매우 위험/);
+  assert.doesNotMatch(container.children[0].children[0].textContent, /canonical|project-profile|정본 변경 발견/);
+  assert.match(container.textContent, /작업: canonical\.reconcile/);
+});
+
+test("simple browser edits omit lifecycle outcome and attempt boilerplate", () => {
+  const helper = api();
+  const value = event({ action: "browser.note", kind: "changed", outcome: "info", source: "browser",
+    summary: "브라우저 메모 변경", before: { note: "이전" }, after: { note: "현재" } });
+  const document = dom(), container = document.createElement("div");
+  helper.renderAudience(document, container, helper.selectAudience([value], { audience: "work" }).rows, {});
+  assert.match(container.children[0].children[1].textContent, /변경 기록/);
+  assert.doesNotMatch(container.children[0].children[1].textContent, /현재 결과 정보|시도 1회/);
+});
+
 test("event details render untrusted text without HTML and retain expandable accessible summaries", () => {
   const helper = api();
   const document = dom();

@@ -45,6 +45,18 @@ function draft(resultValue, savedAt = DAY_3) {
   return { source: "browser-answer", savedAt, result: resultValue };
 }
 
+function activityEvent(overrides = {}) {
+  return { schemaVersion: "1.0", eventId: "event-1", recordedAt: DAY_1,
+    workspaceId: "project-A", reportId: "report-A", operationId: "operation-1", attemptId: "attempt-1",
+    kind: "finished", action: "remediation", outcome: "succeeded", source: "agent", actor: "agent",
+    itemIds: ["F-001"], summary: "수정 적용", before: {}, after: {}, evidence: [], important: true,
+    ...overrides };
+}
+
+function treeText(node) {
+  return String(node.textContent || "") + (node.children || []).map(treeText).join("");
+}
+
 function loadDashboard({
   workspaceId = "project-A", fileItems = {}, fileResults = {}, storage = new Map(),
   reportId = "report-A", scope, findings: suppliedFindings,
@@ -304,6 +316,31 @@ test("work log controls page 50 records and do not alter finding filters or crea
   assert.equal(dashboard.element("activitySearch").value, "note 56");
   dashboard.api.exportProgress();
   assert.equal(dashboard.downloads[0].data.activityEvents.length, 57);
+});
+
+test("dashboard defaults to work history and keeps system and unknown records in the system view", () => {
+  const events = [activityEvent(),
+    activityEvent({ eventId: "system", operationId: "system-op", attemptId: "system-a", action: "snapshot",
+      kind: "changed", outcome: "info", source: "toolkit", summary: "내부 스냅샷" }),
+    activityEvent({ eventId: "unknown", operationId: "unknown-op", attemptId: "unknown-a", action: "legacy.magic",
+      kind: "observation", outcome: "info", source: "external", summary: "이전 형식 기록" })];
+  const dashboard = loadDashboard({ fileActivity: { schemaVersion: "1.0", generatedAt: DAY_3, events, warnings: [] } });
+  dashboard.api.renderActivity();
+  assert.match(treeText(dashboard.element("activityList")), /수정 적용/);
+  assert.doesNotMatch(treeText(dashboard.element("activityList")), /내부 스냅샷|이전 형식 기록/);
+  assert.match(treeText(dashboard.element("systemActivityList")), /내부 스냅샷/);
+  assert.match(treeText(dashboard.element("systemActivityList")), /분류 미확인 · 이전 형식 기록/);
+});
+
+test("system history summary counts unknown operations beyond the first 50-row page", () => {
+  const events = Array.from({ length: 51 }, (_, index) => activityEvent({
+    eventId: "unknown-" + index, operationId: "unknown-op-" + index, attemptId: "unknown-a-" + index,
+    action: "legacy.action-" + index, kind: "observation", outcome: "info", source: "external",
+    summary: "과거 형식 " + index,
+  }));
+  const dashboard = loadDashboard({ fileActivity: { schemaVersion: "1.0", generatedAt: DAY_3, events, warnings: [] } });
+  dashboard.api.renderActivity();
+  assert.match(dashboard.element("systemActivityCount").textContent, /운영 기록 51건 · 분류 미확인 51건/);
 });
 
 test("backup state changes are attributable to each affected item with before and after values", () => {

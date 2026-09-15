@@ -427,10 +427,26 @@ td code { color: #344054; font-family: Consolas, "Courier New", monospace; font-
 .activity-entry { padding: 9px 10px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .activity-entry:last-child { border-bottom: 0; }
 .activity-entry > summary { cursor: pointer; }
+.activity-audience-entry > h3 { margin: 0; font-size: 14px; }
 .activity-event-title { font-weight: 600; }
 .activity-event-meta { display: block; margin: 3px 0 0 18px; color: var(--muted); font-size: 12px; }
+.activity-audience-entry .activity-event-meta { margin-left: 0; }
+.activity-user-detail { display: grid; gap: 4px; margin: 8px 0; }
+.activity-user-detail p { margin: 0; }
+.activity-impact { padding: 7px 9px; border-left: 3px solid #d99a2b; background: var(--amber-soft); color: #6b4d12; }
+.activity-diagnostics { margin-top: 8px; border-top: 1px dashed var(--line); }
+.activity-diagnostics > summary { padding: 7px 0 2px; cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 700; }
+.activity-raw-list { margin-top: 5px; border: 1px solid var(--line); border-radius: 6px; }
+.activity-raw-list .activity-entry { padding: 7px 8px; }
 .activity-event-detail { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; padding: 10px; background: #f6f8fb; border-radius: 6px; }
-.activity-list:focus-visible, .activity-entry > summary:focus-visible, .activity-panel > summary:focus-visible { outline: 3px solid #367bdc; outline-offset: 2px; }
+.system-activity-panel { margin-top: 14px; border: 1px solid var(--line); border-radius: 7px; background: #f8fafc; }
+.system-activity-panel > summary { padding: 11px 12px; cursor: pointer; }
+.system-activity-panel > summary span { margin-left: 10px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.system-activity-body { padding: 0 10px 10px; }
+.system-activity-body > .activity-list { background: #fff; }
+.item-system-activity { margin-top: 12px; }
+.activity-list:focus-visible, .activity-entry > summary:focus-visible, .activity-diagnostics > summary:focus-visible,
+.activity-panel > summary:focus-visible, .system-activity-panel > summary:focus-visible { outline: 3px solid #367bdc; outline-offset: 2px; }
 .activity-panel .pager > span, .item-activity-panel .pager > span { margin-right: auto; }
 @media (max-width: 1100px) { .activity-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) {

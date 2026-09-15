@@ -8,7 +8,9 @@
   var fileActivityEvents = [];
   var activityWarnings = [];
   var activityPage = 1;
+  var systemActivityPage = 1;
   var itemActivityPage = 1;
+  var itemSystemActivityPage = 1;
   var pendingNote = false;
   if (!activity) activityWarnings.push("작업 이력 기능을 읽지 못했습니다. 페이지를 다시 열고 배포 파일을 확인하세요.");
   else if (!fileActivity) activityWarnings.push("파일 작업 이력이 아직 생성되거나 불러와지지 않았습니다. sync 후 페이지를 다시 열어 확인하세요.");
@@ -641,7 +643,7 @@
     }
     setText("activityWarning", activityWarnings.join(" "));
     var events = activityViewEvents();
-    var selected = activity.select(events, { search: byId("activitySearch").value,
+    var selected = activity.selectAudience(events, { audience: "work", search: byId("activitySearch").value,
       mode: byId("activityMode").value, source: byId("activitySource").value,
       from: byId("activityFrom").value, to: byId("activityTo").value, page: activityPage });
     activityPage = selected.page;
@@ -649,9 +651,16 @@
     fileActivityEvents.forEach(function (event) { fileIds[event.eventId] = true; });
     persistedActivityEvents.forEach(function (event) { persistedIds[event.eventId] = true; });
     var options = { fileIds: fileIds, persistedIds: persistedIds, unfinishedIds: selected.unfinishedIds };
-    activity.render(document, byId("activityList"), selected.events, options);
-    setText("activityCount", "전체 " + events.length + "건 · 종료 미확인 " + selected.projection.unfinished.length
+    activity.renderAudience(document, byId("activityList"), selected.rows, options);
+    var system = activity.selectAudience(events, { audience: "system", search: byId("systemActivitySearch").value,
+      mode: byId("systemActivityMode").value, source: byId("systemActivitySource").value,
+      from: byId("systemActivityFrom").value, to: byId("systemActivityTo").value, page: systemActivityPage });
+    systemActivityPage = system.page;
+    activity.renderAudience(document, byId("systemActivityList"), system.rows, options);
+    var unknownCount = activity.selectAudience(events, { audience: "system" }).unknownTotal;
+    setText("activityCount", "작업 " + selected.total + "건 · 종료 미확인 " + selected.projection.unfinished.length
       + "건 · 실패·차단·중단 " + selected.projection.errors.length + "건");
+    setText("systemActivityCount", "운영 기록 " + system.total + "건 · 분류 미확인 " + unknownCount + "건");
     var latestEvent = activity.select(events, {}).events[0];
     setText("activityTimes", "파일 생성: " + activity.formatTimestamp(fileActivity && fileActivity.generatedAt)
       + " · 화면 불러옴: " + activity.formatTimestamp(activityLoadedAt) + " · 최신 기록: "
@@ -659,14 +668,25 @@
     setText("activityPageInfo", selected.total + "건 · " + selected.page + " / " + selected.pages + "페이지 (최대 50건)");
     byId("activityPrev").disabled = selected.page <= 1;
     byId("activityNext").disabled = selected.page >= selected.pages;
+    setText("systemActivityPageInfo", system.total + "건 · " + system.page + " / " + system.pages + "페이지 (최대 50건)");
+    byId("systemActivityPrev").disabled = system.page <= 1;
+    byId("systemActivityNext").disabled = system.page >= system.pages;
     if (currentFindingId && byId("itemActivityList")) {
-      var item = activity.select(events.filter(function (event) { return event.workspaceId === workspaceId; }),
-        { itemId: currentFindingId, reportId: profile.report && profile.report.id || null, page: itemActivityPage });
+      var currentEvents = events.filter(function (event) { return event.workspaceId === workspaceId; });
+      var item = activity.selectAudience(currentEvents,
+        { audience: "work", itemId: currentFindingId, reportId: profile.report && profile.report.id || null, page: itemActivityPage });
       itemActivityPage = item.page;
-      activity.render(document, byId("itemActivityList"), item.events, options);
-      setText("itemActivityPageInfo", "현재 차수 " + item.total + "건 · " + item.page + " / " + item.pages + "페이지");
+      activity.renderAudience(document, byId("itemActivityList"), item.rows, options);
+      setText("itemActivityPageInfo", "현재 차수 작업 " + item.total + "건 · " + item.page + " / " + item.pages + "페이지");
       byId("itemActivityPrev").disabled = item.page <= 1;
       byId("itemActivityNext").disabled = item.page >= item.pages;
+      var itemSystem = activity.selectAudience(currentEvents,
+        { audience: "system", itemId: currentFindingId, reportId: profile.report && profile.report.id || null, page: itemSystemActivityPage });
+      itemSystemActivityPage = itemSystem.page;
+      activity.renderAudience(document, byId("itemSystemActivityList"), itemSystem.rows, options);
+      setText("itemSystemActivityPageInfo", "관련 운영 기록 " + itemSystem.total + "건 · " + itemSystem.page + " / " + itemSystem.pages + "페이지");
+      byId("itemSystemActivityPrev").disabled = itemSystem.page <= 1;
+      byId("itemSystemActivityNext").disabled = itemSystem.page >= itemSystem.pages;
     }
   }
 
@@ -2066,12 +2086,25 @@
       ["activitySearch", "activityMode", "activitySource", "activityFrom", "activityTo"].forEach(function (id) { byId(id).value = ""; });
       activityPage = 1; renderActivity();
     });
-    [["activityPrev", -1], ["activityNext", 1], ["itemActivityPrev", -1], ["itemActivityNext", 1]].forEach(function (entry) {
+    ["systemActivitySearch", "systemActivityMode", "systemActivitySource", "systemActivityFrom", "systemActivityTo"].forEach(function (id) {
+      byId(id).addEventListener(id === "systemActivitySearch" ? "input" : "change", function () { systemActivityPage = 1; renderActivity(); });
+    });
+    byId("systemActivityReset").addEventListener("click", function () {
+      ["systemActivitySearch", "systemActivityMode", "systemActivitySource", "systemActivityFrom", "systemActivityTo"].forEach(function (id) { byId(id).value = ""; });
+      systemActivityPage = 1; renderActivity();
+    });
+    [["activityPrev", -1], ["activityNext", 1], ["systemActivityPrev", -1], ["systemActivityNext", 1],
+      ["itemActivityPrev", -1], ["itemActivityNext", 1], ["itemSystemActivityPrev", -1], ["itemSystemActivityNext", 1]].forEach(function (entry) {
       byId(entry[0]).addEventListener("click", function () {
         var item = entry[0].indexOf("item") === 0;
-        if (item) itemActivityPage += entry[1]; else activityPage += entry[1];
+        var system = entry[0].indexOf("system") === 0 || entry[0].indexOf("itemSystem") === 0;
+        if (item && system) itemSystemActivityPage += entry[1];
+        else if (item) itemActivityPage += entry[1];
+        else if (system) systemActivityPage += entry[1];
+        else activityPage += entry[1];
         renderActivity();
-        byId(item ? "itemActivityList" : "activityList").scrollTop = 0;
+        byId(item ? (system ? "itemSystemActivityList" : "itemActivityList")
+          : (system ? "systemActivityList" : "activityList")).scrollTop = 0;
       });
     });
 

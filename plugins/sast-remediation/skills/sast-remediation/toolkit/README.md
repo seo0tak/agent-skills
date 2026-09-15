@@ -71,8 +71,9 @@
 9. 처리 결과는 `security-results/`와 `data/progress.*`에 반영합니다.
    결과 정본은 `security-results/`입니다. progress에는 결과와 일치하는
    집계와 아직 결과가 없는 임시 상태·메모가 함께 있습니다.
-   작업·오류·변경 이력은 `data/activity/`에 누적하고 체크리스트의 작업 로그에서
-   확인합니다. [작업 이력 안내](docs/ACTIVITY_LOG.md)에 따라 외부 수정·검증도 연결합니다.
+   작업·오류·변경 이력은 `data/activity/`에 누적합니다. 체크리스트는 작업 이력을
+   우선 표시하고 시스템 운영 기록·진단 상세를 분리합니다.
+   [작업 이력 안내](docs/ACTIVITY_LOG.md)에 따라 외부 수정·검증도 연결합니다.
 10. 제출 전에는 `validate --strict`로 데이터 오류를 확인하고,
     `sast_state.py status`의 stale/unbound, 실제 검증 근거와 증적을 함께
     검토합니다. 어느 한 검사만으로 제출 승인이 되지는 않습니다.
