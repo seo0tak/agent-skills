@@ -79,6 +79,7 @@
    외부 정책이나 운영 환경의 타당성까지 확인한 결과는 아닙니다.
 
 5. 원본이 정리된 뒤 sync, validate, query --summary 순서로 현황을 봅니다.
+   체커별 남은 건수는 같은 출력의 byChecker로 봅니다.
    project/WORK_GROUPS.md와 새 security-results/index.json을 대조하고,
    query --scope in-scope --group <WG>로 선택 재개 후보를 확인합니다.
    혼합 그룹은 항목별로 나누고 범위 밖 멤버를 자동 완료하지 않습니다. todo뿐 아니라 in-progress,

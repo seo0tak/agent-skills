@@ -590,6 +590,27 @@ class QueryTests(ToolkitCase):
         self.assertEqual(summary["total"], 1)
         self.assertEqual(summary["by"]["workflowStatus"], {"verified": 1})
 
+    def test_summary_reports_progress_by_checker(self) -> None:
+        self.load_examples()
+        findings = read_json(self.data / "findings.json")
+        second = dict(findings[0], id="SAMPLE-002", sequence=2)
+        second["checker"] = dict(findings[0]["checker"], code="OTHER_CHECKER")
+        write_json(self.data / "findings.json", findings + [second])
+        progress = read_json(self.data / "progress.json")
+        progress["items"]["SAMPLE-002"] = {
+            "workflowStatus": "deferred", "conclusion": "unreviewed", "note": "", "updatedAt": "2026-01-01T01:00:00Z",
+        }
+        write_json(self.data / "progress.json", progress)
+        summary = self.query("--summary")
+        by_checker = summary["byChecker"]
+        self.assertEqual(list(by_checker), ["OTHER_CHECKER", "EXAMPLE_CHECKER"])
+        self.assertEqual(
+            {k: by_checker["OTHER_CHECKER"][k] for k in ("total", "verified", "deferred", "remaining")},
+            {"total": 1, "verified": 0, "deferred": 1, "remaining": 1},
+        )
+        self.assertEqual(by_checker["EXAMPLE_CHECKER"]["remaining"], 0)
+        self.assertEqual(by_checker["EXAMPLE_CHECKER"]["workflowStatus"], {"verified": 1})
+
     def test_missing_progress_defaults_to_todo(self) -> None:
         self.load_examples()
         # An unstarted item has neither canonical result nor provisional entry.

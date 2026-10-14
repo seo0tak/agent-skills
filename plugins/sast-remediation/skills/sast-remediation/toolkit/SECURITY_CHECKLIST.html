@@ -151,6 +151,24 @@
         <div class="panel-head"><h2>소스 매핑</h2></div>
         <div id="mappingStats" class="stats-list"></div>
       </article>
+      <article class="panel checker-progress-panel">
+        <div class="panel-head">
+          <div>
+            <h2>체커별 진행</h2>
+            <p id="checkerProgressSummary">표시할 체커가 없습니다.</p>
+          </div>
+          <ul class="checker-legend" aria-label="막대 색 범례">
+            <li><i class="segment-verified"></i>검증 완료</li>
+            <li><i class="segment-change-complete"></i>변경 완료</li>
+            <li><i class="segment-analyzed"></i>분석 완료</li>
+            <li><i class="segment-in-progress"></i>진행 중</li>
+            <li><i class="segment-todo"></i>미착수</li>
+            <li><i class="segment-deferred"></i>보류</li>
+          </ul>
+        </div>
+        <p class="scope-note">완료는 검증 완료 단계만 셉니다. 보류는 남음에 포함됩니다. 기록된 작업 단계이며 현재 소스의 검증 신선도를 증명하지 않습니다. 체커 이름을 누르면 목록이 그 체커로 좁혀집니다.</p>
+        <div id="checkerProgress" class="checker-progress" role="region" tabindex="0" aria-labelledby="checkerProgressSummary"></div>
+      </article>
       <article class="panel recommendations-panel">
         <div class="panel-head recommendation-head">
           <div>

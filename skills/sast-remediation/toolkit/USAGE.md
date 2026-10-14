@@ -185,6 +185,14 @@ AI는 수정 직전과 직후에 체크포인트를 저장하고, 검증 직전�
 필터로 검토 범위를 줄일 수 있습니다. 작업 그룹은 화면 필터가 아니라
 `grouping.workGroup` 분류와 `query --group <WG>`로 확인합니다.
 
+“분포 및 추천 작업 보기” 안의 “체커별 진행”은 체커마다 작업 단계를 한 줄
+막대로 보여 줍니다. `검증 완료 수/전체 (비율)`과 남은 건수를 표시하며, 남은
+건수가 많은 체커가 위에 옵니다. 완료는 `verified`만 세고 보류는 남음에 포함해
+따로 표시합니다. 비율은 내림이라 한 건이라도 남으면 100%가 되지 않습니다.
+현재 필터 기준으로 집계하고, 체커 이름을 누르면 목록이 그 체커로 좁혀집니다.
+기록된 작업 단계일 뿐 현재 소스의 검증 신선도를 증명하지 않습니다. 같은
+집계는 `query --summary`의 `byChecker`로도 볼 수 있습니다.
+
 “분포 및 추천 작업 보기”를 펼치면 추천 작업의 표시 개수를 선택할 수 있습니다.
 추천 목록은 적용된 `in-scope` 항목에서 검증 완료·보류를 제외한 대상으로,
 표의 검색·위험도·체커·언어 표시 필터와는 별개입니다. 처리 범위가 미설정·
@@ -326,7 +334,7 @@ fresh·미완료 체크포인트 없음과 실제 검증 한계를 함께 확인
 | `python3 tools/sast_toolkit.py scope --min-risk high --set-by user --reason "..."` | 사용자 승인 범위 기록 |
 | `python3 tools/sast_toolkit.py sync` | 정본에서 미러·인덱스·가이드 HTML 생성 |
 | `python3 tools/sast_toolkit.py validate --strict` | 제출 전 데이터 검사 |
-| `python3 tools/sast_toolkit.py query --summary` | 파일을 도구로 읽어 상태별 현황 집계 |
+| `python3 tools/sast_toolkit.py query --summary` | 파일을 도구로 읽어 상태별 현황과 체커별 진행(`byChecker`) 집계 |
 | `python3 tools/sast_toolkit.py query --scope in-scope` | 상세 분석·조치 대상만 조회 |
 | `python3 tools/sast_toolkit.py query --scope out-of-scope` | 범위 밖(`info` 포함) 조회 |
 | `python3 tools/sast_toolkit.py query --scope unknown` | 위험도 미확인·누락 조회 |

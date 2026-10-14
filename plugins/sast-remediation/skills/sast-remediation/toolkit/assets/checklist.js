@@ -993,12 +993,97 @@
     });
   }
 
+  // 막대 왼쪽부터 쌓는 순서. 완료(verified)가 앞, 보류는 맨 끝.
+  var CHECKER_PROGRESS_ORDER = ["verified", "change-complete", "analyzed", "in-progress", "todo", "deferred"];
+
+  // 체커별 작업 단계 집계. 완료는 처리 범위 집계와 같은 정의(workflowStatus=verified만)를
+  // 쓰고, 보류는 남음에 포함한 채 따로 센다. 기록된 작업 단계일 뿐 현재 소스의 검증
+  // 신선도를 증명하지 않는다. 남은 건수가 많은 체커가 위로 온다.
+  function checkerProgress(items) {
+    var byCode = {};
+    items.forEach(function (item) {
+      var info = checker(item);
+      var code = info.code || "unknown";
+      var row = byCode[code];
+      if (!row) {
+        var guide = checkerGuides[code] || {};
+        row = byCode[code] = { code: code, name: guide.name || info.name || "", total: 0, counts: {} };
+        CHECKER_PROGRESS_ORDER.forEach(function (status) { row.counts[status] = 0; });
+      }
+      var status = stateFor(item.id).workflowStatus;
+      if (!Object.prototype.hasOwnProperty.call(row.counts, status)) status = "todo";
+      row.counts[status] += 1;
+      row.total += 1;
+    });
+    return Object.keys(byCode).map(function (code) {
+      var row = byCode[code];
+      row.verified = row.counts.verified;
+      row.deferred = row.counts.deferred;
+      row.remaining = row.total - row.verified;
+      // 내림: 1건이라도 남았으면 100%로 보이지 않게 한다.
+      row.rate = row.total ? Math.floor((row.verified / row.total) * 100) : 0;
+      return row;
+    }).sort(function (a, b) {
+      return b.remaining - a.remaining || b.total - a.total || a.code.localeCompare(b.code);
+    });
+  }
+
+  function renderCheckerProgress(filtered) {
+    var container = byId("checkerProgress");
+    container.textContent = "";
+    var rows = checkerProgress(filtered);
+    var done = rows.filter(function (row) { return row.remaining === 0; }).length;
+    setText("checkerProgressSummary", rows.length
+      ? "체커 " + rows.length + "종 중 " + done + "종 완료 · 남은 건수가 많은 순"
+      : "표시할 체커가 없습니다.");
+    rows.forEach(function (row) {
+      var line = document.createElement("div");
+      line.className = "checker-progress-row";
+      if (row.remaining === 0) line.classList.add("complete");
+      var unknown = row.code === "unknown";
+      var label = unknown ? "체커 미상" : (row.name ? row.code + " - " + row.name : row.code);
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.dataset.filterType = "checker";
+      button.dataset.filterValue = row.code;
+      button.disabled = unknown;
+      button.title = unknown ? "체커 코드가 없는 항목은 체커 필터로 고를 수 없습니다." : label + "으로 목록 필터링";
+      var breakdown = CHECKER_PROGRESS_ORDER.filter(function (status) { return row.counts[status]; })
+        .map(function (status) { return WORKFLOW[status] + " " + row.counts[status]; }).join(", ");
+      var bar = document.createElement("div");
+      bar.className = "checker-progress-bar";
+      bar.setAttribute("role", "img");
+      bar.setAttribute("aria-label", label + ": " + breakdown);
+      CHECKER_PROGRESS_ORDER.forEach(function (status) {
+        if (!row.counts[status]) return;
+        var segment = document.createElement("div");
+        segment.className = "checker-segment segment-" + status;
+        segment.style.width = ((row.counts[status] / row.total) * 100) + "%";
+        segment.title = WORKFLOW[status] + " " + row.counts[status] + "건";
+        bar.appendChild(segment);
+      });
+      var count = document.createElement("span");
+      count.className = "checker-progress-count";
+      count.textContent = row.verified + "/" + row.total + " (" + row.rate + "%)";
+      var meta = document.createElement("span");
+      meta.className = "checker-progress-meta";
+      meta.textContent = row.remaining ? "남음 " + row.remaining + (row.deferred ? " · 보류 " + row.deferred : "") : "완료";
+      line.appendChild(button);
+      line.appendChild(bar);
+      line.appendChild(count);
+      line.appendChild(meta);
+      container.appendChild(line);
+    });
+  }
+
   function renderInsights(filtered) {
     var riskLabels = {};
     filtered.forEach(function (item) { riskLabels[risk(item).level] = risk(item).label || risk(item).level; });
     renderStats("riskStats", countBy(filtered, function (item) { return risk(item).level; }), riskLabels, "risk");
     renderStats("conclusionStats", countBy(filtered, function (item) { return stateFor(item.id).conclusion; }), CONCLUSION, "conclusion");
     renderStats("mappingStats", countBy(filtered, function (item) { return sourceMapping(item).status || "unreviewed"; }), MAPPING, "mapping");
+    renderCheckerProgress(filtered);
   }
 
   function recommendationCompare(a, b) {
@@ -2039,7 +2124,7 @@
       });
     });
 
-    ["riskStats", "conclusionStats", "mappingStats"].forEach(function (id) {
+    ["riskStats", "conclusionStats", "mappingStats", "checkerProgress"].forEach(function (id) {
       byId(id).addEventListener("click", function (event) {
         var button = event.target.closest("button[data-filter-type]");
         if (!button) return;
@@ -2048,6 +2133,7 @@
         if (button.dataset.filterType === "risk") byId("riskFilter").value = button.dataset.filterValue;
         if (button.dataset.filterType === "conclusion") byId("conclusionFilter").value = button.dataset.filterValue;
         if (button.dataset.filterType === "mapping") byId("mappingFilter").value = button.dataset.filterValue;
+        if (button.dataset.filterType === "checker") byId("checkerFilter").value = button.dataset.filterValue;
         render();
       });
     });

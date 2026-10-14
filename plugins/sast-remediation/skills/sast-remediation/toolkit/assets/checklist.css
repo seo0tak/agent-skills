@@ -222,6 +222,34 @@ button.metric-card { width: 100%; }
 .panel h2 { margin: 0 0 9px; font-size: 15px; }
 .panel p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
 .recommendations-panel { grid-column: 1 / -1; min-height: 0; }
+.checker-progress-panel { grid-column: 1 / -1; min-height: 0; }
+.checker-progress { display: grid; gap: 6px; max-height: min(50vh, 480px); overflow-y: auto; }
+.checker-progress-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 2fr) minmax(120px, 3fr) 92px 110px;
+  gap: 10px;
+  align-items: center;
+}
+.checker-progress-row button { min-height: 26px; padding: 0; border: 0; text-align: left; background: transparent; font-size: 12px; overflow-wrap: anywhere; }
+.checker-progress-row button:disabled { color: var(--muted); cursor: default; }
+.checker-progress-row.complete button { color: var(--green); }
+.checker-progress-bar { display: flex; height: 10px; overflow: hidden; border-radius: 999px; background: #edf1f5; }
+.checker-segment { height: 100%; }
+.segment-verified { background: var(--green); }
+.segment-change-complete { background: #4f8fd6; }
+.segment-analyzed { background: #9cb8dc; }
+.segment-in-progress { background: #e0b25a; }
+.segment-todo { background: #d6dce4; }
+.segment-deferred { background: #b9a3e3; }
+.checker-progress-count { text-align: right; font-weight: 800; font-size: 12px; }
+.checker-progress-meta { color: var(--muted); font-size: 12px; }
+.checker-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 11px; }
+.checker-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 4px; border-radius: 2px; vertical-align: -1px; }
+@media (max-width: 900px) {
+  .checker-progress-row { grid-template-columns: minmax(0, 1fr) 92px; }
+  .checker-progress-bar { grid-column: 1 / -1; grid-row: 2; }
+  .checker-progress-meta { grid-column: 1 / -1; }
+}
 .recommendation-head select { min-width: 90px; }
 
 .stats-list { display: grid; gap: 7px; }

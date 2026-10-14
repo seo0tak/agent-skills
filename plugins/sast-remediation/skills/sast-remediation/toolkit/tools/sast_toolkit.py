@@ -2265,6 +2265,28 @@ def dotted_get(value: Any, path: str) -> Any:
     return value
 
 
+def checker_progress(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """체커별 작업 단계 집계 (대시보드 '체커별 진행'과 같은 정의).
+
+    완료는 workflowStatus=verified만 세고, 보류(deferred)는 remaining에 포함한 채
+    따로 센다. 기록된 단계일 뿐 현재 소스의 검증 신선도를 증명하지 않는다.
+    남은 건수가 많은 체커가 앞에 온다.
+    """
+    by_code: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        code = str((row.get("checker") or {}).get("code") or "unknown")
+        status = str(row["progress"]["workflowStatus"])
+        entry = by_code.setdefault(code, {"total": 0, "workflowStatus": {}})
+        entry["total"] += 1
+        entry["workflowStatus"][status] = entry["workflowStatus"].get(status, 0) + 1
+    for entry in by_code.values():
+        entry["verified"] = entry["workflowStatus"].get("verified", 0)
+        entry["deferred"] = entry["workflowStatus"].get("deferred", 0)
+        entry["remaining"] = entry["total"] - entry["verified"]
+    ordered = sorted(by_code.items(), key=lambda kv: (-kv[1]["remaining"], -kv[1]["total"], kv[0]))
+    return dict(ordered)
+
+
 def run_query(args: argparse.Namespace) -> int:
     """findings.json 전체를 AI가 읽지 않고 필요한 항목만 잘라 준다.
 
@@ -2342,7 +2364,7 @@ def run_query(args: argparse.Namespace) -> int:
             ):
                 bucket = summary[key]
                 bucket[str(value)] = bucket.get(str(value), 0) + 1
-        print(json_text({"total": len(rows), "by": summary}), end="")
+        print(json_text({"total": len(rows), "by": summary, "byChecker": checker_progress(rows)}), end="")
         return 0
     if args.limit is not None:
         rows = rows[: args.limit]

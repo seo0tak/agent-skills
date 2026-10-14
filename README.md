@@ -21,7 +21,7 @@
 
 | 스킬 | 버전 |
 |---|---|
-| **sast-remediation** | 1.14.1 |
+| **sast-remediation** | 1.15.0 |
 | **skill-architect** | 0.4.3 |
 
 - **sast-remediation** — 기존 SAST 보고서(PDF·스프레드시트 또는 SARIF)의

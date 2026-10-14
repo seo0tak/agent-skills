@@ -168,7 +168,7 @@ function loadDashboard({
       resultProvenance, formatCheckerGuide, renderStats, renderRecommendations,
       resolveProcessingScope, scopeBucket, scopeSummary, buildTaskPrompt,
       buildScopeRequest, initializeProcessingScope, clearFilters, highRisk, renderSummary,
-      renderActivity,
+      renderActivity, checkerProgress, renderCheckerProgress,
       importAccounting: function () { return lastImportAccounting; },
       setCurrent: function (id) { currentFindingId = id; } };
     ${bootstrap ? "" : "return;"}
@@ -464,6 +464,70 @@ test("scope selection and request copying do not change canonical scope or brows
   assert.match(copiedScopeRequest, /reportId: "report-A"/);
   assert.match(dashboard.element("scopeMessage").textContent, /복사.*적용.*아니|정본.*새로고침/);
   assert.equal(dashboard.api.resolveProcessingScope().minRisk, "high", "selection must not replace profile scope");
+});
+
+const CHECKER_FINDINGS = [
+  { id: "A-1", sequence: 1, risk: { level: "high" }, checker: { code: "NULL_RETURN", name: "널 반환" } },
+  { id: "A-2", sequence: 2, risk: { level: "high" }, checker: { code: "NULL_RETURN", name: "널 반환" } },
+  { id: "A-3", sequence: 3, risk: { level: "high" }, checker: { code: "NULL_RETURN", name: "널 반환" } },
+  { id: "A-4", sequence: 4, risk: { level: "high" }, checker: { code: "NULL_RETURN", name: "널 반환" } },
+  { id: "B-1", sequence: 5, risk: { level: "high" }, checker: { code: "XSS", name: "XSS" } },
+  { id: "B-2", sequence: 6, risk: { level: "high" }, checker: { code: "XSS", name: "XSS" } },
+  { id: "C-1", sequence: 7, risk: { level: "high" } },
+];
+
+test("checker progress counts verified as done and keeps deferred inside remaining", () => {
+  const dashboard = loadDashboard({
+    findings: CHECKER_FINDINGS,
+    fileItems: {
+      "A-1": item("verified"), "A-2": item("change-complete"), "A-3": item("deferred"),
+      "B-1": item("verified"), "B-2": item("verified"),
+    },
+  });
+  const rows = dashboard.api.checkerProgress(CHECKER_FINDINGS);
+  // vm 컨텍스트에서 만든 배열은 호스트 배열과 realm이 달라 JSON으로 정규화한다.
+  assert.deepEqual(JSON.parse(JSON.stringify(rows.map((row) => [row.code, row.total, row.verified, row.deferred, row.remaining, row.rate]))), [
+    ["NULL_RETURN", 4, 1, 1, 3, 25],
+    ["unknown", 1, 0, 0, 1, 0],
+    ["XSS", 2, 2, 0, 0, 100],
+  ]);
+  assert.deepEqual({ ...rows[0].counts }, {
+    "verified": 1, "change-complete": 1, "analyzed": 0, "in-progress": 0, "todo": 1, "deferred": 1,
+  });
+});
+
+test("checker progress never rounds an unfinished checker up to 100 percent", () => {
+  const findings = Array.from({ length: 200 }, (_, index) => ({
+    id: "N-" + index, sequence: index + 1, risk: { level: "high" }, checker: { code: "MANY" },
+  }));
+  const fileItems = {};
+  findings.slice(0, 199).forEach((finding) => { fileItems[finding.id] = item("verified"); });
+  const dashboard = loadDashboard({ findings, fileItems });
+  const [row] = dashboard.api.checkerProgress(findings);
+  assert.equal(row.remaining, 1);
+  assert.equal(row.rate, 99);
+});
+
+test("checker progress panel renders a row per checker and filters the list by checker", () => {
+  const dashboard = loadDashboard({
+    findings: CHECKER_FINDINGS,
+    fileItems: { "B-1": item("verified"), "B-2": item("verified") },
+  });
+  dashboard.api.renderCheckerProgress(CHECKER_FINDINGS);
+  const panel = dashboard.element("checkerProgress");
+  assert.equal(panel.children.length, 3);
+  assert.match(dashboard.element("checkerProgressSummary").textContent, /3종 중 1종 완료/);
+  const xssRow = panel.children.find((row) => treeText(row).includes("XSS"));
+  assert.match(treeText(xssRow), /2\/2/);
+  assert.ok(xssRow.classList.contains("complete"));
+  const unknownButton = panel.children.find((row) => treeText(row).includes("체커 미상")).children[0];
+  assert.equal(unknownButton.disabled, true);
+
+  dashboard.api.bindEvents();
+  const nullButton = panel.children[0].children[0];
+  assert.equal(nullButton.dataset.filterValue, "NULL_RETURN");
+  panel.listeners.click({ target: { closest: () => nullButton } });
+  assert.equal(dashboard.element("checkerFilter").value, "NULL_RETURN");
 });
 
 test("scope summary separates recorded workflow counts without claiming fresh verification", () => {

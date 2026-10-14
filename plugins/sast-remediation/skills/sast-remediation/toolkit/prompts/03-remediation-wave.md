@@ -138,6 +138,7 @@
 - status 최상위 selectedReadyForCompletion과 실제 검증·한계;
   status.processingScope.selectedComplete만으로 완료 선언 금지
 - 실제 변경 파일, 결론, 실행한 검증과 확인 범위
+- 이번에 움직인 체커의 진행: query --summary의 byChecker에서 완료/전체와 남은 건수
 - 저장한 체크포인트·결과, 중복으로 해소된 ID
 - 남은 위험·정책 질문과 다음 작업
 ```
