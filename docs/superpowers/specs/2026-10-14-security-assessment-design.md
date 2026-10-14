@@ -27,12 +27,17 @@ sast-remediation의 입력 게이트를 **인가 게이트**로 확장한다. �
 
 ```text
 scope:
-  targets:        허용 대상 목록 (repo 경로 | URL/도메인 | 인프라 식별자)
+  targets:        [ {type: repo|web|infra, value, notes}, ... ]  타입 명시 목록
   exclusions:     제외 자산 (서브도메인·경로·호스트)
-  window:         점검 허용 기간 (start, end)
-  consent:        소유자 동의 기록 (형식은 열린 질문 2)
+  window:         점검 허용 기간 {start, end}
+  consent:        {authorizer, role, date, reference}  구조화 필드 + 티켓/문서 URL
   intrusiveness:  passive | active-nondestructive | intrusive
 ```
+
+`validate`가 검사: targets 각 항목의 type enum·value 존재, consent 네 필드
+존재와 reference 형식(URL/티켓), window 유효성, intrusiveness enum.
+타입별 의미 확인은 다르게 — repo는 경로 접근성, web은 비파괴 프로브 가능성,
+infra는 식별자 대조.
 
 - **기계 점검**: 대상 형식, 기간 유효성, 동의 기록 존재, 침습도 enum.
 - **의미 확인**(AI): 대상이 실제 접근 가능한지, 제외 자산과 충돌 없는지,
