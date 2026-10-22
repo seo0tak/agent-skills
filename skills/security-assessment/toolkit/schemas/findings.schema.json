@@ -37,7 +37,10 @@
               "properties": {
                 "scanner": { "type": "string" },
                 "ruleId": { "type": "string" },
-                "line": { "type": ["integer", "null"] }
+                "line": { "type": ["integer", "null"] },
+                "adapter": { "type": "string", "description": "결과를 낸 어댑터. 차수 간 해소 판단에 쓴다." },
+                "target": { "type": "string", "description": "어댑터를 돌린 스코프 대상." },
+                "collectedBy": { "enum": ["skill", "operator"], "description": "skill=scan이 직접 실행, operator=운영자 출력을 ingest로 들여옴." }
               }
             }
           }

@@ -590,7 +590,9 @@ class AssessCase(unittest.TestCase):
         self.assertEqual(len(rows), 1 + len(findings))
         by_cwe = {r[1]: r for r in rows[1:]}
         self.assertEqual(by_cwe["CWE-89"][6], "confirmed")
-        self.assertEqual(by_cwe["CWE-89"][9], "true")  # handedOff
+        handed_col = assess.EVIDENCE_COLUMNS.index("handedOff")
+        self.assertEqual(by_cwe["CWE-89"][handed_col], "true")
+        self.assertEqual(by_cwe["CWE-89"][assess.EVIDENCE_COLUMNS.index("decidedBy")], "ai")
         self.assertEqual(by_cwe["CWE-330"][6], "false-positive")
 
     def test_unreviewed_finding_appears_as_unreviewed_in_csv(self):
@@ -604,7 +606,7 @@ class AssessCase(unittest.TestCase):
         rows = list(csv.reader(assess.render_evidence_csv(findings, records).splitlines()))[1:]
         cover = assess.render_cover_md(EXAMPLE, findings, records, "2026-10-22T00:00:00Z")
         self.assertIn(f"전체 검출 {len(rows)}건", cover)
-        handed = sum(1 for r in rows if r[9] == "true")
+        handed = sum(1 for r in rows if r[assess.EVIDENCE_COLUMNS.index("handedOff")] == "true")
         self.assertIn(f"넘김 {handed}건", cover)
         for disposition in {r[6] for r in rows}:
             count = sum(1 for r in rows if r[6] == disposition)
@@ -844,6 +846,163 @@ class AssessCase(unittest.TestCase):
             [self.a_finding()], {"nope:CWE-1": {"disposition": "suspected", "stage": "in-review"}})
         self.assertEqual(code, 1)
         self.assertIn("references no finding", out)
+
+    # --- 판정 주체 ---
+    def test_ai_cannot_close_a_finding_as_reviewed(self):
+        for value in ("false-positive", "out-of-scope"):
+            code, out = self.setup_findings_and_dispositions([self.a_finding()], {"abc:CWE-89": {
+                "disposition": value, "stage": "reviewed", "reason": "근거", "decidedBy": "ai"}})
+            self.assertEqual(code, 1, value)
+            self.assertIn("only the user can confirm it", out)
+
+    def test_ai_may_propose_closing_while_in_review_and_confirm_findings(self):
+        code, out = self.setup_findings_and_dispositions(
+            [self.a_finding("f1"), self.a_finding("f2")], {
+                "f1:CWE-89": {"disposition": "false-positive", "stage": "in-review", "reason": "근거", "decidedBy": "ai"},
+                "f2:CWE-89": {"disposition": "confirmed", "stage": "reviewed", "reason": "근거", "decidedBy": "ai"}})
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("WARN", out)
+
+    def test_user_may_close_a_finding(self):
+        code, out = self.setup_findings_and_dispositions([self.a_finding()], {"abc:CWE-89": {
+            "disposition": "false-positive", "stage": "reviewed", "reason": "근거", "decidedBy": "user"}})
+        self.assertEqual(code, 0, out)
+
+    def test_reviewed_without_decided_by_is_a_warning_and_bad_value_an_error(self):
+        code, out = self.setup_findings_and_dispositions([self.a_finding()], {"abc:CWE-89": {
+            "disposition": "confirmed", "stage": "reviewed", "reason": "근거"}})
+        self.assertEqual(code, 0, out)
+        self.assertIn("has no decidedBy", out)
+        code, out = self.setup_findings_and_dispositions([self.a_finding()], {"abc:CWE-89": {
+            "disposition": "suspected", "stage": "in-review", "decidedBy": "boss"}})
+        self.assertEqual(code, 1)
+        self.assertIn("decidedBy must be one of", out)
+
+    def test_summary_and_cover_count_who_decided(self):
+        findings = [self.a_finding("f1"), self.a_finding("f2"), self.a_finding("f3")]
+        records = {"f1:CWE-89": {"disposition": "confirmed", "stage": "reviewed", "decidedBy": "ai"},
+                   "f2:CWE-89": {"disposition": "false-positive", "stage": "reviewed", "decidedBy": "user"},
+                   "f3:CWE-89": {"disposition": "confirmed", "stage": "reviewed"}}
+        summary = assess.disposition_summary(findings, records)
+        self.assertEqual(summary["reviewedBy"], {"ai": 1, "user": 1, "unrecorded": 1})
+        cover = assess.render_cover_md(EXAMPLE, findings, records, None)
+        self.assertIn("| user | 1 |", cover)
+        self.assertIn("| unrecorded | 1 |", cover)
+
+    # --- 운영자 출력 들여오기 ---
+    def _ingest(self, adapter, file, target=None):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = assess.run_ingest(adapter, str(file) if file else None, target)
+        return code, buf.getvalue()
+
+    def _operator_file(self, name, doc):
+        path = Path(self._tmp.name) / name
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        return path
+
+    def test_ingest_collects_operator_output_like_scan(self):
+        self.write(authorized_scope(intrusiveness="intrusive", targets=[{"type": "repo", "value": "./src"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"), intrusiveness="intrusive")
+            out_file = self._operator_file("semgrep.sarif", self.sarif("semgrep-sample.sarif"))
+            code, out = self._ingest("semgrep", out_file)
+            self.assertEqual(code, 0, out)
+            findings = self._findings()
+            self.assertEqual(len(findings), 2)
+            source = findings[0]["sources"][0]
+            self.assertEqual((source["adapter"], source["target"], source["collectedBy"]), ("semgrep", "./src", "operator"))
+            stored = json.loads((assess.scans_dir() / "semgrep.json").read_text(encoding="utf-8"))
+            self.assertEqual(stored["ingested"][0]["file"], "semgrep.sarif")
+            self.assertEqual(len(stored["ingested"][0]["sha256"]), 64)
+            self.assertEqual(self.validate()[0], 0)
+        finally:
+            restore()
+
+    def test_ingest_refuses_when_gate_blocked_or_adapter_forbidden(self):
+        scope = authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}])
+        self.write(scope)
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "sqlmapish", self.sarif("semgrep-sample.sarif"), intrusiveness="intrusive")
+            out_file = self._operator_file("x.sarif", self.sarif("semgrep-sample.sarif"))
+            code, out = self._ingest("sqlmapish", out_file)
+            self.assertEqual(code, 1)
+            self.assertIn("거부", out)
+            scope["status"] = "unauthorized"
+            self.write(scope)
+            code, out = self._ingest("sqlmapish", out_file)
+            self.assertEqual(code, 1)
+            self.assertIn("BLOCKED", out)
+            self.assertFalse(assess.FINDINGS_FILE.exists())
+        finally:
+            restore()
+
+    def test_ingest_needs_a_scope_target(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[
+            {"type": "repo", "value": "./a"}, {"type": "repo", "value": "./b"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            out_file = self._operator_file("s.sarif", self.sarif("semgrep-sample.sarif"))
+            code, out = self._ingest("semgrep", out_file)
+            self.assertEqual(code, 1)
+            self.assertIn("--target이 필요합니다", out)
+            code, out = self._ingest("semgrep", out_file, "./elsewhere")
+            self.assertEqual(code, 1)
+            self.assertIn("스코프 대상이 아닙니다", out)
+        finally:
+            restore()
+
+    def test_ingest_replaces_only_that_target(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[
+            {"type": "repo", "value": "./a"}, {"type": "repo", "value": "./b"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            full = self._operator_file("full.sarif", self.sarif("semgrep-sample.sarif"))
+            self._ingest("semgrep", full, "./a")
+            other = self._operator_file("other.sarif", self.sarif("other-sample.sarif"))
+            self._ingest("semgrep", other, "./b")
+            before = {(f["fingerprint"], f["cwe"]) for f in self._findings()}
+            empty = self.sarif("semgrep-sample.sarif")
+            empty["runs"][0]["results"] = []
+            code, out = self._ingest("semgrep", self._operator_file("empty.sarif", empty), "./a")
+            self.assertEqual(code, 0, out)
+            stored = json.loads((assess.scans_dir() / "semgrep.json").read_text(encoding="utf-8"))
+            self.assertEqual({s["target"] for f in stored["findings"] for s in f["sources"]}, {"./b"})
+            self.assertEqual([e["target"] for e in stored["ingested"]], ["./b", "./a"])
+            self.assertLess(len(self._findings()), len(before))
+        finally:
+            restore()
+
+    def test_replace_target_findings_treats_unmarked_results_by_target_list(self):
+        old = {"fingerprint": "o", "cwe": "", "sources": [{"scanner": "s", "ruleId": "r"}]}
+        new = {"fingerprint": "n", "cwe": "", "sources": [{"scanner": "s", "ruleId": "r", "target": "./a"}]}
+        self.assertEqual(assess.replace_target_findings({"targets": ["./a"], "findings": [old]}, "./a", [new]), [new])
+        self.assertEqual(assess.replace_target_findings({"targets": ["./a", "./b"], "findings": [old]}, "./a", [new]), [old, new])
+
+    def test_scan_tags_sources_as_collected_by_skill(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            self._scan()
+            source = self._findings()[0]["sources"][0]
+            self.assertEqual((source["target"], source["collectedBy"]), ("./src", "skill"))
+        finally:
+            restore()
+
+    def test_operator_instruction_names_the_ingest_command(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            _code, out = self._scan(direct=False)
+            self.assertIn("ingest --adapter semgrep --file <출력 파일> --target ./src", out)
+        finally:
+            restore()
 
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):

@@ -17,10 +17,14 @@ collect: "1 · 인가와 수집" {
   scan: "scan" {class: proc}
   ext: "외부 스캐너\nsemgrep · osv-scanner 등" {class: ext}
   scans: "scans/\n어댑터별 결과" {class: store}
+  operator: "운영자 실행\n출력 파일" {class: ext}
+  ingest: "ingest" {class: proc}
   scope -> gate -> scan
   adapters -> scan
   scan <-> ext
   scan -> scans
+  scan -> operator: "명령 안내" {style.stroke-dash: 3}
+  operator -> ingest -> scans
 }
 judge: "2 · 판정과 산출" {
   class: stage
@@ -28,8 +32,8 @@ judge: "2 · 판정과 산출" {
   findings: "findings.json\n합친 결과 · 제외 자산 뺌" {class: store}
   round: "new-round" {class: proc}
   rounds: "rounds/\n지난 차수" {class: store}
-  dispositions: "dispositions" {class: proc}
-  disp: "dispositions.json\n판정 · 확인 단계" {class: store}
+  dispositions: "판정 기록\n01 프롬프트" {class: proc}
+  disp: "dispositions.json\n판정 · 확인 단계 · 주체" {class: store}
   bridge: "bridge" {class: proc}
   ev: "evidence" {class: proc}
   sarif: "handoff.sarif" {class: out}

@@ -13,12 +13,20 @@ U -> A: 점검 범위와 인가 근거
 A -> T: validate, authorize, gate
 T --> A: READY 또는 차단 사유
 A -> U: 비파괴 스캔을 직접 실행할지 확인
-U -> A: 직접 실행 허락
-A -> T: scan --direct
-T -> S: 어댑터 명령 실행
-S --> T: SARIF 또는 JSON 출력
+alt 직접 실행 허락
+  U -> A: 직접 실행 허락
+  A -> T: scan --direct
+  T -> S: 어댑터 명령 실행
+  S --> T: SARIF 또는 JSON 출력
+else 운영자 실행 (침습적이거나 직접 실행 미허락)
+  A -> U: 운영자 명령 안내
+  U -> S: 운영자가 실행
+  U -> A: 출력 파일 전달
+  A -> T: ingest
+end
 T --> A: 묶음 후 검출 목록
-A -> U: 판정 근거 보고, 불확실한 항목 질문
+A -> U: 판정 근거 보고, 오탐·범위 밖 제안과 불확실한 항목 질문
+U -> A: 오탐·범위 밖 확정 (decidedBy user)
 A -> T: dispositions 기록 후 bridge, evidence
 T --> A: handoff.sarif, findings.csv, cover.md
 @enduml

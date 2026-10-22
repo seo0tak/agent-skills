@@ -18,6 +18,7 @@
           "disposition": { "enum": ["unreviewed", "confirmed", "suspected", "false-positive", "out-of-scope", "needs-review"] },
           "stage": { "enum": ["unreviewed", "in-review", "reviewed"] },
           "reason": { "type": "string", "description": "confirmed·false-positive·out-of-scope에 필수." },
+          "decidedBy": { "enum": ["user", "ai"], "description": "판정 주체. user=사용자가 확인, ai=AI가 근거로 판정(사용자 미확인). reviewed면 기록한다. false-positive·out-of-scope를 reviewed로 확정하는 것은 user만." },
           "handedOff": { "type": "boolean", "description": "confirmed 코드 결함을 sast-remediation에 넘겼는지. confirmed일 때만 참." },
           "note": { "type": "string" },
           "updatedAt": { "type": ["string", "null"], "format": "date-time" }

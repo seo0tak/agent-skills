@@ -39,7 +39,18 @@ description: Run authorized security assessments — declare an authorization sc
 4. `python3 tools/assess_toolkit.py authorize`로 승인 지문을 기록한다.
 5. `python3 tools/assess_toolkit.py gate`가 READY인지 확인한다.
 
-## 3. 점검 차수
+## 3. 수집과 판정
+
+`adapters`가 'operator'로 판정한 어댑터는 직접 실행하지 않는다. `scan`이 안내한 명령을
+운영자가 실행하고 출력 파일을 넘기면 `ingest --adapter <이름> --file <출력>`으로 들여온다
+(대상이 여럿이면 `--target`). 스코프 상한을 넘는 어댑터의 출력은 들여오지 않는다.
+
+판정은 `prompts/01-triage.md` 절차를 따른다. 판정마다 주체(`decidedBy`)를 남긴다:
+`ai`는 근거로 판정한 것, `user`는 사용자가 확인한 것. false-positive·out-of-scope는 위험을
+닫는 판정이라 AI는 in-review로 제안만 하고, 사용자가 확인하면 reviewed·`user`로 확정한다.
+confirmed·suspected·needs-review는 근거와 함께 AI가 확정할 수 있다.
+
+## 4. 점검 차수
 
 `scan`은 실행된 어댑터의 결과만 갱신하고 나머지 어댑터의 결과는 보존한다. 제외 자산에
 속한 검출은 결과에서 빠진다. 다시 점검할 때는 `new-round`로 현재 차수를 보관한 뒤

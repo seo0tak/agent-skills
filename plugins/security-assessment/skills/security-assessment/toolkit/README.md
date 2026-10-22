@@ -20,12 +20,13 @@ flowchart TD
   gate -- "아니오" --> stop["중단: 범위 밖 · 기간 · 미승인"]
   gate -- "예" --> decide{"어댑터별 실행 판정<br/>침습도 기준"}
   decide -- "run" --> exec["스캐너 실행"]
-  decide -- "operator" --> op["운영자에게 명령 안내<br/>결과 파일 수집"]
+  decide -- "operator" --> op["운영자가 실행<br/>ingest로 출력 들여오기"]
   decide -- "forbidden" --> skip["건너뜀"]
   exec --> norm["출력 정규화 → SARIF"]
   op --> norm
   norm --> merge["지문 + CWE로 중복 묶음<br/>findings.json"]
   merge --> disp["검출별 판정 기록<br/>dispositions.json"]
+  disp -. "오탐 · 범위 밖" .-> user["사용자 확정"]
   disp --> bridge["확인된 코드 결함<br/>handoff.sarif"]
   disp --> ev["증적 생성<br/>findings.csv · cover.md"]
 ```
@@ -51,8 +52,16 @@ python3 tools/assess_toolkit.py adapters    # 어댑터별 실행 판정 확인
 python3 tools/assess_toolkit.py scan --direct
 ```
 
-5. 검출마다 판정을 `data/dispositions.json`에 기록하고, 확인된 코드 결함을 넘기고,
-   증적을 만든다.
+   'operator' 판정 어댑터는 `scan`이 운영자 명령과 들여오기 명령을 안내한다. 운영자가
+   실행해 넘긴 출력 파일을 들여온다.
+
+```bash
+python3 tools/assess_toolkit.py ingest --adapter semgrep --file semgrep.sarif   # 대상이 여럿이면 --target
+```
+
+5. 검출마다 판정을 `data/dispositions.json`에 기록하고(절차는 `prompts/01-triage.md`),
+   확인된 코드 결함을 넘기고, 증적을 만든다. 판정마다 주체(`decidedBy`: user|ai)를 남기며,
+   오탐·범위 밖 확정은 사용자만 한다.
 
 ```bash
 python3 tools/assess_toolkit.py dispositions   # 판정·확인 단계 집계
@@ -70,7 +79,8 @@ python3 tools/assess_toolkit.py validate
 | `gate` | 승인·지문·기간 재대조 → READY/BLOCKED |
 | `adapters` | 어댑터별 실행 판정 표시(명령 미실행). `--direct`는 사용자가 직접 실행을 명시했다고 봄 |
 | `scan` | 게이트 READY일 때 'run' 판정 어댑터를 실행해 어댑터별 결과(`data/scans/`)를 갱신하고, 합친 결과에서 제외 자산을 빼 `data/findings.json`을 만든다. `--direct` 필요. 실행된 어댑터가 없으면 아무것도 바꾸지 않는다 |
-| `dispositions` | 검출별 판정·확인 단계 집계(JSON). 레코드 없는 검출은 unreviewed로 센다. 지난 차수가 있으면 해소·재확인 안 됨도 표시 |
+| `ingest` | 운영자가 돌린 어댑터 출력을 들여온다(`--adapter`, `--file`, 대상이 여럿이면 `--target`). 게이트 READY 필요, 스코프 상한을 넘는 어댑터는 거부. 정규화·묶음·제외 자산 처리는 `scan`과 같고 같은 어댑터·대상의 결과만 바뀐다. 출력 파일 이름과 SHA-256을 남긴다 |
+| `dispositions` | 검출별 판정·확인 단계·확정한 주체 집계(JSON). 레코드 없는 검출은 unreviewed로 센다. 지난 차수가 있으면 해소·재확인 안 됨도 표시 |
 | `bridge` | confirmed 코드 결함을 SARIF(`data/handoff.sarif`)로 내보내고 handedOff 표시. `--dry-run`·`--all` |
 | `evidence` | 증적 워크북 `evidence/findings.csv`와 표지 보고서 `evidence/cover.md`를 데이터에서 생성. 데이터가 바뀌면 validate가 드리프트를 에러로 |
 | `new-round` | 현재 차수의 검출을 `data/rounds/`에 보관하고 새 차수를 연다. 판정은 유지되고, 다음 스캔 뒤 `dispositions`가 직전 차수 대비 해소를 보여 준다 |

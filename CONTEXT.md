@@ -34,6 +34,16 @@ out-of-scope는 근거(reason)가 있어야 한다(validate 강제). _Avoid_: �
 검출 하나를 확인하는 작업이 어디까지 진행됐는지. `unreviewed | in-review |
 reviewed`. 판정과 별개 축이다. _Avoid_: 진행률(조치 진행과 섞일 때).
 
+**Decided by (판정 주체)**:
+판정을 누가 내렸는지. `user`(사용자가 확인) `| ai`(AI가 근거로 판정, 사용자 미확인).
+false-positive·out-of-scope를 reviewed로 확정하는 것은 `user`만 한다. _Avoid_: 승인자
+(인가 게이트의 인가자와 섞일 때).
+
+**Operator ingest (운영자 출력 들여오기)**:
+스킬이 직접 돌리지 않는 어댑터를 운영자가 실행하고, 그 출력 파일을 `ingest`로 받아들이는
+것. 스킬이 돌린 결과와 같은 정규화·묶음을 거치고 출처에 `collectedBy: operator`가 붙는다.
+_Avoid_: 업로드, 수동 입력.
+
 **Handed-off (넘김)**:
 confirmed 코드 결함을 SARIF로 sast-remediation에 넘겼다는 표시(불리언). confirmed일
 때만 참일 수 있다. 조치 진행은 그쪽이 추적한다(ADR 0001). _Avoid_: 완료, 해결.
@@ -107,6 +117,9 @@ _Avoid_: 최종 보고서(워크북과 구분이 흐려질 때).
 > 고쳐졌는지는 다음 차수 재점검에서 그 **Fingerprint**가 사라졌는지로 판단해."
 > **Dev:** "**Scope**의 `notes`만 고쳤는데 게이트를 다시 통과해야 해?"
 > **보안 담당:** "아니. 대상·제외·기간·동의·침습도 같은 의미 필드가 바뀔 때만."
+> **Dev:** "AI가 이건 오탐이라고 근거까지 적었어. **Disposition**을 `false-positive`로 확정해도 돼?"
+> **보안 담당:** "AI는 in-review로 제안까지야. 위험을 닫는 판정이니 사람이 보고 **Decided by**
+> `user`로 확정해. `confirmed`는 AI가 근거와 함께 확정해도 돼 — 틀려도 위험이 숨지 않으니까."
 
 ## Flagged ambiguities
 
