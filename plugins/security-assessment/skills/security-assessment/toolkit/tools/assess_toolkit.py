@@ -44,8 +44,58 @@ CATEGORY_TARGET_TYPES = {
     "dast": {"web"},
 }
 ADAPTER_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
-# M1a까지 정의된 출력 형식. 정규화기가 생기면(M1c~) 그 이름을 추가한다.
-KNOWN_OUTPUT_FORMATS = {"sarif"}
+# 출력 형식 → SARIF 정규화기. 어댑터가 output_format으로 이 중 하나를 가리킨다.
+# "sarif"는 변환 없이 통과. 새 형식의 도구를 붙이려면 정규화기 하나만 추가한다.
+def _identity_sarif(raw: Any) -> Any:
+    return raw
+
+
+def osv_to_sarif(raw: Any) -> dict[str, Any]:
+    """OSV-scanner JSON을 SARIF로 변환한다. 순수 함수.
+
+    의존성 취약점: 위치는 매니페스트/락 파일, 논리 위치는 패키지(지문이 패키지로
+    묶이도록), CWE는 database_specific.cwe_ids에서, 심각도는 vuln.severity에서.
+    """
+    results: list[dict[str, Any]] = []
+    if not isinstance(raw, dict):
+        return {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "osv"}}, "results": results}]}
+    for block in raw.get("results") or []:
+        source_path = str(((block or {}).get("source") or {}).get("path") or "")
+        for package_entry in (block or {}).get("packages") or []:
+            package = (package_entry or {}).get("package") or {}
+            package_name = str(package.get("name") or "")
+            package_version = str(package.get("version") or "")
+            qualified = f"{package_name}@{package_version}" if package_version else package_name
+            for vuln in (package_entry or {}).get("vulnerabilities") or []:
+                vuln = vuln or {}
+                cwe_ids = ((vuln.get("database_specific") or {}).get("cwe_ids")) or []
+                severity = ""
+                for entry in vuln.get("severity") or []:
+                    if isinstance(entry, dict) and entry.get("score"):
+                        severity = str(entry.get("score"))
+                        break
+                results.append({
+                    "ruleId": str(vuln.get("id") or ""),
+                    "level": "warning",
+                    "message": {"text": str(vuln.get("summary") or vuln.get("id") or "")},
+                    "properties": {"cwe": list(cwe_ids), "severity": severity},
+                    "locations": [{
+                        "physicalLocation": {"artifactLocation": {"uri": source_path}},
+                        "logicalLocations": [{"fullyQualifiedName": qualified}],
+                    }],
+                })
+    return {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "osv"}}, "results": results}]}
+
+
+NORMALIZERS = {"sarif": _identity_sarif, "osv-json": osv_to_sarif}
+KNOWN_OUTPUT_FORMATS = set(NORMALIZERS)
+
+
+def normalize_to_sarif(output_format: str, raw: Any) -> Any:
+    normalizer = NORMALIZERS.get(output_format)
+    if normalizer is None:
+        raise ValueError(f"no normalizer for output_format {output_format!r}")
+    return normalizer(raw)
 # 티켓 ID(예: SEC-1234) 또는 http(s) URL.
 REFERENCE_RE = re.compile(r"^(https?://\S+|[A-Za-z][A-Za-z0-9]*-\d+)$")
 
@@ -338,7 +388,8 @@ def findings_from_sarif(sarif: Any, fallback_scanner: str) -> list[dict[str, Any
                 "cwe": cwe_from_result(result, rule),
                 "location": {"file": file, "line": line, "function": function},
                 "message": str((result.get("message") or {}).get("text") or ""),
-                "severity": str(result.get("level") or ""),
+                # properties.severity(예: OSV의 CVSS 점수)를 우선, 없으면 SARIF level.
+                "severity": str((result.get("properties") or {}).get("severity") or result.get("level") or ""),
                 "sources": [{"scanner": scanner, "ruleId": rule_id, "line": line}],
             })
     return out
@@ -562,9 +613,14 @@ def run_scan(direct: bool) -> int:
                     print(f"- {name} @ {target}: 출력 파일 없음 (종료코드 {code})")
                     continue
                 try:
-                    sarif = load_json(output)
+                    raw = load_json(output)
                 except json.JSONDecodeError:
-                    print(f"- {name} @ {target}: 출력이 SARIF JSON이 아님")
+                    print(f"- {name} @ {target}: 출력이 JSON이 아님")
+                    continue
+                try:
+                    sarif = normalize_to_sarif(str(adapter.get("output_format", "")), raw)
+                except ValueError as error:
+                    print(f"- {name} @ {target}: {error}")
                     continue
                 items = findings_from_sarif(sarif, name)
                 collected += items

@@ -281,9 +281,9 @@ class AssessCase(unittest.TestCase):
         self.assertTrue(rng["fingerprint"])
 
     # --- M1b: scan 실행 경로 (execute_adapter를 교체, 실제 스캐너 미실행) ---
-    def _run_scan_with_fake(self, scope, adapters, sarif_name, direct=True):
-        """execute_adapter를 교체해 픽스처 SARIF를 출력에 쓴다 — 도구를 돌리지 않는다."""
-        fixture = (TOOLS_DIR.parent / "examples/sarif" / sarif_name).read_text(encoding="utf-8")
+    def _run_scan_with_fake(self, scope, adapters, fixture_rel, direct=True):
+        """execute_adapter를 교체해 픽스처(examples/ 기준 경로)를 출력에 쓴다 — 도구를 돌리지 않는다."""
+        fixture = (TOOLS_DIR.parent / "examples" / fixture_rel).read_text(encoding="utf-8")
         calls = []
 
         def fake_execute(command_template, target, output_path, timeout=600):
@@ -319,7 +319,7 @@ class AssessCase(unittest.TestCase):
             "sqlmap": {"id": "sqlmap", "category": "dast", "intrusiveness": "intrusive",
                        "availability": "sqlmap --version", "command": "sqlmap -u {target}", "output_format": "sarif"},
         }
-        code, out, data, calls = self._run_scan_with_fake(scope, adapters, "semgrep-sample.sarif", direct=True)
+        code, out, data, calls = self._run_scan_with_fake(scope, adapters, "sarif/semgrep-sample.sarif", direct=True)
         self.assertEqual(code, 0, out)
         self.assertTrue(all(c[0].startswith("semgrep") for c in calls), calls)  # intrusive는 스킬이 실행 안 함
         self.assertIn("operator", out)  # sqlmap은 운영자 안내
@@ -334,7 +334,7 @@ class AssessCase(unittest.TestCase):
         scope["approvalFingerprint"] = None
         _code_out = self._run_scan_with_fake(scope, {"semgrep": {"id": "semgrep", "category": "sast",
             "intrusiveness": "passive", "availability": "x", "command": "x {output} {target}", "output_format": "sarif"}},
-            "semgrep-sample.sarif", direct=True)
+            "sarif/semgrep-sample.sarif", direct=True)
         code, out, _data, calls = _code_out
         self.assertEqual(code, 1)
         self.assertIn("BLOCKED", out)
@@ -344,7 +344,7 @@ class AssessCase(unittest.TestCase):
         scope = authorized_scope(intrusiveness="active-nondestructive")
         adapters = {"semgrep": {"id": "semgrep", "category": "sast", "intrusiveness": "passive",
                     "availability": "x", "command": "semgrep -o {output} {target}", "output_format": "sarif"}}
-        code, out, data, calls = self._run_scan_with_fake(scope, adapters, "semgrep-sample.sarif", direct=False)
+        code, out, data, calls = self._run_scan_with_fake(scope, adapters, "sarif/semgrep-sample.sarif", direct=False)
         self.assertEqual(code, 0, out)
         self.assertEqual(calls, [])
         self.assertIn("operator", out)
@@ -374,10 +374,48 @@ class AssessCase(unittest.TestCase):
             "semgrep": {"id": "semgrep", "category": "sast", "intrusiveness": "passive",
                         "availability": "x", "command": "semgrep -o {output} {target}", "output_format": "sarif"},
         }
-        code, out, _data, calls = self._run_scan_with_fake(scope, adapters, "semgrep-sample.sarif", direct=True)
+        code, out, _data, calls = self._run_scan_with_fake(scope, adapters, "sarif/semgrep-sample.sarif", direct=True)
         self.assertEqual(code, 0, out)
         self.assertIn("zap: 적용 대상 없음", out)
         self.assertTrue(all(c[0].startswith("semgrep") for c in calls), calls)  # semgrep만 실행
+
+    # --- M1c: 정규화기 (JSON → SARIF) ---
+    def osv(self):
+        return json.loads((TOOLS_DIR.parent / "examples/osv/osv-sample.json").read_text(encoding="utf-8"))
+
+    def test_osv_normalizer_maps_package_cwe_and_cvss(self):
+        sarif = assess.osv_to_sarif(self.osv())
+        findings = assess.findings_from_sarif(sarif, "osv")
+        self.assertEqual(len(findings), 1)
+        f = findings[0]
+        self.assertEqual(f["cwe"], "CWE-400")
+        self.assertEqual(f["location"]["file"], "requirements.txt")
+        self.assertEqual(f["location"]["function"], "example-lib@1.2.0")  # 지문이 패키지로 묶이도록
+        self.assertEqual(f["severity"], "7.5")  # CVSS가 level에 덮이지 않음
+        self.assertEqual(f["sources"][0]["ruleId"], "GHSA-xxxx-yyyy-zzzz")
+
+    def test_normalize_dispatch_and_unknown_format(self):
+        payload = {"runs": []}
+        self.assertIs(assess.normalize_to_sarif("sarif", payload), payload)  # sarif는 그대로 통과
+        with self.assertRaises(ValueError):
+            assess.normalize_to_sarif("nope-json", {})
+
+    def test_osv_output_format_now_validates(self):
+        errors = self.adapter_errors("osv", self.valid_adapter(id="osv", category="sca", output_format="osv-json"))
+        self.assertEqual(errors, [])
+
+    def test_scan_normalizes_osv_output_into_findings(self):
+        scope = authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./"}])
+        scope["approvalFingerprint"] = assess.semantic_fingerprint(scope)
+        adapters = {"osv": {"id": "osv", "category": "sca", "intrusiveness": "passive",
+                            "availability": "osv-scanner --version",
+                            "command": "osv-scanner --format json -o {output} {target}", "output_format": "osv-json"}}
+        code, out, data, calls = self._run_scan_with_fake(scope, adapters, "osv/osv-sample.json", direct=True)
+        self.assertEqual(code, 0, out)
+        self.assertIsNotNone(data)
+        assert data is not None
+        self.assertEqual(len(data["findings"]), 1)
+        self.assertEqual(data["findings"][0]["cwe"], "CWE-400")
 
     # --- M1b: findings 파일 검증 ---
     def test_validate_rejects_unmerged_findings(self):

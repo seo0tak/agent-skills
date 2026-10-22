@@ -52,8 +52,17 @@ argv로 하며 명령 템플릿의 `{target}`·`{output}`를 토큰으로 치환
 묶인다. 수집·묶음은 순수 함수라 커밋한 SARIF 샘플로 도구 없이 테스트한다. 실제
 도구 연동은 저장소 밖 임시 사본에서 확인한다. 판정(disposition)은 M2다.
 
+## 정규화기 (M1c)
+
+네이티브 SARIF를 내지 않는 도구는 `output_format`이 정규화기를 가리킨다.
+`NORMALIZERS`는 형식 이름 → SARIF 변환 함수 테이블이고, `sarif`는 그대로 통과,
+`osv-json`은 OSV-scanner 출력을 SARIF로 바꾼다(의존성 취약점: 위치는 매니페스트,
+패키지를 논리 위치로 둬 지문이 패키지로 묶이게, CWE·CVSS 보존). 새 도구를 붙이면
+정규화기 하나만 추가하고 어댑터가 그 이름을 가리킨다. 변환은 순수 함수라 커밋한
+출력 샘플로 도구 없이 테스트한다.
+
 ## 앞으로
 
-M1c는 네이티브 SARIF가 아닌 도구(JSON→SARIF 정규화기), M2는 판정·증적이다. 그때도 게이트 READY가 전제이며, 침습적 단계는
+M2는 판정(disposition)·증적·SARIF 다리다. 그때도 게이트 READY가 전제이며, 침습적 단계는
 스코프에 건별 인가가 있고 운영자가 실행할 때만 허용한다. 계획은
 `docs/superpowers/plans/2026-10-14-security-assessment.md`.
