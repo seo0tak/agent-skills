@@ -1,7 +1,9 @@
 """Packaging must omit local runtime locks without deleting the live lock."""
 from pathlib import Path
+import importlib.util
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -25,6 +27,33 @@ class PackagingTests(unittest.TestCase):
             self.assertEqual(lock.read_text(), "active lock fixture")
             check = subprocess.run(["bash", str(script), "--check"], capture_output=True, text=True)
             self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+
+
+class DiagramTests(unittest.TestCase):
+    def test_committed_svgs_match_sources(self):
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("render_diagrams.py")), "--check"],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_check_flags_missing_and_edited_sources(self):
+        spec = importlib.util.spec_from_file_location(
+            "render_diagrams", Path(__file__).with_name("render_diagrams.py"))
+        assert spec and spec.loader
+        render_diagrams = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(render_diagrams)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            diagrams = root / "skills/example/docs/diagrams"
+            diagrams.mkdir(parents=True)
+            src = diagrams / "architecture.d2"
+            src.write_text("a -> b\n", encoding="utf-8")
+            self.assertIn("SVG 없음", render_diagrams.stale(root)[0])
+            stamp = render_diagrams.digest(src)
+            src.with_suffix(".svg").write_text(f"<svg/>\n<!-- source-sha256: {stamp} -->\n", encoding="utf-8")
+            self.assertEqual(render_diagrams.stale(root), [])
+            src.write_text("a -> c\n", encoding="utf-8")
+            self.assertIn("원본과 다름", render_diagrams.stale(root)[0])
 
 
 if __name__ == "__main__":

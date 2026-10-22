@@ -1,0 +1,50 @@
+# security-assessment 구조도. 고친 뒤 저장소 루트에서 python3 scripts/render_diagrams.py
+grid-rows: 2
+grid-gap: 40
+classes: {
+  store: {shape: cylinder; style: {fill: "#f4efe6"; stroke: "#9a7b4f"}}
+  proc: {shape: oval; style: {fill: "#e8eefb"; stroke: "#3d5f99"}}
+  ext: {style: {fill: "#eeeeee"; stroke: "#777777"; stroke-dash: 3}}
+  out: {shape: page; style: {fill: "#ffffff"; stroke: "#3d7a57"}}
+  stage: {style: {fill: "#fbfbfd"; stroke: "#c5cad6"}}
+}
+collect: "1 · 인가와 수집" {
+  class: stage
+  direction: right
+  scope: "scope.json\n대상 · 제외 · 기간 · 동의" {class: store}
+  adapters: "adapters/*.json\n스캐너 선언" {class: store}
+  gate: "gate · authorize" {class: proc}
+  scan: "scan" {class: proc}
+  ext: "외부 스캐너\nsemgrep · osv-scanner 등" {class: ext}
+  scans: "scans/\n어댑터별 결과" {class: store}
+  scope -> gate -> scan
+  adapters -> scan
+  scan <-> ext
+  scan -> scans
+}
+judge: "2 · 판정과 산출" {
+  class: stage
+  direction: right
+  findings: "findings.json\n합친 결과 · 제외 자산 뺌" {class: store}
+  round: "new-round" {class: proc}
+  rounds: "rounds/\n지난 차수" {class: store}
+  dispositions: "dispositions" {class: proc}
+  disp: "dispositions.json\n판정 · 확인 단계" {class: store}
+  bridge: "bridge" {class: proc}
+  ev: "evidence" {class: proc}
+  sarif: "handoff.sarif" {class: out}
+  csv: "evidence/findings.csv" {class: out}
+  cover: "evidence/cover.md" {class: out}
+  sr: "sast-remediation" {class: ext}
+  sarif -> sr
+  findings -> round -> rounds
+  findings -> dispositions -> disp
+  rounds -> dispositions: "해소 비교" {style.stroke-dash: 3}
+  findings -> bridge
+  disp -> bridge -> sarif
+  findings -> ev
+  disp -> ev
+  ev -> csv
+  ev -> cover
+}
+collect.scans -> judge.findings: "합침"

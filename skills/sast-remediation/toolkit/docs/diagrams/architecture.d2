@@ -1,0 +1,34 @@
+# sast-remediation 구조도. 고친 뒤 저장소 루트에서 python3 scripts/render_diagrams.py
+direction: right
+classes: {
+  store: {shape: cylinder; style: {fill: "#f4efe6"; stroke: "#9a7b4f"}}
+  proc: {shape: oval; style: {fill: "#e8eefb"; stroke: "#3d5f99"}}
+  ext: {style: {fill: "#eeeeee"; stroke: "#777777"; stroke-dash: 3}}
+  doc: {shape: page; style: {fill: "#fbf7ea"; stroke: "#9a7b4f"}}
+  out: {shape: page; style: {fill: "#ffffff"; stroke: "#3d7a57"}}
+}
+input: "input/\nPDF · 엑셀 · SARIF" {class: store}
+src: "프로젝트 소스" {class: ext}
+prompts: "prompts/\n00 ~ 07 단계별 절차" {class: doc}
+toolkit: "sast_toolkit.py\npreflight · gate · query · scope\nsync · validate" {class: proc}
+state: "sast_state.py\n재개 · 검증 신선도" {class: proc}
+activity: "sast_activity.py\n작업 이력" {class: proc}
+data: "data/\nfindings · decisions · progress" {class: store}
+guides: "security-guides/\n항목별 가이드" {class: store}
+results: "security-results/\n상태의 기준" {class: store}
+log: "작업 이력 로그" {class: store}
+mirror: "data/*.js\n읽기용 미러" {class: store}
+dash: "SECURITY_CHECKLIST.html" {class: out}
+ev: "evidence/\n제출 증적" {class: out}
+input -> toolkit
+src -> toolkit: "소스 대조"
+prompts -> toolkit: "절차"
+toolkit -> data
+toolkit -> results
+state -> results: "재개 판단"
+activity -> log
+data -> mirror: "sync"
+results -> mirror: "sync"
+mirror -> dash
+guides -> dash
+results -> ev

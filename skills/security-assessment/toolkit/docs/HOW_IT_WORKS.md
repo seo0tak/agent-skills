@@ -8,87 +8,17 @@
 
 입력은 점검 범위와 어댑터 선언이고, 도구는 하나의 명령줄 프로그램이다. 스캔 결과는
 어댑터별로 저장된 뒤 합쳐 검출이 되고, 판정은 따로 남는다. 넘김 파일과 증적은 그
-정본에서 만들어진다. 점선은 validate의 검사 대상과 지난 차수 비교다.
+정본에서 만들어진다. validate는 이 정본과 산출물이 서로 맞는지 검사한다.
+원통은 저장 파일, 타원은 명령, 문서 모양은 문서·산출물, 점선 상자는 스킬 밖의 대상이다.
 
-```mermaid
-flowchart LR
-  subgraph IN["입력"]
-    scope["scope.json<br/>대상 · 제외 · 기간 · 동의"]
-    adapters["adapters/*.json<br/>스캐너 선언"]
-  end
-  subgraph TOOL["assess_toolkit.py"]
-    gate["gate · authorize"]
-    scan["scan"]
-    round["new-round"]
-    disp["dispositions"]
-    bridge["bridge"]
-    ev["evidence"]
-    val["validate"]
-  end
-  subgraph EXT["외부 스캐너"]
-    s1["semgrep 등 SARIF"]
-    s2["osv-scanner 등 JSON"]
-  end
-  subgraph DATA["정본 데이터"]
-    sc["scans/어댑터.json<br/>어댑터별 결과"]
-    f["findings.json<br/>합친 결과, 제외 자산 뺌"]
-    rd["rounds/round-NNN.json<br/>지난 차수"]
-    d["dispositions.json"]
-  end
-  subgraph OUT["산출물"]
-    h["handoff.sarif"]
-    csv["evidence/findings.csv"]
-    cover["evidence/cover.md"]
-  end
-  scope --> gate
-  adapters --> scan
-  gate --> scan
-  scan <--> s1
-  scan <--> s2
-  scan --> sc
-  sc --> f
-  f --> round
-  round --> rd
-  disp --> d
-  rd -.-> disp
-  f --> bridge
-  d --> bridge
-  bridge --> h
-  f --> ev
-  d --> ev
-  ev --> csv
-  ev --> cover
-  val -.-> f
-  val -.-> d
-  val -.-> csv
-```
+![security-assessment 구조도](diagrams/architecture.svg)
 
 ## 사람이 확인하는 지점
 
 점검 범위와 인가 근거, 스캐너를 직접 실행할지, 불확실한 판정은 사용자가 정한다.
 AI는 그 사이의 실행과 기록을 맡는다.
 
-```mermaid
-sequenceDiagram
-  actor U as 사용자
-  participant A as AI 에이전트
-  participant T as assess_toolkit
-  participant S as 스캐너
-  U->>A: 보안 점검 요청
-  A->>U: 대상 · 기간 · 동의 기록 확인 요청
-  U->>A: 점검 범위와 인가 근거
-  A->>T: validate, authorize, gate
-  T-->>A: READY 또는 차단 사유
-  A->>U: 비파괴 스캔을 직접 실행할지 확인
-  U->>A: 직접 실행 허락
-  A->>T: scan --direct
-  T->>S: 어댑터 명령 실행
-  S-->>T: SARIF 또는 JSON 출력
-  T-->>A: 묶음 후 검출 목록
-  A->>U: 판정 근거 보고, 불확실한 항목 질문
-  A->>T: dispositions 기록 후 bridge, evidence
-  T-->>A: handoff.sarif, findings.csv, cover.md
-```
+![security-assessment 시퀀스](diagrams/sequence.svg)
 
 ## 인가 게이트가 보장하는 것, 못 하는 것
 

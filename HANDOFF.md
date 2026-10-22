@@ -39,6 +39,9 @@
 - 같은 날 문서 정비: 스킬별 흐름도(README)·구조도(HOW_IT_WORKS), 사용자 문서에서 대화·날짜·
   개발 단계 표시 제거(CLAUDE.md 문서 규칙), skill-architect를 감사 도구가 아니라 "스킬 설계
   기준"으로 재정의(0.5.0, 기준 → 새 스킬 설계 → 기존 스킬 점검 순).
+- 다이어그램 도구 비교(Mermaid·D2·Graphviz·PlantUML) 후 사용자 선택: 흐름도는 README의 mermaid
+  유지, 구조도는 D2(ELK), 시퀀스는 PlantUML. 둘 다 SVG를 커밋한다. 구조도는 좌→우 데이터 흐름으로
+  다시 그렸고, security-assessment는 "인가와 수집 / 판정과 산출" 두 줄로 나눴다.
 - **다음**: 점검 개선 5번, 그 뒤 M3~M5(웹 DAST·인프라 스캐너, 방법론 체크리스트). 웹 스캐너는
   실행 중인 대상에 실제 요청을 보내므로 M3 착수 전 설계 점검을 권한다.
 - sast-remediation·skill-architect는 변경 없음(v1.15.0 / v0.4.3 유지).
@@ -299,6 +302,10 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 - security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(56건).
   CLI 왕복은 저장소 밖 임시 사본에서(저장소 안에서 scan·evidence를 돌리지 않는다).
 - mermaid를 고치면 브라우저에서 렌더링해 파싱 오류 0을 확인한다(문법 오류가 조용히 남는다).
+- 구조도(D2)·시퀀스(PlantUML)는 `docs/diagrams/` 원본을 고치고 `python3 scripts/render_diagrams.py`로
+  SVG를 다시 만든다. `--check`(도구 불필요, 원본 해시 비교)는 `scripts.test_packaging`에 포함.
+  d2는 SVG 루트 크기를 빼먹어 `<img>`에서 300px로 줄어드므로 스크립트가 viewBox로 채운다.
+  D2의 컨테이너별 direction은 TALA에서만 먹으므로, 긴 흐름은 `grid-rows`로 줄을 나눈다.
 
 ## 유지보수 주의점
 

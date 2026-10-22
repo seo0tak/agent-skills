@@ -1,0 +1,18 @@
+# skill-architect 구조도. 고친 뒤 저장소 루트에서 python3 scripts/render_diagrams.py
+direction: right
+classes: {
+  store: {shape: cylinder; style: {fill: "#f4efe6"; stroke: "#9a7b4f"}}
+  proc: {shape: oval; style: {fill: "#e8eefb"; stroke: "#3d5f99"}}
+  ext: {style: {fill: "#eeeeee"; stroke: "#777777"; stroke-dash: 3}}
+  doc: {shape: page; style: {fill: "#fbf7ea"; stroke: "#9a7b4f"}}
+}
+skill: "SKILL.md\n설계 · 점검 절차" {class: doc}
+checklist: "ARCHITECTURE_CHECKLIST.md\n설계 기준" {class: doc}
+workflow: "references/\nimprovement-workflow.md" {class: doc}
+tracker: "improvement_tracker.py" {class: proc}
+target: "점검 대상 (읽기 전용)\nSKILL.md · 코드 · 스키마 · 테스트" {class: ext}
+store: "--store 디렉터리\n개선 건별 JSON (선택)" {class: store}
+skill -> checklist: "기준"
+skill -> target: "근거 확인"
+skill -> workflow: "개선 기록 시"
+workflow -> tracker -> store

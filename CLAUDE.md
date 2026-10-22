@@ -46,7 +46,12 @@ plugins/<이름>/                ← Claude Code / Codex 플러그인 배포 구
   `docs/adr/`, 작업 이력은 `HANDOFF.md`, 단계 이력은 각 스킬 `docs/VERSIONING.md`에 둔다.
 - 다이어그램은 스킬 단위로 둔다. 스킬 README에 작업 흐름도 한 장, HOW_IT_WORKS에 구조도
   한 장. 사람이 승인하는 지점이 핵심인 스킬만 시퀀스를 추가한다. 루트 README에는 그림을
-  두지 않는다. mermaid를 고치면 렌더링해 파싱 오류가 없는지 확인한다.
+  두지 않는다.
+- 흐름도는 README 안의 mermaid, 구조도는 D2, 시퀀스는 PlantUML로 그린다. D2·PlantUML 원본은
+  `docs/diagrams/*.d2|*.puml`에 두고 `python3 scripts/render_diagrams.py`로 만든 SVG를 함께
+  커밋한다(d2, plantuml 또는 `PLANTUML_JAR` 필요). 커밋 전 `--check`가 통과해야 하며, 이
+  검사는 도구 없이 SVG 끝의 원본 해시만 비교한다. 그린 뒤 SVG를 열어 겹침·잘림을 눈으로
+  확인한다. mermaid를 고치면 렌더링해 파싱 오류가 없는지 확인한다.
 
 - 문구를 고칠 때는 동작 주체·입력 조건·저장/검증/승인의 의미를 유지한다.
   JSON 키·enum·고정 응답 라벨·증적 열 이름·코드 원문은 문체 교정 대상으로 바꾸지 않는다.

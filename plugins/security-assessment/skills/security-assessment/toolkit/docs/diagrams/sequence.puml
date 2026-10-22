@@ -1,0 +1,24 @@
+' security-assessment 시퀀스. 고친 뒤 저장소 루트에서 python3 scripts/render_diagrams.py
+@startuml
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Apple SD Gothic Neo"
+actor "사용자" as U
+participant "AI 에이전트" as A
+participant "assess_toolkit" as T
+participant "스캐너" as S
+U -> A: 보안 점검 요청
+A -> U: 대상 · 기간 · 동의 기록 확인 요청
+U -> A: 점검 범위와 인가 근거
+A -> T: validate, authorize, gate
+T --> A: READY 또는 차단 사유
+A -> U: 비파괴 스캔을 직접 실행할지 확인
+U -> A: 직접 실행 허락
+A -> T: scan --direct
+T -> S: 어댑터 명령 실행
+S --> T: SARIF 또는 JSON 출력
+T --> A: 묶음 후 검출 목록
+A -> U: 판정 근거 보고, 불확실한 항목 질문
+A -> T: dispositions 기록 후 bridge, evidence
+T --> A: handoff.sarif, findings.csv, cover.md
+@enduml
