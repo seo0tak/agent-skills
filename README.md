@@ -17,7 +17,7 @@
 |---|---|---|
 | **sast-remediation** | 보안 | 1.15.1 |
 | **security-assessment** | 보안 | 0.7.1 |
-| **skill-architect** | 메타(스킬 품질) | 0.4.4 |
+| **skill-architect** | 메타(스킬 설계 기준) | 0.5.0 |
 
 각 스킬의 작업 흐름과 구조 그림은 [관련 문서](#관련-문서)의 스킬별 문서에 있습니다.
 
@@ -26,8 +26,9 @@
   브라우저에서 추출한 결과 초안을 백업할 수 있습니다. 작업·오류·변경 이력을
   누적 보존합니다. 체크리스트는 작업 내용·상태 변화 중심의 이력을 제공하고,
   시스템 운영 기록과 진단 상세를 별도로 조회할 수 있습니다.
-- **skill-architect** — 입력·상태·복구·검증 등 스킬 설계를 10개 범주로
-  검토합니다. 요청 시 승인된 개선 범위와 평가·적용·재개 이력을 기록합니다.
+- **skill-architect** — 이 저장소의 스킬 설계 기준(트리거·입력·상태·복구·검증 등
+  10개 범주)을 제공하고, 그 기준으로 새 스킬을 설계하거나 기존 스킬을 점검합니다.
+  요청하면 개선 이력도 남깁니다.
 - **security-assessment** — 인가 범위를 선언·검증하고 그 안에서 기성 오픈소스
   스캐너를 조율해 보안 취약점을 점검합니다. 게이트는 선언한 범위를 벗어나는
   실수를 막고 인가 주장을 기록하지만 동의의 진위는 검증하지 않습니다(악의적
@@ -113,7 +114,8 @@ test ! -e ~/.agents/skills/$name && test ! -L ~/.agents/skills/$name && \
 - "인가 범위 안에서 소스 스캔 돌려줘"
 
 **skill-architect**
-- "이 스킬 감사해줘" / "sast-remediation 스킬 감사해줘"
+- "새 스킬을 설계하려는데 기준에 맞춰 같이 봐줘"
+- "이 스킬 점검해줘" / "sast-remediation 스킬 감사해줘"
 
 ## 설치본 업데이트
 
@@ -185,9 +187,9 @@ Codex는 다음 세 단계를 구분합니다.
 - 설계 정본: [CONTEXT.md](CONTEXT.md), [ADR](docs/adr/), [계획·설계](docs/superpowers/plans/2026-10-14-security-assessment.md)
 
 **skill-architect** — `skills/skill-architect/`
-- [시작하기](skills/skill-architect/README.md) — 감사 절차 흐름
+- [스킬 설계 기준](skills/skill-architect/ARCHITECTURE_CHECKLIST.md) — 10개 범주와 점검할 때의 판정
+- [시작하기](skills/skill-architect/README.md) — 설계·점검·개선 기록 흐름
 - [동작 원리](skills/skill-architect/docs/HOW_IT_WORKS.md) — 구성 파일과 개선 기록의 경계
-- [스킬 품질 기준](skills/skill-architect/ARCHITECTURE_CHECKLIST.md) — 10범주 체크리스트
 
 ## 개선 기록과 자동화의 경계
 
@@ -216,11 +218,13 @@ Codex 정보 파일과 README 표도 갱신한 뒤 `scripts/check-versions.sh`�
 
 ## 새 스킬 추가
 
-1. `skills/<이름>/SKILL.md` 작성 (지원 파일 동봉 가능)
+1. [스킬 설계 기준](skills/skill-architect/ARCHITECTURE_CHECKLIST.md)으로 설계를 정한 뒤
+   `skills/<이름>/SKILL.md` 작성 (지원 파일 동봉 가능). skill-architect에 "새 스킬을
+   설계하려는데 기준에 맞춰 같이 봐줘"로 요청할 수 있습니다.
 2. `plugins/<이름>/.claude-plugin/plugin.json`, `.codex-plugin/plugin.json` 작성
 3. `scripts/sync-plugins.sh`로 사본 생성
 4. 두 카탈로그(`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`)에 등록
 5. `scripts/check-versions.sh`, `scripts/sync-plugins.sh --check` 통과 확인
 6. README의 [스킬](#스킬) 표와 [관련 문서](#관련-문서)에 그 스킬 항목을 추가
    (버전 표 행은 `scripts/check-versions.sh`가 강제하고, 문서 항목은 손으로 추가)
-7. `skill-architect`로 한 번 감사
+7. `skill-architect`로 설계 기준과 대조해 점검

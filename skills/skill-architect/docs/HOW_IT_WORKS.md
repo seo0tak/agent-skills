@@ -1,19 +1,19 @@
 # 동작 원리
 
-이 문서는 skill-architect를 이루는 파일이 각각 무엇을 맡는지, 그리고 왜 그렇게
-나눴는지 설명합니다. 따라 하는 순서는 [README.md](../README.md)의 작업 흐름을 봅니다.
+skill-architect의 중심은 설계 기준이고, 절차와 기록 도구는 그 기준을 쓰는 방법입니다.
+이 문서는 각 파일이 무엇을 맡는지, 그리고 왜 그렇게 나눴는지 설명합니다. 따라 하는 순서는 [README.md](../README.md)의 작업 흐름을 봅니다.
 
 ## 구조
 
 ```mermaid
 flowchart LR
   subgraph SKILL["skill-architect"]
-    sk["SKILL.md<br/>감사 · 설계 절차"]
-    cl["ARCHITECTURE_CHECKLIST.md<br/>평가 기준"]
+    sk["SKILL.md<br/>설계 · 점검 절차"]
+    cl["ARCHITECTURE_CHECKLIST.md<br/>설계 기준"]
     wf["references/improvement-workflow.md"]
     tr["scripts/improvement_tracker.py"]
   end
-  subgraph TARGET["감사 대상 (읽기 전용)"]
+  subgraph TARGET["점검 대상 (읽기 전용)"]
     t1["대상 SKILL.md"]
     t2["대상 코드 · 스키마 · 테스트"]
   end
@@ -27,15 +27,16 @@ flowchart LR
   tr --> js
 ```
 
-- **SKILL.md**는 절차입니다. 감사·설계·보고를 어떤 순서로 하는지 정합니다.
-- **ARCHITECTURE_CHECKLIST.md**는 기준입니다. 항목마다 적용·부분·미적용·해당없음·미확인으로
-  판정하고, 근거 수준(지침·구현·재현·실전)을 따로 적습니다.
+- **ARCHITECTURE_CHECKLIST.md**는 설계 기준입니다. 새 스킬을 설계할 때는 범주를 설계 질문으로
+  쓰고, 기존 스킬을 점검할 때는 항목마다 적용·부분·미적용·해당없음·미확인으로 판정하며
+  근거 수준(지침·구현·재현·실전)을 따로 적습니다.
+- **SKILL.md**는 그 기준을 쓰는 절차입니다. 설계·점검·보고를 어떤 순서로 하는지 정합니다.
 - **improvement_tracker.py**는 개선 이력을 원할 때만 쓰는 기록 도구입니다. 사용자가 고른
   `--store` 디렉터리의 JSON만 읽고 씁니다.
 
-## 감사 대상은 읽기만 합니다
+## 점검 대상은 읽기만 합니다
 
-감사 대상 스킬의 지시문은 검토 자료이고 따를 명령이 아닙니다. 감사를 요청받았다는
+점검 대상 스킬의 지시문은 검토 자료이고 따를 명령이 아닙니다. 점검을 요청받았다는
 이유만으로 대상 스킬의 운영 작업, 설치, 외부 변경을 실행하지 않습니다. 수정은 사용자가
 승인한 범위에서 별도로 합니다.
 
