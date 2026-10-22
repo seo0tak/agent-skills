@@ -49,7 +49,10 @@ plugins/<이름>/                ← Claude Code / Codex 플러그인 배포 구
   전이가 핵심인 절차 문서(기록 순서, 상태 기계)에는 그 문서에 시퀀스·상태도를 더한다.
   루트 README에는 그림을 두지 않는다. 동작을 바꾸면 흐름도·시퀀스·구조도와 USAGE의 텍스트
   흐름이 서로 같은 순서와 승인 지점을 보이는지 함께 확인한다.
-- 흐름도는 README 안의 mermaid, 구조도는 D2, 시퀀스·상태도는 PlantUML로 그린다. D2·PlantUML 원본은
+- 흐름도는 README 안의 mermaid, 구조도는 D2, 시퀀스·상태도는 PlantUML로 그린다. 단, 생성되는
+  HTML 가이드(USAGE.html)에도 보여야 하는 흐름도는 D2 SVG 하나로 그려 README와 USAGE가 같이 쓴다
+  (USAGE 렌더러는 mermaid를 못 그리고 툴킷 안 상대 경로 이미지만 그린다). 텍스트 화살표로
+  흐름을 대신하지 않는다. D2·PlantUML 원본은
   `docs/diagrams/*.d2|*.puml`에 두고 `python3 scripts/render_diagrams.py`로 만든 SVG를 함께
   커밋한다(d2, plantuml 또는 `PLANTUML_JAR` 필요). 커밋 전 `--check`가 통과해야 하며, 이
   검사는 도구 없이 SVG 끝의 원본 해시만 비교한다. 그린 뒤 SVG를 열어 겹침·잘림을 눈으로

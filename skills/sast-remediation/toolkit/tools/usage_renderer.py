@@ -1,8 +1,9 @@
 """Small, escaped Markdown subset for the bundled standalone usage guide.
 
 Supports paragraphs, headings, fenced code, nested lists, pipe tables, inline
-code/strong/emphasis and safe links. This is not a general CommonMark engine:
-raw HTML, images, reference links and embedded scripts are deliberately absent.
+code/strong/emphasis, safe links and local diagram images (relative .svg/.png
+inside the toolkit). This is not a general CommonMark engine: raw HTML, remote
+images, reference links and embedded scripts are deliberately absent.
 """
 from __future__ import annotations
 
@@ -18,6 +19,18 @@ def _safe_link(target: str) -> bool:
         return urlsplit(target).scheme.lower() in {"", "http", "https", "mailto"}
     except ValueError:
         return False
+
+
+def _safe_image(target: str) -> bool:
+    """Only relative image files inside the toolkit: no scheme, absolute path or '..'."""
+    if not _safe_link(target):
+        return False
+    parts = urlsplit(target)
+    if parts.scheme or parts.netloc or parts.path.startswith("/"):
+        return False
+    if any(segment == ".." for segment in parts.path.split("/")):
+        return False
+    return parts.path.lower().endswith((".svg", ".png"))
 
 
 def _closing(text: str, marker: str, start: int) -> int:
@@ -58,8 +71,23 @@ def render_inline(text: str, *, _depth: int = 0) -> str:
                 output.append(f"<{tag}>{inner}</{tag}>")
                 index = end + len(marker)
                 continue
+        if text.startswith("![", index):
+            alt_end = text.find("](", index + 2)
+            close = text.find(")", alt_end + 2) if alt_end >= 0 else -1
+            if close >= 0:
+                target = text[alt_end + 2:close]
+                if target and not any(char.isspace() for char in target) and _safe_image(target):
+                    alt = escape(text[index + 2:alt_end], quote=True)
+                    output.append(f'<img src="{escape(target, quote=True)}" alt="{alt}" loading="lazy">')
+                    index = close + 1
+                    continue
         if text[index] == "[":
-            label_end = text.find("](", index + 1)
+            search_from = index + 1
+            if text.startswith("![", index + 1):  # 이미지를 감싼 링크: 이미지 뒤의 "]("를 찾는다
+                inner = text.find("](", index + 3)
+                inner_close = text.find(")", inner + 2) if inner >= 0 else -1
+                search_from = inner_close + 1 if inner_close >= 0 else search_from
+            label_end = text.find("](", search_from)
             if label_end >= 0:
                 end = label_end + 2
                 balance = 1

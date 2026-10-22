@@ -59,6 +59,16 @@ class UsageRendererTests(unittest.TestCase):
         self.assertIn("&lt;img", html)
         self.assertNotIn("<img", html)
 
+    def test_local_diagram_images_render_and_others_do_not(self):
+        html = render_inline("![흐름도](docs/diagrams/flow.svg)")
+        self.assertEqual(html, '<img src="docs/diagrams/flow.svg" alt="흐름도" loading="lazy">')
+        linked = render_inline("[![흐름도](docs/diagrams/flow.svg)](docs/diagrams/flow.svg?raw=true)")
+        self.assertIn('<a href="docs/diagrams/flow.svg?raw=true"><img src="docs/diagrams/flow.svg"', linked)
+        for target in ("https://example.test/x.svg", "../outside.svg", "/abs/x.svg",
+                       "javascript:alert(1).svg", "docs/x.js", "data:image/svg+xml,x.svg"):
+            self.assertNotIn("<img", render_inline(f"![x]({target})"), target)
+        self.assertNotIn('"onerror', render_inline('![a" onerror="x](docs/a.svg)'))
+
     def test_link_attribute_quotes_are_escaped(self):
         html = render_inline('[link](https://example.test/"onmouseover="bad)')
         self.assertNotIn('"onmouseover=', html)

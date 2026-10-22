@@ -110,6 +110,16 @@ pre {
   line-height: 1.5;
 }
 pre code { background: none; border: 0; padding: 0; color: inherit; font-size: inherit; }
+main img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px 0;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
 table {
   width: 100%;
   border-collapse: collapse;
@@ -210,17 +220,8 @@ td code { white-space: nowrap; }
 <p>받은 SAST 검출 결과를 현재 소스와 대조하고, 조치·검증·증적까지 관리하는 가이드입니다. 처음에는 1번부터, 중단한 작업은 6번부터 확인하세요. 사용자 요청이 없을 때 스스로 실행하거나 배포하는 도구는 아닙니다.</p>
 <section id="s1">
 <h2>전체 흐름</h2>
-<pre><code>준비 → 00 입력 확인 → 01 전체 등록·초기 분석 → 처리 범위 설정 (사용자 선택)
-                                                   ↓
-            06 이전 차수 대조 (자료가 있을 때)
-                       ↓
-            초기 분석 확인·조치 범위 승인 (사용자)
-                       ↓
-            03 조치·검증 반복 ← 02 정책 질문 (수시)
-                       ↓
-            대시보드 검토·백업 (사용자) → 04 변경 대조
-                       ↓
-            05 증적 생성 → 제출 전 검토 (사용자)</code></pre>
+<p>노란 단계는 사용자가 정하는 지점이고, 점선은 필요할 때 들어가는 단계입니다.</p>
+<p><a href="docs/diagrams/flow.svg?raw=true"><img src="docs/diagrams/flow.svg" alt="작업 흐름도: 00 입력 확인부터 05 증적과 제출 전 검토까지" loading="lazy"></a></p>
 <p>프롬프트 번호는 파일 이름입니다. 작업 순서는 위 흐름을 따르며, 세션이 끊기면 07 재개 절차로 현재 기록부터 확인합니다.</p>
 </section>
 <section id="s2">

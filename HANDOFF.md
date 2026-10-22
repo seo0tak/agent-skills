@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.15.2 / skill-architect v0.5.1 / security-assessment v0.9.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.16.0 / skill-architect v0.5.2 / security-assessment v0.9.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-22 security-assessment 0.9.0 · 다이어그램 체계)
 
-배포 버전: sast-remediation **v1.15.2**, skill-architect **v0.5.1**, security-assessment **v0.9.0**.
+배포 버전: sast-remediation **v1.16.0**, skill-architect **v0.5.2**, security-assessment **v0.9.0**.
 최신 커밋 `3a80baa`, 전부 push 완료. 작업 트리 깨끗함.
 
 ### security-assessment
@@ -72,6 +72,9 @@
   먹으므로 줄 나누기는 `grid-rows`, 긴 체인은 병렬 경로로 단계 수를 줄인다.
 - 이미지는 `[![..](x.svg)](x.svg?raw=true)`로 감싸 누르면 raw 원본 크기로 열린다(GitHub 기본 링크는
   작은 미리보기 페이지로 감). 넓은 구조도 아래에 "이미지를 누르면 원래 크기로 열립니다" 안내.
+- sast-remediation 흐름도는 D2 `docs/diagrams/flow.d2` 하나로 README와 USAGE가 같이 쓴다(1.16.0). USAGE
+  렌더러(`tools/usage_renderer.py`)가 툴킷 안 상대 경로 .svg/.png 이미지만 그리도록 확장했다(원격·
+  절대·`..` 거부, 테스트 포함). 텍스트 화살표 흐름은 없앴다. 나머지 두 스킬 흐름도는 README mermaid.
 - PlantUML 메시지의 `--a ... --b`는 취소선이 된다. 옵션은 `~--`로 이스케이프한다.
 - 마지막 점검(`3a80baa` push 후): 마크다운 93개 파일의 링크·이미지 48개 깨짐 없음, Mermaid 3개
   렌더 오류 없음, GitHub에서 그림 6개 로드 확인(넓은 화면 시인성은 로컬 1000px 렌더로 확인).

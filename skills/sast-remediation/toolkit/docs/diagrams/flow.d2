@@ -1,0 +1,42 @@
+# sast-remediation 작업 흐름도. README와 USAGE가 같은 그림을 쓴다.
+# 고친 뒤 저장소 루트에서 python3 scripts/render_diagrams.py
+direction: down
+vars: {d2-config: {layout-engine: dagre}}
+classes: {
+  step: {style: {fill: "#e8eefb"; stroke: "#3d5f99"; border-radius: 6}}
+  user: {style: {fill: "#fff4d6"; stroke: "#b07d1a"; border-radius: 6; bold: true}}
+  ask: {shape: diamond; style: {fill: "#f3f4f6"; stroke: "#6b7280"}}
+  stop: {style: {fill: "#fdecec"; stroke: "#b42318"; border-radius: 6}}
+  side: {style: {fill: "#ffffff"; stroke: "#6b7280"; stroke-dash: 3; border-radius: 6}}
+}
+input: "보고서 넣기\nPDF + 엑셀 또는 SARIF" {class: user}
+gate: "00 사전 점검 게이트\nREADY?" {class: ask}
+blocked: "필요한 자료와 원인을\n보고하고 멈춤" {class: stop}
+init: "01 전체 등록 · 초기 분석\n검출 목록 · 체커 가이드 · 소스 매핑" {class: step}
+scope: "사용자: 처리 범위 선택\n최소 위험도 · 정하지 않으면 멈춤" {class: user}
+carry: "이전 차수\n자료가 있나?" {class: ask}
+c06: "06 차수 이월\n지문으로 재사용 후보 대조" {class: step}
+approve: "사용자: 초기 분석 확인\n조치 범위 승인" {class: user}
+wave: "03 조치 웨이브\n가이드 → 수정 → 검증 → 결과 기록" {class: step}
+policy: "02 정책 질문\n업무 사실로 · 해당 항목만 보류" {class: side}
+resume: "07 재개\n중단 지점부터" {class: side}
+dash: "사용자: 대시보드 검토 · 백업" {class: user}
+absorb: "04 변경 흡수\n백업과 현재 파일 대조" {class: step}
+ev: "05 제출 증적\nvalidate --strict" {class: step}
+review: "사용자: 제출 전 검토" {class: user}
+input -> gate
+gate -> blocked: "BLOCKED"
+gate -> init: "READY"
+init -> scope
+scope -> carry
+carry -> c06: "예"
+carry -> approve: "아니오"
+c06 -> approve
+approve -> wave
+policy -> wave: "수시로" {style.stroke-dash: 3}
+resume -> wave: "중단 후" {style.stroke-dash: 3}
+wave -> dash
+dash -> absorb
+absorb -> wave: "남은 작업" {style.stroke-dash: 3}
+absorb -> ev
+ev -> review
