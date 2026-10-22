@@ -33,6 +33,15 @@ out-of-scope | needs-review`. _Avoid_: 상태, 결과.
 검출 하나를 확인하는 작업이 어디까지 진행됐는지. 판정과 별개 축이다.
 _Avoid_: 진행률(조치 진행과 섞일 때).
 
+**Adapter (어댑터)**:
+스캐너 하나를 스킬에 붙이는 선언. `{id, category, intrusiveness, 가용성 확인,
+실행 명령 템플릿, output_format}`. 선언은 데이터, 출력→SARIF 변환만 코드.
+_Avoid_: 플러그인, 스캐너(도구 자체와 섞일 때).
+
+**Normalizer (정규화기)**:
+어댑터 출력을 SARIF로 바꾸는 공용 변환기. `output_format` 종류 수만큼만 있고
+어댑터가 그 이름으로 가리킨다. _Avoid_: 파서.
+
 **Fingerprint (지문)**:
 검출의 위치 독립 식별자 — 파일·함수·검출 구문에서 만든다. 줄 번호에 의존하지
 않는다. _Avoid_: ID(스캐너마다·차수마다 바뀌는 번호와 섞일 때).
@@ -67,6 +76,11 @@ _Avoid_: 최종 보고서(워크북과 구분이 흐려질 때).
   **Finding**으로 묶는다. 묶인 검출은 출처 스캐너 목록을 가진다. CWE가 다르면
   같은 줄이어도 별개 결함이다 (2026-10-22 확정).
 - 같은 **Fingerprint**가 차수 간 해소 판단(재점검)과 스캐너 간 묶음 양쪽에 쓰인다.
+- **Adapter** 실행 판정은 침습도 세 겹이다 (2026-10-22 확정):
+  ① 어댑터 intrusiveness가 **Scope**의 intrusiveness 상한을 넘으면 금지,
+  ② `active-nondestructive` 이하이고 사용자가 직접 실행을 명시하면 스킬이 실행,
+  ③ 그 외(intrusive, 또는 미명시)는 운영자에게 명령을 지시한다.
+  intrusive는 스코프 건별 인가 + 운영자 실행만.
 - 하나의 점검은 하나의 **Evidence workbook**과 하나의 **Cover report**를 낸다.
   **Cover report**의 범위·인가 절에 **Scope**와 **Consent record**가 들어가고,
   그 안의 모든 숫자는 **Evidence workbook**에서 집계한다 — 둘의 불일치는
