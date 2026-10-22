@@ -13,7 +13,9 @@
 대시보드는 `sync`가 만든 `data/*.js` 사본을 읽습니다.
 원통은 저장 파일, 타원은 명령, 문서 모양은 문서·산출물, 점선 상자는 스킬 밖의 대상입니다.
 
-![sast-remediation 구조도](diagrams/architecture.svg)
+[![sast-remediation 구조도](diagrams/architecture.svg)](diagrams/architecture.svg?raw=true)
+
+<sub>이미지를 누르면 원래 크기로 열립니다.</sub>
 
 ## 1. 입력 승인과 소스 검증은 별개입니다
 

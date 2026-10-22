@@ -11,14 +11,16 @@
 정본에서 만들어진다. validate는 이 정본과 산출물이 서로 맞는지 검사한다.
 원통은 저장 파일, 타원은 명령, 문서 모양은 문서·산출물, 점선 상자는 스킬 밖의 대상이다.
 
-![security-assessment 구조도](diagrams/architecture.svg)
+[![security-assessment 구조도](diagrams/architecture.svg)](diagrams/architecture.svg?raw=true)
+
+<sub>이미지를 누르면 원래 크기로 열린다.</sub>
 
 ## 사람이 확인하는 지점
 
 점검 범위와 인가 근거, 스캐너를 직접 실행할지, 불확실한 판정은 사용자가 정한다.
 AI는 그 사이의 실행과 기록을 맡는다.
 
-![security-assessment 시퀀스](diagrams/sequence.svg)
+[![security-assessment 시퀀스](diagrams/sequence.svg)](diagrams/sequence.svg?raw=true)
 
 ## 인가 게이트가 보장하는 것, 못 하는 것
 

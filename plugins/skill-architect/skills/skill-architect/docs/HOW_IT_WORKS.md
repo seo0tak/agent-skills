@@ -7,7 +7,9 @@ skill-architect의 중심은 설계 기준이고, 절차와 기록 도구는 그
 
 원통은 저장 파일, 타원은 명령, 문서 모양은 문서·산출물, 점선 상자는 스킬 밖의 대상입니다.
 
-![skill-architect 구조도](diagrams/architecture.svg)
+[![skill-architect 구조도](diagrams/architecture.svg)](diagrams/architecture.svg?raw=true)
+
+<sub>이미지를 누르면 원래 크기로 열립니다.</sub>
 
 - **ARCHITECTURE_CHECKLIST.md**는 설계 기준입니다. 새 스킬을 설계할 때는 범주를 설계 질문으로
   쓰고, 기존 스킬을 점검할 때는 항목마다 적용·부분·미적용·해당없음·미확인으로 판정하며
