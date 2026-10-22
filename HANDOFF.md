@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-22, v1.15.0 / v0.4.3 / security-assessment v0.4.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-22, v1.15.0 / v0.4.3 / security-assessment v0.7.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-22 신규 스킬 security-assessment M0~M1c)
 
-- **새 스킬 `security-assessment`**(현재 **v0.4.0**)를 추가 중이다. 보안 취약점을
+- **새 스킬 `security-assessment`**(현재 **v0.7.0**)를 추가 중이다. 보안 취약점을
   직접 *검사*하는 인가 기반 오케스트레이터. 설계 정본: 저장소 루트 `CONTEXT.md`,
   `docs/adr/0001`(확인/조치 경계)·`0002`(침습도 세 겹), 계획·설계
   `docs/superpowers/plans|specs/2026-10-14-security-assessment*`. grill-with-docs로
@@ -18,8 +18,9 @@
   진위는 검증 못 함(악의적 사용자 못 막음, SKILL.md 명시). 어댑터는 침습도 세 겹으로
   실행 판정(ADR 0002), 카테고리에 맞는 대상에만. 수집·묶음·정규화는 순수 함수라
   도구 없이 테스트(assess 36건), 실제 스캔은 저장소 밖 임시 사본에서 확인.
-- **다음: M2** — 판정(disposition)·증적(워크북+표지 보고서)·SARIF 다리로
-  sast-remediation 핸드오프. 범위가 커서 조각내야 한다.
+- M2 완료: M2a 판정 레코드(0.5.0) → M2b SARIF 다리(0.6.0) → M2c 증적 CSV+표지 MD
+  생성·드리프트 검사(0.7.0). 증적은 표준 라이브러리 원칙상 xlsx가 아닌 CSV·Markdown.
+- **다음: M3~M5** — 웹(DAST)·인프라 스캐너, 방법론 체크리스트.
 - sast-remediation·skill-architect는 변경 없음(v1.15.0 / v0.4.3 유지).
 
 ## 이전 작업 기준 (2026-10-14 체커별 진행)

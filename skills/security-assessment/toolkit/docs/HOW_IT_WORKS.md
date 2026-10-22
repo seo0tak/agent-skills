@@ -18,6 +18,7 @@ flowchart TD
   merge --> findings[("findings.json")]
   findings --> disp["판정·확인 단계<br/>dispositions.json"]
   disp -- "confirmed 코드 결함" --> bridge["SARIF 다리<br/>→ sast-remediation"]
+  disp --> evidence["증적 생성<br/>findings.csv + cover.md"]
 ```
 
 게이트가 READY일 때만 스캔이 시작되고, 어댑터는 침습도에 따라 스킬이 직접
@@ -59,7 +60,7 @@ flowchart TD
 스코프 상한을 넘으면 금지, ②`active-nondestructive` 이하 + 사용자 직접 실행 명시면
 실행, ③그 외는 운영자에게 명령을 지시. `adapters` 명령이 이 판정을 보여 주되
 어떤 명령도 실행하지 않는다. 판정은 순수 함수라 도구 없이 테스트된다. 출력→SARIF
-변환(정규화기)과 실제 실행은 M1b 이후다.
+실제 실행과 출력→SARIF 변환은 아래 절에서 다룬다.
 
 ## 스캔 수집과 묶음 (M1b)
 
@@ -101,8 +102,19 @@ handedOff 표시가 붙고, 조치 진행은 sast-remediation이 추적한다(AD
 다시, `--dry-run`은 건수만. 생성된 SARIF를 sast-remediation 프로젝트의 input/에
 넣어 조치를 잇는다.
 
+## 증적 (M2c)
+
+`evidence`는 같은 데이터(scope·findings·dispositions)에서 **증적 워크북**
+(`evidence/findings.csv`, 검출 하나가 한 행)과 **표지 보고서**(`evidence/cover.md`,
+범위·인가·방법·집계)를 만든다. 둘 다 생성물이라 숫자가 구조적으로 일치하고,
+데이터가 바뀐 뒤 다시 생성하지 않으면 validate가 드리프트를 에러로 잡는다(sast의
+생성 문서와 같은 방식). 툴킷은 표준 라이브러리만 쓰므로 xlsx 대신 CSV·Markdown을
+낸다 — CSV는 스프레드시트에서 열리고 표지 보고서는 문서로 변환할 수 있다. 생성물에
+현재 시각을 넣지 않아 같은 데이터면 같은 결과가 나온다. 손으로 고친 표지 보고서는
+숫자를 검사할 수 없어 경고한다.
+
 ## 앞으로
 
-M2c는 증적 워크북+표지 보고서다(숫자는 워크북에서 집계, 불일치는 validate 에러). 그때도 게이트 READY가 전제이며, 침습적 단계는
+M3~M4는 웹·인프라 스캐너, M5는 방법론 체크리스트다. 그때도 게이트 READY가 전제이며, 침습적 단계는
 스코프에 건별 인가가 있고 운영자가 실행할 때만 허용한다. 계획은
 `docs/superpowers/plans/2026-10-14-security-assessment.md`.

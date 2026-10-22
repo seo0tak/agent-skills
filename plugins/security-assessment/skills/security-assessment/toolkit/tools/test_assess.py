@@ -577,6 +577,99 @@ class AssessCase(unittest.TestCase):
         assert sarif is not None
         self.assertEqual(len(sarif["runs"][0]["results"]), 1)
 
+    # --- M2c: 증적 워크북(CSV) + 표지 보고서(MD) ---
+    def evidence_fixture(self):
+        findings = assess.merge_findings(assess.findings_from_sarif(self.sarif("semgrep-sample.sarif"), "semgrep"))
+        records = json.loads((TOOLS_DIR.parent / "examples/dispositions.json").read_text(encoding="utf-8"))["dispositions"]
+        return findings, records
+
+    def test_evidence_csv_has_header_and_one_row_per_finding(self):
+        import csv
+        findings, records = self.evidence_fixture()
+        rows = list(csv.reader(assess.render_evidence_csv(findings, records).splitlines()))
+        self.assertEqual(tuple(rows[0]), assess.EVIDENCE_COLUMNS)
+        self.assertEqual(len(rows), 1 + len(findings))
+        by_cwe = {r[1]: r for r in rows[1:]}
+        self.assertEqual(by_cwe["CWE-89"][6], "confirmed")
+        self.assertEqual(by_cwe["CWE-89"][9], "true")  # handedOff
+        self.assertEqual(by_cwe["CWE-330"][6], "false-positive")
+
+    def test_unreviewed_finding_appears_as_unreviewed_in_csv(self):
+        import csv
+        rows = list(csv.reader(assess.render_evidence_csv([self.a_finding("z", "CWE-1")], {}).splitlines()))
+        self.assertEqual(rows[1][6:8], ["unreviewed", "unreviewed"])
+
+    def test_cover_numbers_match_workbook(self):
+        import csv
+        findings, records = self.evidence_fixture()
+        rows = list(csv.reader(assess.render_evidence_csv(findings, records).splitlines()))[1:]
+        cover = assess.render_cover_md(EXAMPLE, findings, records, "2026-10-22T00:00:00Z")
+        self.assertIn(f"전체 검출 {len(rows)}건", cover)
+        handed = sum(1 for r in rows if r[9] == "true")
+        self.assertIn(f"넘김 {handed}건", cover)
+        for disposition in {r[6] for r in rows}:
+            count = sum(1 for r in rows if r[6] == disposition)
+            self.assertIn(f"| {disposition} | {count} |", cover)
+        self.assertIn("동의의 진위를 검증하지 않는다", cover)  # 게이트 한계 명시
+
+    def test_rendering_is_deterministic(self):
+        findings, records = self.evidence_fixture()
+        self.assertEqual(assess.render_evidence_csv(findings, records),
+                         assess.render_evidence_csv(list(reversed(findings)), records))
+
+    def _with_evidence_paths(self, fn):
+        base = self.scope_file.parent
+        names = ("FINDINGS_FILE", "DISPOSITIONS_FILE", "EVIDENCE_CSV", "COVER_MD")
+        orig = {n: getattr(assess, n) for n in names}
+        assess.FINDINGS_FILE = base / "findings.json"
+        assess.DISPOSITIONS_FILE = base / "dispositions.json"
+        assess.EVIDENCE_CSV = base / "evidence" / "findings.csv"
+        assess.COVER_MD = base / "evidence" / "cover.md"
+        try:
+            return fn()
+        finally:
+            for n, v in orig.items():
+                setattr(assess, n, v)
+
+    def test_evidence_then_validate_passes_and_detects_drift(self):
+        findings, records = self.evidence_fixture()
+        self.write(authorized_scope())
+
+        def body():
+            assess.FINDINGS_FILE.write_text(json.dumps({"schemaVersion": "1.0", "generatedAt": "2026-10-22T00:00:00Z", "findings": findings}), encoding="utf-8")
+            assess.DISPOSITIONS_FILE.write_text(json.dumps({"schemaVersion": "1.0", "updatedAt": None, "dispositions": records}), encoding="utf-8")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                self.assertEqual(assess.run_evidence(), 0)
+            code, out = self.validate()
+            self.assertEqual(code, 0, out)
+            # 판정을 바꾸고 evidence를 다시 안 돌리면 드리프트 에러
+            changed = dict(records)
+            changed["e778ea7e9751f862:CWE-330"] = {"disposition": "suspected", "stage": "in-review"}
+            assess.DISPOSITIONS_FILE.write_text(json.dumps({"schemaVersion": "1.0", "updatedAt": None, "dispositions": changed}), encoding="utf-8")
+            code, out = self.validate()
+            self.assertEqual(code, 1)
+            self.assertIn("findings.csv is out of date", out)
+            self.assertIn("cover.md is out of date", out)
+
+        self._with_evidence_paths(body)
+
+    def test_hand_written_cover_is_warned_not_checked(self):
+        findings, records = self.evidence_fixture()
+        self.write(authorized_scope())
+
+        def body():
+            assess.FINDINGS_FILE.write_text(json.dumps({"schemaVersion": "1.0", "generatedAt": None, "findings": findings}), encoding="utf-8")
+            assess.DISPOSITIONS_FILE.write_text(json.dumps({"schemaVersion": "1.0", "updatedAt": None, "dispositions": records}), encoding="utf-8")
+            with redirect_stdout(io.StringIO()):
+                assess.run_evidence()
+            assess.COVER_MD.write_text("# 손으로 쓴 보고서\n", encoding="utf-8")
+            code, out = self.validate()
+            self.assertEqual(code, 0, out)
+            self.assertIn("cover.md is hand-written", out)
+
+        self._with_evidence_paths(body)
+
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):
         scope = copy.deepcopy(EXAMPLE)

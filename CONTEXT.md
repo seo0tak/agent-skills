@@ -91,7 +91,8 @@ _Avoid_: 최종 보고서(워크북과 구분이 흐려질 때).
 - 하나의 점검은 하나의 **Evidence workbook**과 하나의 **Cover report**를 낸다.
   **Cover report**의 범위·인가 절에 **Scope**와 **Consent record**가 들어가고,
   그 안의 모든 숫자는 **Evidence workbook**에서 집계한다 — 둘의 불일치는
-  validate 에러 (2026-10-22 확정).
+  validate 에러 (2026-10-22 확정). 구현: 둘 다 같은 데이터에서 생성되는
+  생성물(워크북=CSV, 표지=Markdown)이고, 데이터와 어긋나면 드리프트 에러다.
 
 ## Example dialogue
 

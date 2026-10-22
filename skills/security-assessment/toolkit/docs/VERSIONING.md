@@ -17,8 +17,7 @@ sast-remediation과 같은 원칙을 따른다.
 - M1b: 'run' 어댑터 실제 실행 + SARIF 수집 + 지문/CWE 묶음 + findings 검증.
 - M1c: 카테고리→대상 타입 매핑, JSON→SARIF 정규화기(OSV).
 - M2a: 판정·확인 단계 레코드 + 검증.
-- M2b (현재): SARIF 다리 — confirmed 코드 결함을 sast-remediation으로.
-- M1~: 소스 측 스캐너 어댑터(SAST/SCA/시크릿) → SARIF 정규화.
-- M2~: 판정·증적·SARIF 다리.
-- M3~M4: 웹/API, 인프라.
-- M5: 방법론 체크리스트.
+- M2b: SARIF 다리 — confirmed 코드 결함을 sast-remediation으로.
+- M2c (현재): 증적 워크북(CSV)+표지 보고서(MD) 생성, 데이터와의 드리프트 검사.
+- 예정 M3~M4: 웹/API(DAST), 인프라 스캐너.
+- 예정 M5: 방법론 체크리스트.
