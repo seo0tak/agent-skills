@@ -19,6 +19,11 @@
 
 ## 최소 운영 순서
 
+기록은 아래 상태를 따라 진행한다. 적용 전에는 언제든 `rejected`로 닫을 수 있고, 적용한 뒤에는
+`rolled-back`으로만 되돌린다.
+
+[![개선 기록 상태 전이](../docs/diagrams/improvement-states.svg)](../docs/diagrams/improvement-states.svg?raw=true)
+
 1. `capture`로 문제·재현·검토 맥락을 남긴다. 중단 전 `checkpoint`에 완료한
    검토, 남은 검토, 판단 메모와 다음 행동을 적는다. 아직 평가하지 않은 결과는
    미완료로 둔다. 개선 기록에는 스킬 개선 자료만 두고 SAST 고객 업무 자료는 넣지 않는다.

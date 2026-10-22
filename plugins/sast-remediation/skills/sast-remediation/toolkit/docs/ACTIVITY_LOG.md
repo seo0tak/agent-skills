@@ -56,7 +56,10 @@
 ## AI가 수정·검증할 때의 기록 순서
 
 툴킷 디렉터리에서 실행합니다. `<ID>`는 실제 항목 ID로 바꾸고,
-반환된 `operationId`와 `attemptId`를 해당 작업에 연결합니다.
+반환된 `operationId`와 `attemptId`를 해당 작업에 연결합니다. 수정과 검증은 서로 다른
+시도로 기록합니다.
+
+[![작업 이력 기록 순서](diagrams/activity-sequence.svg)](diagrams/activity-sequence.svg?raw=true)
 
 ```text
 python3 tools/sast_activity.py start --action remediation --id <ID> --actor agent --summary "승인된 항목의 소스 조치 시작"

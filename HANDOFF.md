@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-22 security-assessment 0.8.0 · 문서·다이어그램 정비)
 
-배포 버전: sast-remediation **v1.15.1**, skill-architect **v0.5.0**, security-assessment **v0.9.0**.
+배포 버전: sast-remediation **v1.15.2**, skill-architect **v0.5.1**, security-assessment **v0.9.0**.
 최신 커밋 `a8cb209`, 전부 push 완료. 작업 트리 깨끗함.
 
 ### security-assessment (신규 스킬)
@@ -67,6 +67,21 @@
   운영자 출력 들여오기: 게이트 READY 필요, forbidden 어댑터 거부, 같은 어댑터·대상 결과만 교체,
   파일 이름·SHA-256 기록, 출처에 `target`·`collectedBy`(skill|operator). README 흐름도의
   운영자 경로가 이제 실제 구현과 맞다. CONTEXT.md에 Decided by·Operator ingest 용어.
+
+### 다이어그램 전체 점검 (sast 1.15.2 · skill-architect 0.5.1, 문서만)
+
+- sast-remediation README 흐름도를 실제 절차에 맞춤: 00 BLOCKED 멈춤, 처리 범위 확인(미설정이면
+  멈춤), 초기 분석 확인·조치 범위 승인, 02는 03에 수시로 들어가는 보류 질문, 대시보드 검토·백업,
+  05 뒤 제출 전 검토. 사람이 정하는 단계는 "사용자:"로 표시. USAGE.md 텍스트 흐름과 SKILL.md 순서
+  문장도 같은 순서로(USAGE.html은 sync로 재생성).
+- sast-remediation에 시퀀스(HOW_IT_WORKS「사람이 정하는 지점」)와 작업 이력 기록 순서 시퀀스
+  (ACTIVITY_LOG) 추가. 실제 순서: 수정 finish 뒤 snapshot → 검증 start → 실행 → finish →
+  결과 기록 → seal-verification.
+- skill-architect 개선 기록 상태도(PlantUML, references/improvement-workflow.md): 적용 전 묶음 →
+  rejected, 적용 후 묶음 → rolled-back.
+- CLAUDE.md 다이어그램 규칙: 승인 지점이 있는 스킬은 시퀀스, 순서·상태 전이가 핵심인 절차 문서는
+  그 문서에 시퀀스·상태도, 동작 변경 시 흐름도·시퀀스·구조도·USAGE 텍스트 흐름을 함께 대조.
+- PlantUML 메시지의 `--a ... --b`는 취소선으로 렌더된다. 옵션은 `~--`로 이스케이프한다.
 
 ### 다음
 
