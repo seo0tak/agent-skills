@@ -1,0 +1,31 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "semgrep", "rules": [
+        { "id": "rule.sql-concat", "properties": { "cwe": ["CWE-89: SQL Injection"] } },
+        { "id": "rule.weak-rng", "properties": { "cwe": ["CWE-330"] } }
+      ] } },
+      "results": [
+        {
+          "ruleId": "rule.sql-concat",
+          "level": "error",
+          "message": { "text": "Query built from concatenation." },
+          "locations": [ { "physicalLocation": {
+            "artifactLocation": { "uri": "src/dao/UserDao.java" },
+            "region": { "startLine": 42 }
+          }, "logicalLocations": [ { "fullyQualifiedName": "UserDao.find" } ] } ]
+        },
+        {
+          "ruleId": "rule.weak-rng",
+          "level": "warning",
+          "message": { "text": "Weak random source." },
+          "locations": [ { "physicalLocation": {
+            "artifactLocation": { "uri": "src/util/Token.java" },
+            "region": { "startLine": 10, "snippet": { "text": "new Random()" } }
+          } } ]
+        }
+      ]
+    }
+  ]
+}

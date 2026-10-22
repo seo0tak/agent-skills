@@ -246,6 +246,127 @@ class AssessCase(unittest.TestCase):
         semgrep = json.loads((TOOLS_DIR.parent / "examples/adapters/semgrep.json").read_text(encoding="utf-8"))
         self.assertEqual(self.adapter_errors("semgrep", semgrep), [])
 
+    # --- M1b: SARIF 수집·묶음 (순수 함수, 도구 미실행) ---
+    def sarif(self, name):
+        return json.loads((TOOLS_DIR.parent / "examples/sarif" / name).read_text(encoding="utf-8"))
+
+    def test_sarif_ingestion_extracts_cwe_location_fingerprint(self):
+        findings = assess.findings_from_sarif(self.sarif("semgrep-sample.sarif"), "semgrep")
+        self.assertEqual(len(findings), 2)
+        first = findings[0]
+        self.assertEqual(first["cwe"], "CWE-89")
+        self.assertEqual(first["location"]["function"], "UserDao.find")
+        self.assertEqual(first["sources"][0], {"scanner": "semgrep", "ruleId": "rule.sql-concat", "line": 42})
+
+    def test_same_function_and_cwe_merge_across_scanners_despite_line_shift(self):
+        combined = assess.findings_from_sarif(self.sarif("semgrep-sample.sarif"), "semgrep") + \
+            assess.findings_from_sarif(self.sarif("other-sample.sarif"), "other-sast")
+        merged = assess.merge_findings(combined)
+        self.assertEqual(len(merged), 2)
+        sql = next(f for f in merged if f["cwe"] == "CWE-89")
+        self.assertEqual(sorted(s["scanner"] for s in sql["sources"]), ["other-sast", "semgrep"])
+        self.assertEqual([s["line"] for s in sql["sources"]], [42, 44])
+
+    def test_different_cwe_at_same_fingerprint_stays_separate(self):
+        base = assess.findings_from_sarif(self.sarif("other-sample.sarif"), "other-sast")
+        variant = copy.deepcopy(base)
+        variant[0]["cwe"] = "CWE-20"
+        merged = assess.merge_findings(base + variant)
+        self.assertEqual(len(merged), 2)
+
+    def test_snippet_fingerprint_used_when_no_function(self):
+        findings = assess.findings_from_sarif(self.sarif("semgrep-sample.sarif"), "semgrep")
+        rng = next(f for f in findings if f["cwe"] == "CWE-330")
+        self.assertIsNone(rng["location"]["function"])
+        self.assertTrue(rng["fingerprint"])
+
+    # --- M1b: scan 실행 경로 (execute_adapter를 교체, 실제 스캐너 미실행) ---
+    def _run_scan_with_fake(self, scope, adapters, sarif_name, direct=True):
+        """execute_adapter를 교체해 픽스처 SARIF를 출력에 쓴다 — 도구를 돌리지 않는다."""
+        fixture = (TOOLS_DIR.parent / "examples/sarif" / sarif_name).read_text(encoding="utf-8")
+        calls = []
+
+        def fake_execute(command_template, target, output_path, timeout=600):
+            calls.append((command_template, target))
+            Path(output_path).write_text(fixture, encoding="utf-8")
+            return 0
+
+        adapter_dir = Path(self._tmp.name) / "adapters"
+        adapter_dir.mkdir()
+        for name, adapter in adapters.items():
+            (adapter_dir / f"{name}.json").write_text(json.dumps(adapter), encoding="utf-8")
+        findings_file = Path(self._tmp.name) / "findings.json"
+        self.write(scope)
+        orig_dir, orig_find, orig_exec = assess.ADAPTER_DIR, assess.FINDINGS_FILE, assess.execute_adapter
+        assess.ADAPTER_DIR, assess.FINDINGS_FILE, assess.execute_adapter = adapter_dir, findings_file, fake_execute
+        try:
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = assess.run_scan(direct)
+            out = buffer.getvalue()
+            data = json.loads(findings_file.read_text(encoding="utf-8")) if findings_file.exists() else None
+        finally:
+            assess.ADAPTER_DIR, assess.FINDINGS_FILE, assess.execute_adapter = orig_dir, orig_find, orig_exec
+        return code, out, data, calls
+
+    def test_scan_runs_only_run_adapters_and_writes_merged_findings(self):
+        # 상한을 intrusive로 둬 sqlmap이 금지가 아니라 operator 경로를 타게 한다.
+        scope = authorized_scope(intrusiveness="intrusive")
+        adapters = {
+            "semgrep": {"id": "semgrep", "category": "sast", "intrusiveness": "passive",
+                        "availability": "semgrep --version", "command": "semgrep scan --sarif -o {output} {target}",
+                        "output_format": "sarif"},
+            "sqlmap": {"id": "sqlmap", "category": "dast", "intrusiveness": "intrusive",
+                       "availability": "sqlmap --version", "command": "sqlmap -u {target}", "output_format": "sarif"},
+        }
+        code, out, data, calls = self._run_scan_with_fake(scope, adapters, "semgrep-sample.sarif", direct=True)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(all(c[0].startswith("semgrep") for c in calls), calls)  # intrusive는 스킬이 실행 안 함
+        self.assertIn("operator", out)  # sqlmap은 운영자 안내
+        self.assertIsNotNone(data)
+        assert data is not None
+        self.assertEqual(len(data["findings"]), 2)
+
+    def test_scan_blocks_when_gate_not_ready(self):
+        scope = copy.deepcopy(EXAMPLE)
+        scope["status"] = "unauthorized"
+        scope["authorizedAt"] = None
+        scope["approvalFingerprint"] = None
+        _code_out = self._run_scan_with_fake(scope, {"semgrep": {"id": "semgrep", "category": "sast",
+            "intrusiveness": "passive", "availability": "x", "command": "x {output} {target}", "output_format": "sarif"}},
+            "semgrep-sample.sarif", direct=True)
+        code, out, _data, calls = _code_out
+        self.assertEqual(code, 1)
+        self.assertIn("BLOCKED", out)
+        self.assertEqual(calls, [])  # 아무것도 실행하지 않음
+
+    def test_scan_without_direct_only_instructs_operator(self):
+        scope = authorized_scope(intrusiveness="active-nondestructive")
+        adapters = {"semgrep": {"id": "semgrep", "category": "sast", "intrusiveness": "passive",
+                    "availability": "x", "command": "semgrep -o {output} {target}", "output_format": "sarif"}}
+        code, out, data, calls = self._run_scan_with_fake(scope, adapters, "semgrep-sample.sarif", direct=False)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(calls, [])
+        self.assertIn("operator", out)
+        self.assertIsNotNone(data)
+        assert data is not None
+        self.assertEqual(data["findings"], [])
+
+    # --- M1b: findings 파일 검증 ---
+    def test_validate_rejects_unmerged_findings(self):
+        self.write(authorized_scope())
+        findings_file = self.scope_file.parent / "findings.json"
+        dup = {"fingerprint": "abc", "cwe": "CWE-89", "location": {"file": "a.c"}, "sources": [{"scanner": "s", "ruleId": "r"}]}
+        findings_file.write_text(json.dumps({"schemaVersion": "1.0", "generatedAt": None, "findings": [dup, dict(dup)]}), encoding="utf-8")
+        orig = assess.FINDINGS_FILE
+        assess.FINDINGS_FILE = findings_file
+        try:
+            code, out = self.validate()
+        finally:
+            assess.FINDINGS_FILE = orig
+        self.assertEqual(code, 1)
+        self.assertIn("merge was not applied", out)
+
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):
         scope = copy.deepcopy(EXAMPLE)

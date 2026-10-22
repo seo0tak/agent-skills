@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/security-assessment/findings.schema.json",
+  "title": "Security Assessment Findings",
+  "description": "스캐너 출력에서 정규화·묶음한 검출 목록. 판정(disposition)은 M2에서 별도. fingerprint+CWE가 같으면 하나로 묶고 출처 스캐너를 sources에 보존한다.",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "findings"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "generatedAt": { "type": ["string", "null"], "format": "date-time" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fingerprint", "cwe", "location", "sources"],
+        "properties": {
+          "fingerprint": { "type": "string", "minLength": 1, "description": "위치 독립 지문(파일+함수|스니펫). 줄 번호·ruleId 비의존." },
+          "cwe": { "type": "string", "description": "정규화된 CWE 식별자(예: CWE-89). 없으면 빈 문자열." },
+          "location": {
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string", "minLength": 1 },
+              "line": { "type": ["integer", "null"] },
+              "function": { "type": ["string", "null"] }
+            }
+          },
+          "message": { "type": "string" },
+          "severity": { "type": "string" },
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "description": "이 검출을 보고한 스캐너별 출처.",
+            "items": {
+              "type": "object",
+              "required": ["scanner", "ruleId"],
+              "properties": {
+                "scanner": { "type": "string" },
+                "ruleId": { "type": "string" },
+                "line": { "type": ["integer", "null"] }
+              }
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

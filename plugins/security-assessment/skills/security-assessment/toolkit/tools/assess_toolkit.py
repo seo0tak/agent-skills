@@ -255,6 +255,110 @@ def execution_decision(
     return "run", "active-nondestructive 이하 + 직접 실행 명시"
 
 
+FINDINGS_FILE = DATA_DIR / "findings.json"
+CWE_RE = re.compile(r"CWE-(\d+)", re.IGNORECASE)
+
+
+def normalize_cwe(values: Any) -> str:
+    """여러 후보에서 첫 CWE 식별자를 'CWE-NN'으로 정규화한다."""
+    for value in values or []:
+        match = CWE_RE.search(str(value))
+        if match:
+            return f"CWE-{match.group(1)}"
+    return ""
+
+
+def cwe_from_result(result: dict[str, Any], rule: dict[str, Any] | None) -> str:
+    candidates: list[str] = []
+    props = result.get("properties") or {}
+    candidates += list(props.get("cwe") or [])
+    candidates += list(props.get("tags") or [])
+    if rule:
+        rule_props = rule.get("properties") or {}
+        candidates += list(rule_props.get("cwe") or [])
+        candidates += list(rule_props.get("tags") or [])
+    return normalize_cwe(candidates)
+
+
+def fingerprint_for(file: str, function: str | None, snippet: str) -> str:
+    """위치 독립 지문. 스캐너·줄 번호에 비의존(파일+함수, 없으면 파일+정규화 스니펫)."""
+    if function:
+        material = f"{file}|fn:{function}"
+    else:
+        material = f"{file}|snip:{' '.join(snippet.split())}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
+def findings_from_sarif(sarif: Any, fallback_scanner: str) -> list[dict[str, Any]]:
+    """SARIF 하나를 정규화된 검출 목록으로. 순수 함수."""
+    out: list[dict[str, Any]] = []
+    if not isinstance(sarif, dict):
+        return out
+    for run in sarif.get("runs") or []:
+        driver = (run.get("tool") or {}).get("driver") or {}
+        scanner = str(driver.get("name") or fallback_scanner)
+        rules = {str(r.get("id")): r for r in (driver.get("rules") or []) if isinstance(r, dict)}
+        for result in run.get("results") or []:
+            if not isinstance(result, dict):
+                continue
+            rule_id = str(result.get("ruleId") or "")
+            rule = rules.get(rule_id)
+            locations = result.get("locations") or [{}]
+            loc = locations[0] if isinstance(locations[0], dict) else {}
+            phys = loc.get("physicalLocation") or {}
+            file = str((phys.get("artifactLocation") or {}).get("uri") or "")
+            region = phys.get("region") or {}
+            line = region.get("startLine")
+            snippet = str((region.get("snippet") or {}).get("text") or "")
+            logicals = loc.get("logicalLocations") or [{}]
+            logical = logicals[0] if isinstance(logicals[0], dict) else {}
+            function = logical.get("fullyQualifiedName") or logical.get("name")
+            out.append({
+                "fingerprint": fingerprint_for(file, function, snippet),
+                "cwe": cwe_from_result(result, rule),
+                "location": {"file": file, "line": line, "function": function},
+                "message": str((result.get("message") or {}).get("text") or ""),
+                "severity": str(result.get("level") or ""),
+                "sources": [{"scanner": scanner, "ruleId": rule_id, "line": line}],
+            })
+    return out
+
+
+def merge_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """지문+CWE가 같은 검출을 하나로 묶고 출처를 합친다. 순수 함수 (ADR 없음; grill 질문5)."""
+    bucket: dict[tuple[str, str], dict[str, Any]] = {}
+    order: list[tuple[str, str]] = []
+    for finding in findings:
+        key = (finding["fingerprint"], finding["cwe"])
+        if key not in bucket:
+            bucket[key] = {**finding, "sources": [dict(s) for s in finding["sources"]]}
+            order.append(key)
+            continue
+        existing = bucket[key]
+        for source in finding["sources"]:
+            if source not in existing["sources"]:
+                existing["sources"].append(dict(source))
+        if not existing.get("message") and finding.get("message"):
+            existing["message"] = finding["message"]
+    return [bucket[key] for key in order]
+
+
+def execute_adapter(command_template: str, target: str, output_path: Path, timeout: int = 600) -> int:
+    """어댑터 명령을 shell 없이 실행한다. 자리표시자는 argv 토큰으로 치환(주입 방지).
+
+    테스트는 실제 스캐너 대신 이 함수를 교체해 픽스처를 쓴다(도구 미실행).
+    """
+    import shlex
+    import subprocess
+
+    argv: list[str] = []
+    for token in shlex.split(command_template):
+        token = token.replace("{target}", target).replace("{output}", str(output_path))
+        argv.append(token)
+    completed = subprocess.run(argv, shell=False, timeout=timeout, capture_output=True, text=True)
+    return completed.returncode
+
+
 def gate_status(scope: dict[str, Any]) -> tuple[bool, list[str]]:
     """게이트 판정. (ready, blockers). 기계 점검만. 의미 확인은 프롬프트 단계."""
     blockers: list[str] = []
@@ -292,6 +396,7 @@ def run_validate(strict: bool) -> int:
     validate_scope(report, scope)
     for name, adapter in load_adapters():
         validate_adapter(report, name, adapter)
+    validate_findings_file(report)
     if strict and isinstance(scope, dict) and not report.errors:
         ready, blockers = gate_status(scope)
         if not ready:
@@ -343,6 +448,113 @@ def run_gate() -> int:
     return 1
 
 
+def validate_findings_file(report: Report) -> None:
+    if not FINDINGS_FILE.exists():
+        return
+    try:
+        data = load_json(FINDINGS_FILE)
+    except (OSError, json.JSONDecodeError) as error:
+        report.error(f"cannot read data/findings.json: {error} (likely half-written)")
+        return
+    if not isinstance(data, dict):
+        report.error("findings file must be an object")
+        return
+    if data.get("schemaVersion") != SCHEMA_VERSION:
+        report.error(f"findings schemaVersion must be {SCHEMA_VERSION!r}")
+    findings = data.get("findings")
+    if not isinstance(findings, list):
+        report.error("findings.findings must be a list")
+        return
+    seen: set[tuple[str, str]] = set()
+    for index, finding in enumerate(findings):
+        if not isinstance(finding, dict):
+            report.error(f"findings[{index}] must be an object")
+            continue
+        fingerprint = str(finding.get("fingerprint", ""))
+        cwe = str(finding.get("cwe", ""))
+        if not fingerprint:
+            report.error(f"findings[{index}] has no fingerprint")
+        key = (fingerprint, cwe)
+        if key in seen:
+            report.error(f"findings[{index}] duplicates fingerprint+cwe {key}; merge was not applied")
+        seen.add(key)
+        location = finding.get("location")
+        if not isinstance(location, dict) or not str(location.get("file", "")).strip():
+            report.error(f"findings[{index}].location.file is empty")
+        sources = finding.get("sources")
+        if not isinstance(sources, list) or not sources:
+            report.error(f"findings[{index}].sources must be a non-empty list")
+
+
+def run_scan(direct: bool) -> int:
+    """실행 판정이 'run'인 어댑터만 스킬이 돌리고, 출력을 수집·묶어 findings에 쓴다.
+
+    게이트 READY가 전제. operator/forbidden 어댑터는 실행하지 않고 안내만 한다.
+    """
+    try:
+        scope = load_json(SCOPE_FILE)
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"ERROR: cannot read data/scope.json: {error}")
+        return 1
+    if not isinstance(scope, dict):
+        print("ERROR: scope is not an object")
+        return 1
+    ready, blockers = gate_status(scope)
+    if not ready:
+        print("SCAN: BLOCKED (gate not ready)")
+        for blocker in blockers:
+            print(f"- {blocker}")
+        return 1
+    adapters = load_adapters()
+    if not adapters:
+        print("선언된 어댑터가 없습니다 (adapters/*.json).")
+        return 0
+    targets = [str(t.get("value", "")) for t in scope.get("targets", []) if isinstance(t, dict) and t.get("value")]
+    collected: list[dict[str, Any]] = []
+    import tempfile as _tempfile
+    for name, adapter in adapters:
+        if not isinstance(adapter, dict) or "__error__" in adapter:
+            print(f"- {name}: 선언 오류, 건너뜀 (validate로 확인)")
+            continue
+        decision, reason = execution_decision(adapter, scope, direct)
+        if decision == "forbidden":
+            print(f"- {name}: forbidden — {reason}")
+            continue
+        if decision == "operator":
+            print(f"- {name}: operator — {reason}")
+            for target in targets:
+                rendered = str(adapter.get("command", "")).replace("{target}", target).replace("{output}", f"{name}.sarif")
+                print(f"    운영자 실행 후 출력을 수집: {rendered}")
+            continue
+        for target in targets:
+            with _tempfile.TemporaryDirectory() as tmp:
+                output = Path(tmp) / f"{name}.sarif"
+                try:
+                    code = execute_adapter(str(adapter.get("command", "")), target, output)
+                except Exception as error:  # noqa: BLE001 — 도구 부재·실행 오류를 안내로
+                    print(f"- {name} @ {target}: 실행 실패 ({error}); availability로 설치 확인")
+                    continue
+                if not output.exists():
+                    print(f"- {name} @ {target}: 출력 파일 없음 (종료코드 {code})")
+                    continue
+                try:
+                    sarif = load_json(output)
+                except json.JSONDecodeError:
+                    print(f"- {name} @ {target}: 출력이 SARIF JSON이 아님")
+                    continue
+                items = findings_from_sarif(sarif, name)
+                collected += items
+                print(f"- {name} @ {target}: run — 검출 {len(items)}건")
+    merged = merge_findings(collected)
+    write_json_atomic(FINDINGS_FILE, {
+        "schemaVersion": SCHEMA_VERSION,
+        "generatedAt": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "findings": merged,
+    })
+    print(f"SCAN: 수집 {len(collected)}건 → 묶음 후 {len(merged)}건. data/findings.json")
+    return 0
+
+
 def run_adapters(direct: bool) -> int:
     """어댑터별 실행 판정을 보여 준다. 어떤 명령도 실행하지 않는다(판정만)."""
     adapters = load_adapters()
@@ -372,7 +584,7 @@ def run_adapters(direct: bool) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="security-assessment authorization gate and adapter decisions (M1a).")
-    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters"))
+    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan"))
     parser.add_argument("--strict", action="store_true", help="treat a not-ready gate as a validation error")
     parser.add_argument("--direct", action="store_true", help="adapters: 사용자가 직접 실행을 명시했다고 본다")
     return parser.parse_args()
@@ -386,6 +598,8 @@ def main() -> int:
         return run_authorize()
     if args.command == "adapters":
         return run_adapters(args.direct)
+    if args.command == "scan":
+        return run_scan(args.direct)
     return run_gate()
 
 

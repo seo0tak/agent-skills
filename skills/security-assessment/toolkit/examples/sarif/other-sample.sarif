@@ -1,0 +1,20 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "other-sast" } },
+      "results": [
+        {
+          "ruleId": "java/sql-injection",
+          "level": "error",
+          "message": { "text": "Tainted SQL." },
+          "properties": { "cwe": ["CWE-89"] },
+          "locations": [ { "physicalLocation": {
+            "artifactLocation": { "uri": "src/dao/UserDao.java" },
+            "region": { "startLine": 44 }
+          }, "logicalLocations": [ { "fullyQualifiedName": "UserDao.find" } ] } ]
+        }
+      ]
+    }
+  ]
+}
