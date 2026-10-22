@@ -17,12 +17,12 @@ flowchart TD
   norm --> merge["지문+CWE 묶음"]
   merge --> findings[("findings.json")]
   findings --> disp["판정·확인 단계<br/>dispositions.json"]
-  disp -. "confirmed (예정 M2b)" .-> bridge["SARIF 다리<br/>→ sast-remediation"]
+  disp -- "confirmed 코드 결함" --> bridge["SARIF 다리<br/>→ sast-remediation"]
 ```
 
 게이트가 READY일 때만 스캔이 시작되고, 어댑터는 침습도에 따라 스킬이 직접
 실행하거나 운영자에게 명령만 안내한다. 수집·묶음·정규화·판정은 각각 순수
-함수·데이터 층이라 따로 검증된다. 점선(SARIF 다리)은 아직 구현 전이다.
+함수·데이터 층이라 따로 검증된다. SARIF 다리는 confirmed 코드 결함만 내보내며, 조치 진행은 sast-remediation이 추적한다.
 
 ## 인가 게이트가 보장하는 것, 못 하는 것
 
@@ -92,8 +92,17 @@ confirmed·false-positive·out-of-scope는 근거가 없으면 validate 에러�
 추적한다(ADR 0001). 판정 레코드는 'fingerprint:cwe'로 검출 하나를 가리키며,
 없는 검출을 가리키면 에러다. `dispositions` 명령이 판정·단계별 건수를 보여 준다.
 
+## SARIF 다리 (M2b)
+
+`bridge`는 **confirmed 코드 결함**만 SARIF로 내보낸다(`data/handoff.sarif`). 웹
+(DAST) 검출처럼 위치가 URL인 것은 코드 결함이 아니라 제외한다. 내보낸 판정에는
+handedOff 표시가 붙고, 조치 진행은 sast-remediation이 추적한다(ADR 0001) —
+해소는 다음 차수 재점검으로만 판단한다. 기본은 아직 안 넘긴 것만, `--all`은 전부
+다시, `--dry-run`은 건수만. 생성된 SARIF를 sast-remediation 프로젝트의 input/에
+넣어 조치를 잇는다.
+
 ## 앞으로
 
-M2b는 SARIF 다리(confirmed→sast-remediation), M2c는 증적 워크북+표지 보고서다. 그때도 게이트 READY가 전제이며, 침습적 단계는
+M2c는 증적 워크북+표지 보고서다(숫자는 워크북에서 집계, 불일치는 validate 에러). 그때도 게이트 READY가 전제이며, 침습적 단계는
 스코프에 건별 인가가 있고 운영자가 실행할 때만 허용한다. 계획은
 `docs/superpowers/plans/2026-10-14-security-assessment.md`.

@@ -10,7 +10,7 @@ description: Run authorized security assessments — declare an authorization sc
 모의해킹은 임의 대상 공격이 아니라 **인가 스코프 안에서 탐지를 확인·재현**하는
 절차로 다룬다. 설계 정본은 저장소 루트 `CONTEXT.md`와 `docs/adr/`.
 
-## 인가 게이트가 먼저다 (현재 구현 범위 = M2a)
+## 인가 게이트가 먼저다 (현재 구현 범위 = M2b)
 
 어떤 점검도 인가 게이트가 READY가 되기 전에는 시작하지 않는다. 어댑터를 스킬이 직접 실행할지는 침습도로 판정한다(`adapters` 명령; ADR 0002).
 
@@ -29,8 +29,8 @@ description: Run authorized security assessments — declare an authorization sc
 
 ## 아직 없는 것
 
-증적·SARIF 다리(M2b~), 웹/인프라(M3~M4)는 아직 구현되지 않았다.
-계획은 `docs/superpowers/plans/2026-10-14-security-assessment.md`. 현재는 인가 게이트·어댑터 실행 판정에 더해 'run' 어댑터 실행·수집·묶음(M1b), 카테고리→대상 매핑, 정규화기(M1c), 판정 레코드(M2a)까지 동작한다. 증적·SARIF 다리(M2b~)는 아직 없다.
+증적(M2c~), 웹/인프라(M3~M4)는 아직 구현되지 않았다.
+계획은 `docs/superpowers/plans/2026-10-14-security-assessment.md`. 현재는 인가 게이트·어댑터 실행 판정에 더해 'run' 어댑터 실행·수집·묶음(M1b), 카테고리→대상 매핑, 정규화기(M1c), 판정 레코드(M2a), SARIF 다리(M2b)까지 동작한다. 증적(M2c~)은 아직 없다.
 
 ## 안 하는 것
 

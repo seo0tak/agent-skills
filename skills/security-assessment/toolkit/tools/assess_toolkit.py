@@ -571,6 +571,106 @@ def validate_findings_file(report: Report) -> None:
             report.error(f"findings[{index}].sources must be a non-empty list")
 
 
+HANDOFF_SARIF = DATA_DIR / "handoff.sarif"
+
+
+def is_code_level(finding: dict[str, Any]) -> bool:
+    """코드 레벨 검출인지. sast-remediation에 넘길 수 있는 소스 위치가 있어야 한다.
+
+    웹(DAST) 검출의 위치는 URL이라 코드 결함이 아니다 — 넘기지 않는다.
+    """
+    file = str((finding.get("location") or {}).get("file") or "")
+    return bool(file) and not file.startswith(("http://", "https://"))
+
+
+def build_handoff_sarif(findings: list[dict[str, Any]], records: dict[str, Any]) -> dict[str, Any]:
+    """confirmed 코드 결함을 sast-remediation이 읽을 SARIF로 만든다. 순수 함수.
+
+    판정 근거를 메시지에 담고, cwe·지문·출처를 properties에 보존한다.
+    """
+    results: list[dict[str, Any]] = []
+    for finding in findings:
+        record = records.get(finding_key(finding)) or {}
+        if record.get("disposition") != "confirmed" or not is_code_level(finding):
+            continue
+        location = finding.get("location") or {}
+        reason = str(record.get("reason") or "")
+        cwe = str(finding.get("cwe") or "")
+        rule_id = cwe or (finding.get("sources") or [{}])[0].get("ruleId") or ""
+        region: dict[str, Any] = {}
+        if location.get("line") is not None:
+            region["startLine"] = location.get("line")
+        physical: dict[str, Any] = {"artifactLocation": {"uri": str(location.get("file") or "")}}
+        if region:
+            physical["region"] = region
+        results.append({
+            "ruleId": str(rule_id),
+            "level": "error",
+            "message": {"text": (str(finding.get("message") or "") + (f" — confirmed: {reason}" if reason else "")).strip()},
+            "properties": {
+                "cwe": cwe,
+                "fingerprint": finding.get("fingerprint"),
+                "sources": finding.get("sources"),
+                "security-assessment-disposition": "confirmed",
+            },
+            "locations": [{"physicalLocation": physical}],
+        })
+    return {
+        "version": "2.1.0",
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "runs": [{"tool": {"driver": {"name": "security-assessment", "informationUri": "https://github.com/seo0tak/agent-skills"}}, "results": results}],
+    }
+
+
+def run_bridge(dry_run: bool, include_all: bool) -> int:
+    """confirmed 코드 결함을 SARIF로 내보내고 handedOff로 표시한다.
+
+    기본은 아직 넘기지 않은(handedOff != true) 것만. --all은 전부 다시 내보낸다.
+    --dry-run은 건수만 보고하고 파일·판정을 쓰지 않는다.
+    """
+    findings_data = load_json(FINDINGS_FILE) if FINDINGS_FILE.exists() else {"findings": []}
+    findings = findings_data.get("findings", []) if isinstance(findings_data, dict) else []
+    if not DISPOSITIONS_FILE.exists():
+        print("data/dispositions.json이 없습니다. 먼저 판정을 기록하세요.")
+        return 1
+    disp_data = load_json(DISPOSITIONS_FILE)
+    records = disp_data.get("dispositions", {}) if isinstance(disp_data, dict) else {}
+
+    selectable = []
+    for finding in findings:
+        key = finding_key(finding)
+        record = records.get(key) or {}
+        if record.get("disposition") != "confirmed" or not is_code_level(finding):
+            continue
+        if not include_all and record.get("handedOff"):
+            continue
+        selectable.append((key, finding))
+
+    if not selectable:
+        print("넘길 confirmed 코드 결함이 없습니다 (이미 넘겼거나 해당 없음).")
+        return 0
+
+    sarif = build_handoff_sarif([f for _, f in selectable], records)
+    if dry_run:
+        print(f"[dry-run] 넘길 결함 {len(selectable)}건. 파일·판정을 쓰지 않았습니다.")
+        return 0
+    write_json_atomic(HANDOFF_SARIF, sarif)
+    now = now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")
+    for key, _ in selectable:
+        records[key]["handedOff"] = True
+        records[key]["updatedAt"] = now
+    disp_data["dispositions"] = records
+    disp_data["updatedAt"] = now
+    write_json_atomic(DISPOSITIONS_FILE, disp_data)
+    try:
+        shown = HANDOFF_SARIF.relative_to(ROOT)
+    except ValueError:
+        shown = HANDOFF_SARIF
+    print(f"넘김: confirmed 코드 결함 {len(selectable)}건 → {shown}")
+    print("이 SARIF를 sast-remediation 프로젝트의 input/에 넣어 조치를 이어가세요.")
+    return 0
+
+
 def load_finding_keys() -> set[str]:
     if not FINDINGS_FILE.exists():
         return set()
@@ -756,9 +856,11 @@ def run_adapters(direct: bool) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="security-assessment authorization gate and adapter decisions (M1a).")
-    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan", "dispositions"))
+    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan", "dispositions", "bridge"))
     parser.add_argument("--strict", action="store_true", help="treat a not-ready gate as a validation error")
     parser.add_argument("--direct", action="store_true", help="adapters: 사용자가 직접 실행을 명시했다고 본다")
+    parser.add_argument("--dry-run", action="store_true", help="bridge: 파일·판정을 쓰지 않고 건수만 보고")
+    parser.add_argument("--all", action="store_true", dest="all_findings", help="bridge: 이미 넘긴 것도 다시 내보낸다")
     return parser.parse_args()
 
 
@@ -774,6 +876,8 @@ def main() -> int:
         return run_scan(args.direct)
     if args.command == "dispositions":
         return run_dispositions()
+    if args.command == "bridge":
+        return run_bridge(args.dry_run, args.all_findings)
     return run_gate()
 
 

@@ -16,7 +16,7 @@
 | 스킬 | 유형 | 버전 |
 |---|---|---|
 | **sast-remediation** | 보안 | 1.15.0 |
-| **security-assessment** | 보안 | 0.5.0 |
+| **security-assessment** | 보안 | 0.6.0 |
 | **skill-architect** | 메타(스킬 품질) | 0.4.3 |
 
 보안 스킬은 취약점의 생애를 양쪽에서 맡습니다 — `security-assessment`가 점검해

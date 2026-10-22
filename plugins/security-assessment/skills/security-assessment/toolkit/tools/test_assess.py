@@ -501,6 +501,82 @@ class AssessCase(unittest.TestCase):
         self.assertEqual(summary["byStage"], {"reviewed": 1, "unreviewed": 2})
         self.assertEqual(summary["handedOff"], 1)
 
+    # --- M2b: SARIF 다리 ---
+    def test_is_code_level_excludes_urls(self):
+        self.assertTrue(assess.is_code_level({"location": {"file": "src/A.java"}}))
+        self.assertFalse(assess.is_code_level({"location": {"file": "https://x.test"}}))
+        self.assertFalse(assess.is_code_level({"location": {"file": ""}}))
+
+    def test_build_handoff_sarif_includes_only_confirmed_code(self):
+        findings = [
+            self.a_finding("fp1", "CWE-89"),                         # confirmed code
+            self.a_finding("fp2", "CWE-330"),                        # false-positive
+            {"fingerprint": "fp3", "cwe": "CWE-79", "location": {"file": "https://x.test"},
+             "sources": [{"scanner": "zap", "ruleId": "r"}]},        # confirmed but web
+        ]
+        records = {
+            "fp1:CWE-89": {"disposition": "confirmed", "stage": "reviewed", "reason": "실제 주입"},
+            "fp2:CWE-330": {"disposition": "false-positive", "stage": "reviewed", "reason": "영향 없음"},
+            "fp3:CWE-79": {"disposition": "confirmed", "stage": "reviewed", "reason": "웹"},
+        }
+        sarif = assess.build_handoff_sarif(findings, records)
+        results = sarif["runs"][0]["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["ruleId"], "CWE-89")
+        self.assertIn("confirmed: 실제 주입", results[0]["message"]["text"])
+
+    def _run_bridge(self, findings, dispositions, dry_run=False, include_all=False):
+        ff = self.scope_file.parent / "findings.json"
+        df = self.scope_file.parent / "dispositions.json"
+        hf = self.scope_file.parent / "handoff.sarif"
+        ff.write_text(json.dumps({"schemaVersion": "1.0", "generatedAt": None, "findings": findings}), encoding="utf-8")
+        df.write_text(json.dumps({"schemaVersion": "1.0", "updatedAt": None, "dispositions": dispositions}), encoding="utf-8")
+        orig = (assess.FINDINGS_FILE, assess.DISPOSITIONS_FILE, assess.HANDOFF_SARIF)
+        assess.FINDINGS_FILE, assess.DISPOSITIONS_FILE, assess.HANDOFF_SARIF = ff, df, hf
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                code = assess.run_bridge(dry_run, include_all)
+            sarif = json.loads(hf.read_text(encoding="utf-8")) if hf.exists() else None
+            disp = json.loads(df.read_text(encoding="utf-8"))["dispositions"]
+            return code, buf.getvalue(), sarif, disp
+        finally:
+            assess.FINDINGS_FILE, assess.DISPOSITIONS_FILE, assess.HANDOFF_SARIF = orig
+
+    def test_bridge_exports_and_marks_handed_off(self):
+        findings = [self.a_finding("fp1", "CWE-89")]
+        dispositions = {"fp1:CWE-89": {"disposition": "confirmed", "stage": "reviewed", "reason": "실제"}}
+        code, out, sarif, disp = self._run_bridge(findings, dispositions)
+        self.assertEqual(code, 0, out)
+        assert sarif is not None
+        self.assertEqual(len(sarif["runs"][0]["results"]), 1)
+        self.assertTrue(disp["fp1:CWE-89"]["handedOff"])  # 넘김 표시됨
+
+    def test_bridge_does_not_re_export_already_handed_off(self):
+        findings = [self.a_finding("fp1", "CWE-89")]
+        dispositions = {"fp1:CWE-89": {"disposition": "confirmed", "stage": "reviewed", "reason": "x", "handedOff": True}}
+        code, out, sarif, disp = self._run_bridge(findings, dispositions)
+        self.assertEqual(code, 0)
+        self.assertIn("없습니다", out)
+        self.assertIsNone(sarif)  # 파일을 쓰지 않음
+
+    def test_bridge_dry_run_does_not_write_or_mark(self):
+        findings = [self.a_finding("fp1", "CWE-89")]
+        dispositions = {"fp1:CWE-89": {"disposition": "confirmed", "stage": "reviewed", "reason": "x"}}
+        code, out, sarif, disp = self._run_bridge(findings, dispositions, dry_run=True)  # noqa
+        self.assertEqual(code, 0)
+        self.assertIn("dry-run", out)
+        self.assertIsNone(sarif)
+        self.assertNotIn("handedOff", disp["fp1:CWE-89"])
+
+    def test_bridge_all_re_exports_handed_off(self):
+        findings = [self.a_finding("fp1", "CWE-89")]
+        dispositions = {"fp1:CWE-89": {"disposition": "confirmed", "stage": "reviewed", "reason": "x", "handedOff": True}}
+        code, _out, sarif, _disp = self._run_bridge(findings, dispositions, include_all=True)
+        self.assertEqual(code, 0)
+        assert sarif is not None
+        self.assertEqual(len(sarif["runs"][0]["results"]), 1)
+
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):
         scope = copy.deepcopy(EXAMPLE)

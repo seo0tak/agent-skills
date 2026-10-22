@@ -16,7 +16,8 @@ sast-remediation과 같은 원칙을 따른다.
 - M1a: 어댑터 선언 스키마 + 침습도 세 겹 실행 판정 + 검증.
 - M1b: 'run' 어댑터 실제 실행 + SARIF 수집 + 지문/CWE 묶음 + findings 검증.
 - M1c: 카테고리→대상 타입 매핑, JSON→SARIF 정규화기(OSV).
-- M2a (현재): 판정(disposition)·확인 단계 레코드 + 검증. 근거 강제, findings 연결.
+- M2a: 판정·확인 단계 레코드 + 검증.
+- M2b (현재): SARIF 다리 — confirmed 코드 결함을 sast-remediation으로.
 - M1~: 소스 측 스캐너 어댑터(SAST/SCA/시크릿) → SARIF 정규화.
 - M2~: 판정·증적·SARIF 다리.
 - M3~M4: 웹/API, 인프라.
