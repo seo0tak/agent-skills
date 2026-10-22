@@ -4,7 +4,7 @@
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-10-22 신규 스킬 security-assessment M0~M1c)
+## 최신 작업 기준 (2026-10-22 신규 스킬 security-assessment M0~M2)
 
 - **새 스킬 `security-assessment`**(현재 **v0.7.0**)를 추가 중이다. 보안 취약점을
   직접 *검사*하는 인가 기반 오케스트레이터. 설계 정본: 저장소 루트 `CONTEXT.md`,
@@ -13,14 +13,23 @@
   M0~M1 설계 결정을 확정했다.
 - 완료한 조각: M0 인가 게이트(0.1.0) → M1a 어댑터 선언+침습도 세 겹 판정(0.2.0) →
   M1b run 어댑터 실행+SARIF 수집+지문/CWE 묶음(0.3.0) → 카테고리→대상 매핑(0.3.1) →
-  M1c JSON→SARIF 정규화기(OSV, 0.4.0). 작업 커밋 `26a4b71`~`f1429a9`, 전부 push 완료.
+  M1c JSON→SARIF 정규화기(OSV, 0.4.0) → M2a 판정 레코드(0.5.0) → M2b SARIF 다리(0.6.0)
+  → M2c 증적 CSV+표지 MD(0.7.0). 작업 커밋 `26a4b71`~`63a1acd`, 전부 push 완료.
 - 핵심 성질: 인가 게이트가 선언 범위 밖 실수를 막고 인가 주장을 기록하되 동의
   진위는 검증 못 함(악의적 사용자 못 막음, SKILL.md 명시). 어댑터는 침습도 세 겹으로
   실행 판정(ADR 0002), 카테고리에 맞는 대상에만. 수집·묶음·정규화는 순수 함수라
-  도구 없이 테스트(assess 36건), 실제 스캔은 저장소 밖 임시 사본에서 확인.
-- M2 완료: M2a 판정 레코드(0.5.0) → M2b SARIF 다리(0.6.0) → M2c 증적 CSV+표지 MD
-  생성·드리프트 검사(0.7.0). 증적은 표준 라이브러리 원칙상 xlsx가 아닌 CSV·Markdown.
-- **다음: M3~M5** — 웹(DAST)·인프라 스캐너, 방법론 체크리스트.
+  도구 없이 테스트(assess 56건), 실제 스캔·다리·증적은 저장소 밖 임시 사본에서 확인.
+- 데이터 흐름: `data/scope.json`(인가) → `scan` → `data/findings.json`(지문+CWE 묶음) →
+  `data/dispositions.json`(판정·확인 단계, 키 `fingerprint:cwe`) → `bridge` →
+  `data/handoff.sarif`(confirmed 코드 결함만, handedOff 표시) / `evidence` →
+  `evidence/findings.csv`+`cover.md`(생성물, 드리프트는 validate 에러).
+- 증적은 표준 라이브러리 원칙상 xlsx가 아닌 CSV·Markdown(사용자 선택).
+- 저장소 문서 정비(같은 날): README를 스킬 수·범주에 독립적으로(유형 열 보안/메타,
+  스킬별 관련 문서), 원리 4를 LSP 중심에서 "목적에 맞는 소스 탐색 + 현재 수단 명시"로,
+  mermaid 다이어그램 2개(README 스킬 관계, security-assessment 흐름). CLAUDE.md에
+  범주 비전제·유형 열 규약.
+- **다음: M3~M5** — 웹(DAST)·인프라 스캐너, 방법론 체크리스트. 웹 스캐너는 실행 중인
+  대상에 실제 요청을 보내므로 M3 착수 전 설계 점검(grill)을 권한다.
 - sast-remediation·skill-architect는 변경 없음(v1.15.0 / v0.4.3 유지).
 
 ## 이전 작업 기준 (2026-10-14 체커별 진행)
@@ -254,10 +263,12 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
    키보드 왕복, 실제 백업 불러오기/다운로드 및 저장 불가 환경.
    상세 결과 초안 저장은 1.12에서 구현했다. 원문 답변 입력창 자체의 장기 저장,
    백업 차이 미리보기·정책 질문 패널·상세 이전/다음 등은 별도 후보다.
-9. **security-assessment M2 이후** — 판정·증적·SARIF 다리(ADR 0001), 웹/인프라
-   스캐너(M3~M4), 방법론 체크리스트(M5). gitleaks(시크릿)는 출력에 실제 시크릿이
-   담겨 샘플·저장에 주의 필요. scan의 카테고리→대상은 고정 표(infra 타입은 아직
-   매핑 카테고리 없음). 어댑터가 대상 타입을 직접 선언하는 오버라이드는 YAGNI로 보류.
+9. **security-assessment M3 이후** — 웹/인프라 스캐너(M3~M4), 방법론 체크리스트(M5).
+   gitleaks(시크릿)는 출력에 실제 시크릿이 담겨 샘플·저장에 주의 필요. scan의
+   카테고리→대상은 고정 표(infra 타입은 아직 매핑 카테고리 없음). 어댑터가 대상 타입을
+   직접 선언하는 오버라이드는 YAGNI로 보류. 판정 레코드는 단일 파일(원자 쓰기)이라
+   검출이 아주 많아지면 sast처럼 항목별 파일을 검토. 실제 스캐너로의 실물 차수 점검은
+   아직 없음(합성 샘플·가짜 어댑터로만 검증).
 
 ## 검증 습관
 
@@ -273,7 +284,10 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
 - 저장소 레벨: `scripts/sync-plugins.sh --check`(정본↔사본), `scripts/check-versions.sh`
   (claude·codex 매니페스트·README 표) — 커밋 전 둘 다 통과
 - 설치 경로 검증은 사용자가 설치 테스트를 승인한 별도 작업에서 수행한다.
-  기존 설치를 일괄 제거하거나 캐시를 삭제하지 않는다. 이번 작업은 설치하지 않았다.
+  기존 설치를 일괄 제거하거나 캐시를 삭제하지 않는다.
+- security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(56건).
+  CLI 왕복은 저장소 밖 임시 사본에서(저장소 안에서 scan·evidence를 돌리지 않는다).
+- mermaid를 고치면 브라우저에서 렌더링해 파싱 오류 0을 확인한다(문법 오류가 조용히 남는다).
 
 ## 유지보수 주의점
 
@@ -289,6 +303,15 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
   Claude Code의 설치 결과만으로 Codex 설치 호환성을 판단하지 않는다
 - `.codex-plugin/plugin.json`에도 version이 있다. 올릴 때 check-versions.sh
 - Claude Code 메모리 디렉터리는 경로 키라 디렉터리를 옮기면 `~/.claude/projects/<경로키>/memory`도 옮긴다
+- **사고 기록(2026-10-22)**: 로컬 설치 스모크 테스트를 실제 마켓과 같은 이름 `0tak`으로
+  `claude plugin marketplace add ./` 한 뒤 "원복"으로 `marketplace remove 0tak`과
+  `~/.claude/plugins/cache/0tak` 삭제를 해서, GitHub 소스로 설치돼 있던 실제 `0tak` 마켓과
+  sast-remediation·skill-architect 설치까지 지웠다. 같은 날 재등록·재설치로 복구(현재 최신
+  버전). 교훈: 실제 마켓 이름과 겹치는 로컬 테스트를 하지 않는다. 필요하면 먼저 현재 설치
+  상태를 기록하고, 사용자 승인 아래 하며, 끝나면 기록과 대조해 되돌린다.
+- 문서를 스크립트로 치환할 때는 매번 일치 여부를 assert한다. `str.replace`는 문구가
+  어긋나도 조용히 아무것도 안 해서, security-assessment 툴킷 README가 M0 문구로 여러
+  마일스톤 남아 있었다(M2c에서 발견·재작성).
 
 ## 배포 (별도 사용자 요청이 있을 때만)
 
