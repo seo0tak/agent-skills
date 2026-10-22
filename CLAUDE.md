@@ -25,6 +25,8 @@ plugins/<이름>/                ← Claude Code / Codex 플러그인 배포 구
 - 새 스킬을 추가하면 README의 스킬 표(버전은 check-versions가 강제)와 관련 문서
   섹션에 그 스킬 항목을 더한다. README는 공통 설치·구조·스킬 목록만 담고,
   스킬별 상세는 각 `skills/<이름>/` 문서에 둔다.
+- 스킬 표에는 유형(보안·메타 등)과 버전을 둔다(버전은 마지막 칸 — check-versions
+  정규식이 마지막 `| 버전 |`을 읽는다). README는 특정 범주를 전제하지 않는다.
 - 스킬 내부 규칙은 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
   버전·호환은 `skills/sast-remediation/toolkit/docs/VERSIONING.md`, 인수인계는 `HANDOFF.md`.
 

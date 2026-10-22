@@ -3,6 +3,27 @@
 이 스킬은 **인가된 보안 점검의 오케스트레이터**다. 지금(M0)은 인가 게이트만
 동작한다. 왜 이렇게 움직이는지 설명한다. 용어 정본은 저장소 루트 `CONTEXT.md`.
 
+## 전체 흐름
+
+```mermaid
+flowchart TD
+  scope["scope.json 선언<br/>대상·제외·기간·동의·침습도"] --> gate{"인가 게이트<br/>READY?"}
+  gate -- "no" --> blocked["차단: 범위 밖·기간·미승인"]
+  gate -- "yes" --> decide{"어댑터 침습도 판정"}
+  decide -- "run" --> exec["스캐너 실행 (shell 없이)"]
+  decide -- "operator" --> instruct["운영자에 명령만 안내"]
+  decide -- "forbidden" --> skip["건너뜀"]
+  exec --> norm["정규화 → SARIF"]
+  norm --> merge["지문+CWE 묶음"]
+  merge --> findings[("findings.json")]
+  findings --> disp["판정·확인 단계<br/>dispositions.json"]
+  disp -. "confirmed (예정 M2b)" .-> bridge["SARIF 다리<br/>→ sast-remediation"]
+```
+
+게이트가 READY일 때만 스캔이 시작되고, 어댑터는 침습도에 따라 스킬이 직접
+실행하거나 운영자에게 명령만 안내한다. 수집·묶음·정규화·판정은 각각 순수
+함수·데이터 층이라 따로 검증된다. 점선(SARIF 다리)은 아직 구현 전이다.
+
 ## 인가 게이트가 보장하는 것, 못 하는 것
 
 게이트는 두 가지를 한다: (1) 사용자가 선언한 점검 범위를 벗어나는 **실수를
