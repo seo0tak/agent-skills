@@ -26,12 +26,17 @@ _Avoid_: 승인(게이트 통과 상태인 approval과 섞일 때).
 _Avoid_: 취약점(확인 전에 쓸 때).
 
 **Disposition (판정)**:
-검출이 실제 결함인지에 대한 결론. `confirmed | suspected | false-positive |
-out-of-scope | needs-review`. _Avoid_: 상태, 결과.
+검출이 실제 결함인지에 대한 결론. `unreviewed`(초기) `| confirmed | suspected |
+false-positive | out-of-scope | needs-review`. confirmed·false-positive·
+out-of-scope는 근거(reason)가 있어야 한다(validate 강제). _Avoid_: 상태, 결과.
 
 **Verification stage (확인 단계)**:
-검출 하나를 확인하는 작업이 어디까지 진행됐는지. 판정과 별개 축이다.
-_Avoid_: 진행률(조치 진행과 섞일 때).
+검출 하나를 확인하는 작업이 어디까지 진행됐는지. `unreviewed | in-review |
+reviewed`. 판정과 별개 축이다. _Avoid_: 진행률(조치 진행과 섞일 때).
+
+**Handed-off (넘김)**:
+confirmed 코드 결함을 SARIF로 sast-remediation에 넘겼다는 표시(불리언). confirmed일
+때만 참일 수 있다. 조치 진행은 그쪽이 추적한다(ADR 0001). _Avoid_: 완료, 해결.
 
 **Adapter (어댑터)**:
 스캐너 하나를 스킬에 붙이는 선언. `{id, category, intrusiveness, 가용성 확인,

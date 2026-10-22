@@ -109,6 +109,10 @@ def load_json(path: Path) -> Any:
         return json.load(handle)
 
 
+def json_text(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
+
+
 def write_json_atomic(path: Path, value: Any) -> None:
     text = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
     descriptor, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
@@ -326,7 +330,16 @@ def execution_decision(
 
 
 FINDINGS_FILE = DATA_DIR / "findings.json"
+DISPOSITIONS_FILE = DATA_DIR / "dispositions.json"
+DISPOSITION_VALUES = {"unreviewed", "confirmed", "suspected", "false-positive", "out-of-scope", "needs-review"}
+STAGE_VALUES = {"unreviewed", "in-review", "reviewed"}
+# 근거가 필수인 판정. 결함이라 단정하거나 범위 밖·오탐으로 치우는 결론은 설명이 있어야 한다.
+REASON_REQUIRED = {"confirmed", "false-positive", "out-of-scope"}
 CWE_RE = re.compile(r"CWE-(\d+)", re.IGNORECASE)
+
+
+def finding_key(finding: dict[str, Any]) -> str:
+    return f"{finding.get('fingerprint', '')}:{finding.get('cwe', '')}"
 
 
 def normalize_cwe(values: Any) -> str:
@@ -468,6 +481,7 @@ def run_validate(strict: bool) -> int:
     for name, adapter in load_adapters():
         validate_adapter(report, name, adapter)
     validate_findings_file(report)
+    validate_dispositions_file(report)
     if strict and isinstance(scope, dict) and not report.errors:
         ready, blockers = gate_status(scope)
         if not ready:
@@ -555,6 +569,84 @@ def validate_findings_file(report: Report) -> None:
         sources = finding.get("sources")
         if not isinstance(sources, list) or not sources:
             report.error(f"findings[{index}].sources must be a non-empty list")
+
+
+def load_finding_keys() -> set[str]:
+    if not FINDINGS_FILE.exists():
+        return set()
+    try:
+        data = load_json(FINDINGS_FILE)
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if not isinstance(data, dict):
+        return set()
+    return {finding_key(f) for f in data.get("findings", []) if isinstance(f, dict)}
+
+
+def validate_dispositions_file(report: Report) -> None:
+    if not DISPOSITIONS_FILE.exists():
+        return
+    try:
+        data = load_json(DISPOSITIONS_FILE)
+    except (OSError, json.JSONDecodeError) as error:
+        report.error(f"cannot read data/dispositions.json: {error} (likely half-written)")
+        return
+    if not isinstance(data, dict):
+        report.error("dispositions file must be an object")
+        return
+    if data.get("schemaVersion") != SCHEMA_VERSION:
+        report.error(f"dispositions schemaVersion must be {SCHEMA_VERSION!r}")
+    records = data.get("dispositions")
+    if not isinstance(records, dict):
+        report.error("dispositions.dispositions must be an object")
+        return
+    finding_keys = load_finding_keys()
+    for key, record in records.items():
+        where = f"disposition {key}"
+        if not isinstance(record, dict):
+            report.error(f"{where} must be an object")
+            continue
+        if finding_keys and key not in finding_keys:
+            report.error(f"{where} references no finding (fingerprint:cwe not in findings.json)")
+        disposition = record.get("disposition")
+        stage = record.get("stage")
+        if disposition not in DISPOSITION_VALUES:
+            report.error(f"{where}.disposition must be one of {sorted(DISPOSITION_VALUES)}")
+        if stage not in STAGE_VALUES:
+            report.error(f"{where}.stage must be one of {sorted(STAGE_VALUES)}")
+        if disposition in REASON_REQUIRED and not str(record.get("reason", "")).strip():
+            report.error(f"{where} is '{disposition}' but has no reason")
+        if record.get("handedOff") and disposition != "confirmed":
+            report.error(f"{where} is handed off but disposition is '{disposition}', not 'confirmed'")
+        # 리뷰를 끝냈다면(reviewed) 판정이 unreviewed로 남아 있으면 안 된다.
+        if stage == "reviewed" and disposition == "unreviewed":
+            report.error(f"{where} stage is 'reviewed' but disposition is still 'unreviewed'")
+
+
+def disposition_summary(findings: list[dict[str, Any]], records: dict[str, Any]) -> dict[str, Any]:
+    """판정·확인 단계 집계. 레코드 없는 검출은 unreviewed로 센다. 순수 함수."""
+    by_disposition: dict[str, int] = {}
+    by_stage: dict[str, int] = {}
+    handed_off = 0
+    for finding in findings:
+        record = records.get(finding_key(finding)) or {}
+        disposition = str(record.get("disposition") or "unreviewed")
+        stage = str(record.get("stage") or "unreviewed")
+        by_disposition[disposition] = by_disposition.get(disposition, 0) + 1
+        by_stage[stage] = by_stage.get(stage, 0) + 1
+        if record.get("handedOff"):
+            handed_off += 1
+    return {"total": len(findings), "byDisposition": by_disposition, "byStage": by_stage, "handedOff": handed_off}
+
+
+def run_dispositions() -> int:
+    findings_data = load_json(FINDINGS_FILE) if FINDINGS_FILE.exists() else {"findings": []}
+    findings = findings_data.get("findings", []) if isinstance(findings_data, dict) else []
+    records_data = load_json(DISPOSITIONS_FILE) if DISPOSITIONS_FILE.exists() else {"dispositions": {}}
+    records = records_data.get("dispositions", {}) if isinstance(records_data, dict) else {}
+    summary = disposition_summary(findings, records)
+    print(json_text(summary), end="")
+    return 0
 
 
 def run_scan(direct: bool) -> int:
@@ -664,7 +756,7 @@ def run_adapters(direct: bool) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="security-assessment authorization gate and adapter decisions (M1a).")
-    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan"))
+    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan", "dispositions"))
     parser.add_argument("--strict", action="store_true", help="treat a not-ready gate as a validation error")
     parser.add_argument("--direct", action="store_true", help="adapters: 사용자가 직접 실행을 명시했다고 본다")
     return parser.parse_args()
@@ -680,6 +772,8 @@ def main() -> int:
         return run_adapters(args.direct)
     if args.command == "scan":
         return run_scan(args.direct)
+    if args.command == "dispositions":
+        return run_dispositions()
     return run_gate()
 
 

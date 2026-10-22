@@ -31,6 +31,7 @@ python3 tools/assess_toolkit.py gate
 | `gate` | 승인·지문·기간 재대조 → READY/BLOCKED |
 | `adapters` | 어댑터별 실행 판정 표시(명령 미실행). `--direct`는 사용자가 직접 실행을 명시했다고 봄 |
 | `scan` | 게이트 READY일 때 'run' 판정 어댑터를 실행하고 출력을 수집·묶어 data/findings.json에 쓴다. `--direct` 필요. operator 판정은 명령만 안내 |
+| `dispositions` | 검출별 판정·확인 단계 집계(JSON). 레코드 없는 검출은 unreviewed로 센다 |
 
 ## 테스트
 

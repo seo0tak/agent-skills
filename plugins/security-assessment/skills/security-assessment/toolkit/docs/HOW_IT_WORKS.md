@@ -61,8 +61,18 @@ argv로 하며 명령 템플릿의 `{target}`·`{output}`를 토큰으로 치환
 정규화기 하나만 추가하고 어댑터가 그 이름을 가리킨다. 변환은 순수 함수라 커밋한
 출력 샘플로 도구 없이 테스트한다.
 
+## 판정과 확인 단계 (M2a)
+
+검출(findings)과 판정(dispositions)은 별개 파일이다 — 수집은 M1, 판정은 M2.
+판정은 두 축이다: **판정**(unreviewed/confirmed/suspected/false-positive/
+out-of-scope/needs-review)과 **확인 단계**(unreviewed/in-review/reviewed).
+confirmed·false-positive·out-of-scope는 근거가 없으면 validate 에러다. confirmed
+코드 결함만 sast-remediation으로 넘길 수 있고(handedOff), 조치 진행은 그쪽이
+추적한다(ADR 0001). 판정 레코드는 'fingerprint:cwe'로 검출 하나를 가리키며,
+없는 검출을 가리키면 에러다. `dispositions` 명령이 판정·단계별 건수를 보여 준다.
+
 ## 앞으로
 
-M2는 판정(disposition)·증적·SARIF 다리다. 그때도 게이트 READY가 전제이며, 침습적 단계는
+M2b는 SARIF 다리(confirmed→sast-remediation), M2c는 증적 워크북+표지 보고서다. 그때도 게이트 READY가 전제이며, 침습적 단계는
 스코프에 건별 인가가 있고 운영자가 실행할 때만 허용한다. 계획은
 `docs/superpowers/plans/2026-10-14-security-assessment.md`.

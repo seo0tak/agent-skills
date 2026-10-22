@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/security-assessment/dispositions.schema.json",
+  "title": "Security Assessment Dispositions",
+  "description": "검출별 판정과 확인 단계. findings와 별개 파일(판정은 M2, 수집은 M1). 키는 'fingerprint:cwe'로 findings의 검출 하나를 가리킨다.",
+  "type": "object",
+  "required": ["schemaVersion", "updatedAt", "dispositions"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "updatedAt": { "type": ["string", "null"], "format": "date-time" },
+    "dispositions": {
+      "type": "object",
+      "description": "키 'fingerprint:cwe' → 판정 레코드.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["disposition", "stage"],
+        "properties": {
+          "disposition": { "enum": ["unreviewed", "confirmed", "suspected", "false-positive", "out-of-scope", "needs-review"] },
+          "stage": { "enum": ["unreviewed", "in-review", "reviewed"] },
+          "reason": { "type": "string", "description": "confirmed·false-positive·out-of-scope에 필수." },
+          "handedOff": { "type": "boolean", "description": "confirmed 코드 결함을 sast-remediation에 넘겼는지. confirmed일 때만 참." },
+          "note": { "type": "string" },
+          "updatedAt": { "type": ["string", "null"], "format": "date-time" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

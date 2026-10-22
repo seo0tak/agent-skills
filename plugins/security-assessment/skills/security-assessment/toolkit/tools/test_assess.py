@@ -432,6 +432,75 @@ class AssessCase(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("merge was not applied", out)
 
+    # --- M2a: 판정 레코드 ---
+    def setup_findings_and_dispositions(self, findings, dispositions):
+        """임시 findings/dispositions 파일을 꽂고 validate를 돌린다."""
+        self.write(authorized_scope())
+        ff = self.scope_file.parent / "findings.json"
+        df = self.scope_file.parent / "dispositions.json"
+        ff.write_text(json.dumps({"schemaVersion": "1.0", "generatedAt": None, "findings": findings}), encoding="utf-8")
+        df.write_text(json.dumps({"schemaVersion": "1.0", "updatedAt": None, "dispositions": dispositions}), encoding="utf-8")
+        orig_f, orig_d = assess.FINDINGS_FILE, assess.DISPOSITIONS_FILE
+        assess.FINDINGS_FILE, assess.DISPOSITIONS_FILE = ff, df
+        try:
+            return self.validate()
+        finally:
+            assess.FINDINGS_FILE, assess.DISPOSITIONS_FILE = orig_f, orig_d
+
+    def a_finding(self, fp="abc", cwe="CWE-89"):
+        return {"fingerprint": fp, "cwe": cwe, "location": {"file": "a.c"}, "sources": [{"scanner": "s", "ruleId": "r"}]}
+
+    def test_confirmed_requires_reason(self):
+        code, out = self.setup_findings_and_dispositions(
+            [self.a_finding()], {"abc:CWE-89": {"disposition": "confirmed", "stage": "reviewed", "reason": ""}})
+        self.assertEqual(code, 1)
+        self.assertIn("'confirmed' but has no reason", out)
+
+    def test_false_positive_and_out_of_scope_require_reason(self):
+        for value in ("false-positive", "out-of-scope"):
+            code, out = self.setup_findings_and_dispositions(
+                [self.a_finding()], {"abc:CWE-89": {"disposition": value, "stage": "reviewed", "reason": ""}})
+            self.assertEqual(code, 1, value)
+            self.assertIn("has no reason", out)
+
+    def test_suspected_and_needs_review_do_not_require_reason(self):
+        code, out = self.setup_findings_and_dispositions(
+            [self.a_finding()], {"abc:CWE-89": {"disposition": "suspected", "stage": "in-review"}})
+        self.assertEqual(code, 0, out)
+
+    def test_handed_off_only_when_confirmed(self):
+        code, out = self.setup_findings_and_dispositions(
+            [self.a_finding()], {"abc:CWE-89": {"disposition": "suspected", "stage": "in-review", "handedOff": True}})
+        self.assertEqual(code, 1)
+        self.assertIn("handed off but disposition is 'suspected'", out)
+
+    def test_reviewed_stage_cannot_stay_unreviewed_disposition(self):
+        code, out = self.setup_findings_and_dispositions(
+            [self.a_finding()], {"abc:CWE-89": {"disposition": "unreviewed", "stage": "reviewed"}})
+        self.assertEqual(code, 1)
+        self.assertIn("still 'unreviewed'", out)
+
+    def test_disposition_must_reference_a_finding(self):
+        code, out = self.setup_findings_and_dispositions(
+            [self.a_finding()], {"nope:CWE-1": {"disposition": "suspected", "stage": "in-review"}})
+        self.assertEqual(code, 1)
+        self.assertIn("references no finding", out)
+
+    def test_example_dispositions_validate_clean(self):
+        semgrep = assess.merge_findings(assess.findings_from_sarif(self.sarif("semgrep-sample.sarif"), "semgrep"))
+        records = json.loads((TOOLS_DIR.parent / "examples/dispositions.json").read_text(encoding="utf-8"))["dispositions"]
+        code, out = self.setup_findings_and_dispositions(semgrep, records)
+        self.assertEqual(code, 0, out)
+
+    def test_disposition_summary_counts_missing_as_unreviewed(self):
+        findings = [self.a_finding("f1", "CWE-89"), self.a_finding("f2", "CWE-330"), self.a_finding("f3", "")]
+        records = {"f1:CWE-89": {"disposition": "confirmed", "stage": "reviewed", "handedOff": True}}
+        summary = assess.disposition_summary(findings, records)
+        self.assertEqual(summary["total"], 3)
+        self.assertEqual(summary["byDisposition"], {"confirmed": 1, "unreviewed": 2})
+        self.assertEqual(summary["byStage"], {"reviewed": 1, "unreviewed": 2})
+        self.assertEqual(summary["handedOff"], 1)
+
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):
         scope = copy.deepcopy(EXAMPLE)

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "updatedAt": "2026-10-22T00:00:00Z",
+  "dispositions": {
+    "7872908dde452cab:CWE-89": {
+      "disposition": "confirmed",
+      "stage": "reviewed",
+      "reason": "UserDao.find가 사용자 입력을 문자열 결합으로 쿼리에 넣는다. 파라미터 바인딩 없음.",
+      "handedOff": true,
+      "updatedAt": "2026-10-22T00:00:00Z"
+    },
+    "e778ea7e9751f862:CWE-330": {
+      "disposition": "false-positive",
+      "stage": "reviewed",
+      "reason": "Token.java의 Random은 보안 토큰이 아니라 UI 지터용. 영향 없음.",
+      "handedOff": false,
+      "updatedAt": "2026-10-22T00:00:00Z"
+    }
+  }
+}
