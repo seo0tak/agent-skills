@@ -13,6 +13,11 @@
       "name": "skill-architect",
       "source": "./plugins/skill-architect",
       "description": "에이전트 스킬의 설계와 품질을 근거에 따라 검토합니다. 요청 시 승인된 개선 범위와 평가·적용·재개 이력을 기록합니다."
+    },
+    {
+      "name": "security-assessment",
+      "source": "./plugins/security-assessment",
+      "description": "인가 범위를 선언·검증하고 그 안에서 보안 취약점 점검을 조율합니다. 현재는 인가 게이트까지 구현되어 있습니다."
     }
   ]
 }

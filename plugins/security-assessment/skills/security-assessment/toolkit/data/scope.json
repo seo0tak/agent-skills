@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0",
+  "status": "unauthorized",
+  "authorizedAt": null,
+  "approvalFingerprint": null,
+  "targets": [],
+  "exclusions": [],
+  "window": { "start": "", "end": "" },
+  "consent": { "authorizer": "", "role": "", "date": "", "reference": "" },
+  "intrusiveness": "passive"
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/security-assessment/scope.schema.json",
+  "title": "Security Assessment Scope",
+  "description": "이번 점검에서 인가된 대상·제외·기간·동의·침습도. 정본 파일. 게이트는 이것을 읽어 통과/차단을 판정한다.",
+  "type": "object",
+  "required": ["schemaVersion", "status", "targets", "exclusions", "window", "consent", "intrusiveness"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "status": { "enum": ["unauthorized", "authorized"] },
+    "authorizedAt": { "type": ["string", "null"], "format": "date-time" },
+    "approvalFingerprint": {
+      "type": ["string", "null"],
+      "description": "인가 시점의 의미 필드 지문. 현재 지문과 다르면 스코프가 바뀐 것이므로 승인 무효."
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["type", "value"],
+        "properties": {
+          "type": { "enum": ["repo", "web", "infra"] },
+          "value": { "type": "string", "minLength": 1 },
+          "notes": { "type": "string", "description": "설명 필드. 지문에 포함되지 않아 변경해도 승인이 무효되지 않는다." }
+        },
+        "additionalProperties": true
+      }
+    },
+    "exclusions": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "제외 자산(서브도메인·경로·호스트)." },
+    "window": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string", "minLength": 1 },
+        "end": { "type": "string", "minLength": 1 }
+      }
+    },
+    "consent": {
+      "type": "object",
+      "required": ["authorizer", "role", "date", "reference"],
+      "description": "소유자가 점검을 인가했다는 주장의 기록. 스킬은 이것이 진짜인지 검증하지 못한다.",
+      "properties": {
+        "authorizer": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "date": { "type": "string", "minLength": 1 },
+        "reference": { "type": "string", "minLength": 1, "description": "티켓 ID 또는 문서 URL." }
+      }
+    },
+    "intrusiveness": { "enum": ["passive", "active-nondestructive", "intrusive"] }
+  },
+  "additionalProperties": true
+}
