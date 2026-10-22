@@ -76,6 +76,8 @@ _Avoid_: 최종 보고서(워크북과 구분이 흐려질 때).
   **Finding**으로 묶는다. 묶인 검출은 출처 스캐너 목록을 가진다. CWE가 다르면
   같은 줄이어도 별개 결함이다 (2026-10-22 확정).
 - 같은 **Fingerprint**가 차수 간 해소 판단(재점검)과 스캐너 간 묶음 양쪽에 쓰인다.
+- **Adapter**는 카테고리에 맞는 **Target**에만 실행된다 (2026-10-22 확정):
+  sast·sca·secret·iac → repo, dast → web. infra 타입은 아직 매핑되는 카테고리가 없다.
 - **Adapter** 실행 판정은 침습도 세 겹이다 (2026-10-22 확정):
   ① 어댑터 intrusiveness가 **Scope**의 intrusiveness 상한을 넘으면 금지,
   ② `active-nondestructive` 이하이고 사용자가 직접 실행을 명시하면 스킬이 실행,

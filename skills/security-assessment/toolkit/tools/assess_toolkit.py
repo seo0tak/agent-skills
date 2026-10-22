@@ -33,6 +33,16 @@ TARGET_TYPES = {"repo", "web", "infra"}
 INTRUSIVENESS_RANK = {"passive": 0, "active-nondestructive": 1, "intrusive": 2}
 INTRUSIVENESS = set(INTRUSIVENESS_RANK)
 ADAPTER_CATEGORIES = {"sast", "sca", "secret", "dast", "iac"}
+# 카테고리가 어떤 대상 타입에 적용되는지. 어댑터는 자기 카테고리에 맞는 대상에만
+# 실행된다 (SAST를 web 대상에 돌리지 않는다). infra 타입은 아직 매핑되는 카테고리가
+# 없다 — 라이브 인프라 스캐너가 생기면 추가한다. iac는 저장소의 IaC 파일을 보므로 repo.
+CATEGORY_TARGET_TYPES = {
+    "sast": {"repo"},
+    "sca": {"repo"},
+    "secret": {"repo"},
+    "iac": {"repo"},
+    "dast": {"web"},
+}
 ADAPTER_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 # M1a까지 정의된 출력 형식. 정규화기가 생기면(M1c~) 그 이름을 추가한다.
 KNOWN_OUTPUT_FORMATS = {"sarif"}
@@ -225,6 +235,16 @@ def validate_adapter(report: Report, name: str, adapter: Any) -> None:
             f"{where}.output_format {output_format!r} has no normalizer yet; "
             f"known formats: {sorted(KNOWN_OUTPUT_FORMATS)}"
         )
+
+
+def targets_for_adapter(adapter: dict[str, Any], scope: dict[str, Any]) -> list[str]:
+    """어댑터 카테고리에 맞는 대상 값만 돌려준다. 순수 함수."""
+    accepted = CATEGORY_TARGET_TYPES.get(str(adapter.get("category")), set())
+    return [
+        str(t.get("value", ""))
+        for t in scope.get("targets", [])
+        if isinstance(t, dict) and t.get("value") and str(t.get("type")) in accepted
+    ]
 
 
 def execution_decision(
@@ -509,12 +529,16 @@ def run_scan(direct: bool) -> int:
     if not adapters:
         print("선언된 어댑터가 없습니다 (adapters/*.json).")
         return 0
-    targets = [str(t.get("value", "")) for t in scope.get("targets", []) if isinstance(t, dict) and t.get("value")]
     collected: list[dict[str, Any]] = []
     import tempfile as _tempfile
     for name, adapter in adapters:
         if not isinstance(adapter, dict) or "__error__" in adapter:
             print(f"- {name}: 선언 오류, 건너뜀 (validate로 확인)")
+            continue
+        targets = targets_for_adapter(adapter, scope)
+        if not targets:
+            accepted = sorted(CATEGORY_TARGET_TYPES.get(str(adapter.get("category")), set())) or ["(없음)"]
+            print(f"- {name}: 적용 대상 없음 ({adapter.get('category')} → {accepted} 타입), 건너뜀")
             continue
         decision, reason = execution_decision(adapter, scope, direct)
         if decision == "forbidden":

@@ -42,7 +42,9 @@
 
 ## 스캔 수집과 묶음 (M1b)
 
-`scan`은 게이트 READY일 때 'run' 판정 어댑터만 실행한다. 실행은 `shell` 없이
+`scan`은 게이트 READY일 때 'run' 판정 어댑터만 실행한다. 어댑터는 자기 카테고리에
+맞는 대상에만 돌린다(sast·sca·secret·iac→repo, dast→web) — SAST를 web 대상에
+돌리지 않는다. 실행은 `shell` 없이
 argv로 하며 명령 템플릿의 `{target}`·`{output}`를 토큰으로 치환해 주입을 막는다.
 도구 출력(SARIF)을 정규화해 검출을 만들고, **지문+CWE가 같으면 하나로 묶어**
 출처 스캐너를 `sources`에 보존한다(grill 질문 5). 지문은 파일+함수(없으면

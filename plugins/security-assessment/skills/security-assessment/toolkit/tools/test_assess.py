@@ -352,6 +352,33 @@ class AssessCase(unittest.TestCase):
         assert data is not None
         self.assertEqual(data["findings"], [])
 
+    # --- M1: 카테고리 → 대상 타입 매핑 ---
+    def test_category_maps_to_target_types(self):
+        scope = {"targets": [
+            {"type": "repo", "value": "./a"}, {"type": "web", "value": "https://x.test"},
+            {"type": "infra", "value": "acct-1"},
+        ]}
+        self.assertEqual(assess.targets_for_adapter({"category": "sast"}, scope), ["./a"])
+        self.assertEqual(assess.targets_for_adapter({"category": "secret"}, scope), ["./a"])
+        self.assertEqual(assess.targets_for_adapter({"category": "dast"}, scope), ["https://x.test"])
+        # infra 타입은 아직 매핑되는 카테고리가 없다.
+        self.assertEqual(assess.targets_for_adapter({"category": "iac"}, scope), ["./a"])
+
+    def test_scan_skips_adapter_with_no_matching_target(self):
+        scope = authorized_scope(intrusiveness="active-nondestructive",
+                                 targets=[{"type": "repo", "value": "./src"}])
+        scope["approvalFingerprint"] = assess.semantic_fingerprint(scope)
+        adapters = {  # dast 어댑터인데 web 대상이 없다 → 실행 안 함
+            "zap": {"id": "zap", "category": "dast", "intrusiveness": "active-nondestructive",
+                    "availability": "x", "command": "zap -t {target} -o {output}", "output_format": "sarif"},
+            "semgrep": {"id": "semgrep", "category": "sast", "intrusiveness": "passive",
+                        "availability": "x", "command": "semgrep -o {output} {target}", "output_format": "sarif"},
+        }
+        code, out, _data, calls = self._run_scan_with_fake(scope, adapters, "semgrep-sample.sarif", direct=True)
+        self.assertEqual(code, 0, out)
+        self.assertIn("zap: 적용 대상 없음", out)
+        self.assertTrue(all(c[0].startswith("semgrep") for c in calls), calls)  # semgrep만 실행
+
     # --- M1b: findings 파일 검증 ---
     def test_validate_rejects_unmerged_findings(self):
         self.write(authorized_scope())
