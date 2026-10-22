@@ -7,6 +7,48 @@
 따라 하는 순서는 `USAGE.md`, 세부 규칙은
 `SECURITY_SAST_WORKFLOW.md`, 업그레이드는 `VERSIONING.md`를 참고하세요.
 
+## 구조
+
+요청문은 절차를, 도구는 기록과 검사를 맡습니다. 상태의 기준은 `security-results/`이고,
+대시보드는 `sync`가 만든 `data/*.js` 사본을 읽습니다.
+
+```mermaid
+flowchart LR
+  subgraph IN["입력"]
+    rep["input/<br/>PDF · 엑셀 · SARIF"]
+    src["프로젝트 소스"]
+  end
+  subgraph PROMPT["요청문 prompts/"]
+    p["00 ~ 07 단계별 절차"]
+  end
+  subgraph TOOLS["도구 tools/"]
+    tk["sast_toolkit.py<br/>preflight · gate · sync · validate · query · scope"]
+    st["sast_state.py<br/>재개 · 검증 신선도"]
+    ac["sast_activity.py<br/>작업 이력"]
+  end
+  subgraph DATA["정본 기록"]
+    fd["data/findings · decisions · progress"]
+    gd["security-guides/"]
+    rs["security-results/<br/>상태의 기준"]
+    lg["작업 이력 로그"]
+  end
+  subgraph VIEW["확인"]
+    dash["SECURITY_CHECKLIST.html<br/>data/*.js 미러를 읽음"]
+    ev["evidence/ 제출 증적"]
+  end
+  rep --> tk
+  src --> tk
+  p --> tk
+  tk --> fd
+  tk --> rs
+  st --> rs
+  ac --> lg
+  fd --> dash
+  rs --> dash
+  gd --> dash
+  rs --> ev
+```
+
 ## 1. 입력 승인과 소스 검증은 별개입니다
 
 입력은 대상 프로젝트의 현재 작업 사본(이하 "현재 소스")과 한 차수의

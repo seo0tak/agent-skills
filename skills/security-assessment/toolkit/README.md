@@ -2,14 +2,33 @@
 
 인가 기반 보안 취약점 점검 오케스트레이터. 인가 범위를 선언하고, 그 안에서
 기성 오픈소스 스캐너를 조율해 검출을 모으고, 판정·증적을 만들며, 확인된 코드
-결함은 sast-remediation으로 넘긴다. 웹·인프라 스캐너(M3~M4)와 방법론
-체크리스트(M5)는 아직 없다.
+결함은 sast-remediation으로 넘긴다. 웹·인프라 스캐너와 방법론 체크리스트는
+아직 없다.
 
 이 스킬은 **인가된 점검**만 수행한다. 게이트는 선언한 범위를 벗어나는 실수를
 막고 인가 주장을 기록하지만, 동의가 진짜인지는 검증하지 못한다(악의적 사용자는
 막지 못한다). 설계 정본은 저장소 루트 `CONTEXT.md`, `docs/adr/`,
-`docs/superpowers/*/2026-10-14-security-assessment*`. 전체 흐름 그림은
+`docs/superpowers/*/2026-10-14-security-assessment*`. 구조와 동작 원리는
 `docs/HOW_IT_WORKS.md`에 있다.
+
+## 작업 흐름
+
+```mermaid
+flowchart TD
+  scope["점검 범위 선언<br/>scope.json"] --> auth["validate · authorize"]
+  auth --> gate{"인가 게이트<br/>READY?"}
+  gate -- "아니오" --> stop["중단: 범위 밖 · 기간 · 미승인"]
+  gate -- "예" --> decide{"어댑터별 실행 판정<br/>침습도 기준"}
+  decide -- "run" --> exec["스캐너 실행"]
+  decide -- "operator" --> op["운영자에게 명령 안내<br/>결과 파일 수집"]
+  decide -- "forbidden" --> skip["건너뜀"]
+  exec --> norm["출력 정규화 → SARIF"]
+  op --> norm
+  norm --> merge["지문 + CWE로 중복 묶음<br/>findings.json"]
+  merge --> disp["검출별 판정 기록<br/>dispositions.json"]
+  disp --> bridge["확인된 코드 결함<br/>handoff.sarif"]
+  disp --> ev["증적 생성<br/>findings.csv · cover.md"]
+```
 
 ## 빠른 시작
 

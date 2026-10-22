@@ -65,25 +65,24 @@ _Avoid_: 최종 보고서(워크북과 구분이 흐려질 때).
 - **Authorization gate**는 **Scope**를 읽어 통과/차단을 판정한다.
 - **Scope**가 바뀌면 이전 게이트 통과(approval)는 자동 무효가 된다.
   "바뀜"은 **의미 필드**(targets의 type·value, exclusions, window, consent,
-  침습도 수준) 기준이다. `notes` 같은 설명 필드 변경은 무효 사유가 아니다
-  (2026-10-22 확정).
+  침습도 수준) 기준이다. `notes` 같은 설명 필드 변경은 무효 사유가 아니다.
 
 - 하나의 **Finding**은 하나의 **Disposition**과 하나의 **Verification stage**를
   가진다. 두 축은 독립이다(sast-remediation의 결론·작업 단계 분리와 같은 원리).
 - 이 스킬은 **확인**까지만 추적한다. `confirmed` 코드 결함은 SARIF로
   sast-remediation에 넘기고, 코드 수정 진행은 그쪽이 추적한다. 같은 결함의
-  진행을 두 스킬이 이중으로 들지 않는다 (2026-10-22 확정).
+  진행을 두 스킬이 이중으로 들지 않는다.
 - 넘긴 **Finding**은 **Handed-off (넘김)** 표시를 가진다. 해소 여부는
   sast-remediation 기록을 읽어오지 않고 **다음 점검 차수의 재점검 결과**로만
   판단한다 — 같은 fingerprint의 검출이 사라졌으면 해소. 해소의 증거는 스캐너
-  재실행이다 (2026-10-22 확정).
+  재실행이다.
 - 여러 스캐너의 검출은 **Fingerprint가 같고 CWE도 같을 때만** 하나의
   **Finding**으로 묶는다. 묶인 검출은 출처 스캐너 목록을 가진다. CWE가 다르면
-  같은 줄이어도 별개 결함이다 (2026-10-22 확정).
+  같은 줄이어도 별개 결함이다.
 - 같은 **Fingerprint**가 차수 간 해소 판단(재점검)과 스캐너 간 묶음 양쪽에 쓰인다.
-- **Adapter**는 카테고리에 맞는 **Target**에만 실행된다 (2026-10-22 확정):
+- **Adapter**는 카테고리에 맞는 **Target**에만 실행된다:
   sast·sca·secret·iac → repo, dast → web. infra 타입은 아직 매핑되는 카테고리가 없다.
-- **Adapter** 실행 판정은 침습도 세 겹이다 (2026-10-22 확정):
+- **Adapter** 실행 판정은 침습도 세 겹이다:
   ① 어댑터 intrusiveness가 **Scope**의 intrusiveness 상한을 넘으면 금지,
   ② `active-nondestructive` 이하이고 사용자가 직접 실행을 명시하면 스킬이 실행,
   ③ 그 외(intrusive, 또는 미명시)는 운영자에게 명령을 지시한다.
@@ -91,7 +90,7 @@ _Avoid_: 최종 보고서(워크북과 구분이 흐려질 때).
 - 하나의 점검은 하나의 **Evidence workbook**과 하나의 **Cover report**를 낸다.
   **Cover report**의 범위·인가 절에 **Scope**와 **Consent record**가 들어가고,
   그 안의 모든 숫자는 **Evidence workbook**에서 집계한다 — 둘의 불일치는
-  validate 에러 (2026-10-22 확정). 구현: 둘 다 같은 데이터에서 생성되는
+  validate 에러. 구현: 둘 다 같은 데이터에서 생성되는
   생성물(워크북=CSV, 표지=Markdown)이고, 데이터와 어긋나면 드리프트 에러다.
 
 ## Example dialogue
@@ -106,7 +105,7 @@ _Avoid_: 최종 보고서(워크북과 구분이 흐려질 때).
 
 ## Flagged ambiguities
 
-- **Authorization gate가 보장하는 것** (2026-10-22 확정): 정직한 실수
+- **Authorization gate가 보장하는 것**: 정직한 실수
   방지(스코프 오타·잘못된 대상·기간 만료로 범위 밖을 치는 것)와 인가 주장의
   증적 기록, **둘 다**. 그러나 스킬은 동의가 진짜인지 검증할 수 없으므로
   **악의적 사용자는 막지 못한다** — 이 한계를 SKILL.md와 설계에 명시한다.

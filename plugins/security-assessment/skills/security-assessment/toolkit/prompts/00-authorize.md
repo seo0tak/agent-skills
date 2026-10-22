@@ -1,4 +1,4 @@
-# Authorization Gate Prompt (M0)
+# Authorization Gate Prompt
 
 ```text
 보안 점검을 시작하기 전에 인가 범위만 먼저 확정해 주세요. 이 단계에서는 어떤

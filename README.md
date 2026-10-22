@@ -15,27 +15,11 @@
 
 | 스킬 | 유형 | 버전 |
 |---|---|---|
-| **sast-remediation** | 보안 | 1.15.0 |
-| **security-assessment** | 보안 | 0.7.0 |
-| **skill-architect** | 메타(스킬 품질) | 0.4.3 |
+| **sast-remediation** | 보안 | 1.15.1 |
+| **security-assessment** | 보안 | 0.7.1 |
+| **skill-architect** | 메타(스킬 품질) | 0.4.4 |
 
-보안 스킬은 취약점의 생애를 양쪽에서 맡습니다 — `security-assessment`가 점검해
-확인한 결함을 `sast-remediation`이 조치합니다. `skill-architect`는 성격이 달라서,
-다른 스킬의 설계를 감사하는 메타 스킬입니다.
-
-```mermaid
-flowchart LR
-  subgraph security["보안"]
-    SA["security-assessment<br/>인가·스캔·판정"]
-    SR["sast-remediation<br/>조치·검증·증적"]
-    SA -- "confirmed 결함 (SARIF)" --> SR
-  end
-  subgraph meta["메타"]
-    AR["skill-architect<br/>스킬 설계 감사"]
-  end
-  AR -. "감사" .-> SA
-  AR -. "감사" .-> SR
-```
+각 스킬의 작업 흐름과 구조 그림은 [관련 문서](#관련-문서)의 스킬별 문서에 있습니다.
 
 - **sast-remediation** — 기존 SAST 보고서(PDF·스프레드시트 또는 SARIF)의
   검토·조치·검증 근거를 관리합니다. 저장된 기록으로 작업을 수동 재개하고,
@@ -201,6 +185,8 @@ Codex는 다음 세 단계를 구분합니다.
 - 설계 정본: [CONTEXT.md](CONTEXT.md), [ADR](docs/adr/), [계획·설계](docs/superpowers/plans/2026-10-14-security-assessment.md)
 
 **skill-architect** — `skills/skill-architect/`
+- [시작하기](skills/skill-architect/README.md) — 감사 절차 흐름
+- [동작 원리](skills/skill-architect/docs/HOW_IT_WORKS.md) — 구성 파일과 개선 기록의 경계
 - [스킬 품질 기준](skills/skill-architect/ARCHITECTURE_CHECKLIST.md) — 10범주 체크리스트
 
 ## 개선 기록과 자동화의 경계

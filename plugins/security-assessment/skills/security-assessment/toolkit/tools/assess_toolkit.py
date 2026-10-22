@@ -409,7 +409,7 @@ def findings_from_sarif(sarif: Any, fallback_scanner: str) -> list[dict[str, Any
 
 
 def merge_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """지문+CWE가 같은 검출을 하나로 묶고 출처를 합친다. 순수 함수 (ADR 없음; grill 질문5)."""
+    """지문+CWE가 같은 검출을 하나로 묶고 출처를 합친다. 순수 함수."""
     bucket: dict[tuple[str, str], dict[str, Any]] = {}
     order: list[tuple[str, str]] = []
     for finding in findings:
@@ -1033,7 +1033,7 @@ def run_adapters(direct: bool) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="security-assessment authorization gate and adapter decisions (M1a).")
+    parser = argparse.ArgumentParser(description="security-assessment: authorization gate, scanning, dispositions, handoff and evidence.")
     parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan", "dispositions", "bridge", "evidence"))
     parser.add_argument("--strict", action="store_true", help="treat a not-ready gate as a validation error")
     parser.add_argument("--direct", action="store_true", help="adapters: 사용자가 직접 실행을 명시했다고 본다")

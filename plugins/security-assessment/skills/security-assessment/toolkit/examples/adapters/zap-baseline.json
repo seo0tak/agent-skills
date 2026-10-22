@@ -5,5 +5,5 @@
   "availability": "zap-baseline.py --help",
   "command": "zap-baseline.py -t {target} -J {output}",
   "output_format": "zap-json",
-  "description": "웹 비파괴 베이스라인 스캔. 정규화기 필요(M1c 이후)."
+  "description": "웹 비파괴 베이스라인 스캔. zap-json 정규화기가 아직 없어 validate가 거부하는 예시."
 }

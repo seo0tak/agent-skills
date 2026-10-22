@@ -39,5 +39,14 @@ plugins/<이름>/                ← Claude Code / Codex 플러그인 배포 구
   및 `python3 -B -m unittest scripts.test_packaging`를 실행한다.
 - 저장소 안에서 `preflight`/`init`을 돌리지 않는다 — 산출물이 배포물에 섞인다.
 - USAGE.md·data/decisions.json 수정 후 `sync` (USAGE.html·DECISION_LOG.md는 생성물).
+## 문서 규칙
+
+- 사용자용 문서(README·SKILL.md·HOW_IT_WORKS·USAGE·프롬프트)는 스킬이 어떻게 동작하는지만
+  쓴다. 결정 날짜, 대화·질의 번호, 개발 단계 표시(M1 등)는 넣지 않는다. 결정 경위는
+  `docs/adr/`, 작업 이력은 `HANDOFF.md`, 단계 이력은 각 스킬 `docs/VERSIONING.md`에 둔다.
+- 다이어그램은 스킬 단위로 둔다. 스킬 README에 작업 흐름도 한 장, HOW_IT_WORKS에 구조도
+  한 장. 사람이 승인하는 지점이 핵심인 스킬만 시퀀스를 추가한다. 루트 README에는 그림을
+  두지 않는다. mermaid를 고치면 렌더링해 파싱 오류가 없는지 확인한다.
+
 - 문구를 고칠 때는 동작 주체·입력 조건·저장/검증/승인의 의미를 유지한다.
   JSON 키·enum·고정 응답 라벨·증적 열 이름·코드 원문은 문체 교정 대상으로 바꾸지 않는다.
