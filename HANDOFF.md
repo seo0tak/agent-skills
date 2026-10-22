@@ -4,47 +4,64 @@
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-10-22 신규 스킬 security-assessment M0~M2)
+## 최신 작업 기준 (2026-10-22 security-assessment 0.8.0 · 문서·다이어그램 정비)
 
-- **새 스킬 `security-assessment`**(현재 **v0.8.0**)를 추가 중이다. 보안 취약점을
-  직접 *검사*하는 인가 기반 오케스트레이터. 설계 정본: 저장소 루트 `CONTEXT.md`,
-  `docs/adr/0001`(확인/조치 경계)·`0002`(침습도 세 겹), 계획·설계
-  `docs/superpowers/plans|specs/2026-10-14-security-assessment*`. grill-with-docs로
-  M0~M1 설계 결정을 확정했다.
+배포 버전: sast-remediation **v1.15.1**, skill-architect **v0.5.0**, security-assessment **v0.8.0**.
+최신 커밋 `296c0e9`, 전부 push 완료. 작업 트리 깨끗함.
+
+### security-assessment (신규 스킬)
+
+- 보안 취약점을 직접 *검사*하는 인가 기반 오케스트레이터. 설계 정본: 저장소 루트
+  `CONTEXT.md`, `docs/adr/0001`(확인/조치 경계)·`0002`(침습도 세 겹), 계획·설계
+  `docs/superpowers/plans|specs/2026-10-14-security-assessment*`. M0~M1 설계는 grill-with-docs로 확정.
 - 완료한 조각: M0 인가 게이트(0.1.0) → M1a 어댑터 선언+침습도 세 겹 판정(0.2.0) →
-  M1b run 어댑터 실행+SARIF 수집+지문/CWE 묶음(0.3.0) → 카테고리→대상 매핑(0.3.1) →
+  M1b 어댑터 실행+SARIF 수집+지문/CWE 묶음(0.3.0) → 카테고리→대상 매핑(0.3.1) →
   M1c JSON→SARIF 정규화기(OSV, 0.4.0) → M2a 판정 레코드(0.5.0) → M2b SARIF 다리(0.6.0)
-  → M2c 증적 CSV+표지 MD(0.7.0). 작업 커밋 `26a4b71`~`63a1acd`, 전부 push 완료.
-- 핵심 성질: 인가 게이트가 선언 범위 밖 실수를 막고 인가 주장을 기록하되 동의
-  진위는 검증 못 함(악의적 사용자 못 막음, SKILL.md 명시). 어댑터는 침습도 세 겹으로
-  실행 판정(ADR 0002), 카테고리에 맞는 대상에만. 수집·묶음·정규화는 순수 함수라
-  도구 없이 테스트(assess 56건), 실제 스캔·다리·증적은 저장소 밖 임시 사본에서 확인.
-- 데이터 흐름: `data/scope.json`(인가) → `scan` → `data/findings.json`(지문+CWE 묶음) →
-  `data/dispositions.json`(판정·확인 단계, 키 `fingerprint:cwe`) → `bridge` →
-  `data/handoff.sarif`(confirmed 코드 결함만, handedOff 표시) / `evidence` →
-  `evidence/findings.csv`+`cover.md`(생성물, 드리프트는 validate 에러).
+  → M2c 증적 CSV+표지 MD(0.7.0) → 기준 점검 결함 수정(0.8.0, `0c9efaf`).
+- 핵심 성질: 인가 게이트는 선언 범위 밖 실수를 막고 인가 주장을 기록하지만 동의 진위는
+  검증 못 함(악의적 사용자 못 막음, SKILL.md 명시). 어댑터는 침습도 세 겹으로 실행 판정
+  (ADR 0002), 카테고리에 맞는 대상에만. 수집·묶음·정규화는 순수 함수라 도구 없이 테스트
+  (assess 66건), 실제 스캔·다리·증적은 저장소 밖 임시 사본에서 확인.
+- 데이터 흐름: `data/scope.json`(인가) → `scan` → `data/scans/<어댑터>.json`(어댑터별 결과) →
+  `data/findings.json`(합침, 지문+CWE 묶음, 제외 자산 뺌) → `data/dispositions.json`(판정·확인
+  단계, 키 `fingerprint:cwe`) → `bridge` → `data/handoff.sarif`(confirmed 코드 결함만) /
+  `evidence` → `evidence/findings.csv`+`cover.md`(생성물, 드리프트는 validate 에러).
+  `new-round`가 지난 차수를 `data/rounds/round-NNN.json`으로 닫고, 해소는 같은 어댑터가 다시
+  돌았을 때만 인정한다.
 - 증적은 표준 라이브러리 원칙상 xlsx가 아닌 CSV·Markdown(사용자 선택).
-- 저장소 문서 정비(같은 날): README를 스킬 수·범주에 독립적으로(유형 열 보안/메타,
-  스킬별 관련 문서), 원리 4를 LSP 중심에서 "목적에 맞는 소스 탐색 + 현재 수단 명시"로,
-  mermaid 다이어그램 2개(README 스킬 관계, security-assessment 흐름). CLAUDE.md에
-  범주 비전제·유형 열 규약.
 - **skill-architect 기준 점검(0.7.1 대상)** 결과 11개 범주 중 적용 1 / 부분 10. 재현된 결함
-  3개와 경로 모순 1개를 0.8.0에서 고쳤다: scan이 기존 검출을 지움(어댑터별 저장으로 해결),
-  제외 자산 미적용(합칠 때 걸러내고 validate가 강제), 차수 없음으로 해소가 validate 에러가
-  됨(`new-round` + 같은 어댑터 재실행 시에만 해소), SKILL.md가 설치본 경로를 고치라고
-  지시(첫 행동·프로젝트 복사본 경로로 정리). 테스트 66건.
-- **남은 점검 개선 5번(미적용)**: 판정 절차 요청문과 결정 주체 기록, 운영자가 돌린 출력을
+  3개와 경로 모순 1개를 0.8.0에서 고쳤다: scan이 기존 검출을 지움(어댑터별 저장), 제외 자산
+  미적용(합칠 때 걸러내고 validate가 강제), 차수 없음으로 해소가 validate 에러(`new-round` +
+  같은 어댑터 재실행 시에만 해소), SKILL.md가 설치본 경로를 고치라고 지시(첫 행동·프로젝트
+  복사본 경로로 정리).
+- 툴킷 원본 상태에서 `validate`는 빈 템플릿 `scope.json` 때문에 에러 7건이 정상이다(변경 전후 동일).
+
+### 문서·다이어그램 정비
+
+- README는 스킬 수·범주에 독립적(유형 열 보안/메타, 버전은 마지막 칸, 스킬별 관련 문서).
+  루트 README에는 그림을 두지 않는다. 사용자 문서에서 대화·날짜·개발 단계 표시를 뺐다
+  (CLAUDE.md 문서 규칙). skill-architect는 감사 도구가 아니라 "스킬 설계 기준"으로 재정의
+  (0.5.0, 기준 → 새 스킬 설계 → 기존 스킬 점검 순).
+- 다이어그램은 스킬 단위: README 흐름도(mermaid) 한 장, HOW_IT_WORKS 구조도 한 장,
+  security-assessment만 시퀀스 추가. Mermaid·D2·Graphviz·PlantUML을 비교한 뒤 사용자가
+  **구조도는 D2(ELK), 시퀀스는 PlantUML**을 골랐다(`296c0e9`). 원본은 각 스킬
+  `docs/diagrams/*.d2|*.puml`, SVG를 함께 커밋. 구조도는 좌→우 데이터 흐름이고
+  security-assessment는 "인가와 수집 / 판정과 산출" 두 줄(`grid-rows`).
+- `scripts/render_diagrams.py`가 SVG를 만들고 끝에 원본 해시를 남긴다. `--check`는 도구 없이
+  해시만 비교하며 `scripts.test_packaging`에 포함. d2·plantuml은 이 컴퓨터에 **설치되어 있지
+  않다**(세션 임시 폴더에 받아 썼음). 그림을 고치려면 `brew install d2 plantuml` 또는
+  `D2`·`PLANTUML_JAR`·`JAVA` 환경 변수로 경로를 준다. PlantUML은 Java 8에서 실패했고
+  Homebrew openjdk(25)로 돌렸다.
+- GitHub에서 렌더링 확인함. 구조도는 폭이 넓어 본문 폭에 맞추면 글자가 작다(클릭 시 원본 크기).
+  키우려면 노드 글꼴 확대나 세 줄 분할을 검토.
+
+### 다음
+
+- **점검 개선 5번(미적용)**: 판정 절차 요청문과 결정 주체(decidedBy) 기록, 운영자가 돌린 출력을
   들여오는 명령. README 흐름도의 "운영자 → 정규화" 화살표는 아직 구현되지 않은 경로라 이때
-  함께 정정해야 한다.
-- 같은 날 문서 정비: 스킬별 흐름도(README)·구조도(HOW_IT_WORKS), 사용자 문서에서 대화·날짜·
-  개발 단계 표시 제거(CLAUDE.md 문서 규칙), skill-architect를 감사 도구가 아니라 "스킬 설계
-  기준"으로 재정의(0.5.0, 기준 → 새 스킬 설계 → 기존 스킬 점검 순).
-- 다이어그램 도구 비교(Mermaid·D2·Graphviz·PlantUML) 후 사용자 선택: 흐름도는 README의 mermaid
-  유지, 구조도는 D2(ELK), 시퀀스는 PlantUML. 둘 다 SVG를 커밋한다. 구조도는 좌→우 데이터 흐름으로
-  다시 그렸고, security-assessment는 "인가와 수집 / 판정과 산출" 두 줄로 나눴다.
-- **다음**: 점검 개선 5번, 그 뒤 M3~M5(웹 DAST·인프라 스캐너, 방법론 체크리스트). 웹 스캐너는
-  실행 중인 대상에 실제 요청을 보내므로 M3 착수 전 설계 점검을 권한다.
-- sast-remediation·skill-architect는 변경 없음(v1.15.0 / v0.4.3 유지).
+  함께 정정한다.
+- 그 뒤 M3~M5(웹 DAST·인프라 스캐너, 방법론 체크리스트). 웹 스캐너는 실행 중인 대상에 실제
+  요청을 보내므로 M3 착수 전 설계 점검을 권한다.
 
 ## 이전 작업 기준 (2026-10-14 체커별 진행)
 
@@ -299,7 +316,7 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
   (claude·codex 매니페스트·README 표) — 커밋 전 둘 다 통과
 - 설치 경로 검증은 사용자가 설치 테스트를 승인한 별도 작업에서 수행한다.
   기존 설치를 일괄 제거하거나 캐시를 삭제하지 않는다.
-- security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(56건).
+- security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(66건).
   CLI 왕복은 저장소 밖 임시 사본에서(저장소 안에서 scan·evidence를 돌리지 않는다).
 - mermaid를 고치면 브라우저에서 렌더링해 파싱 오류 0을 확인한다(문법 오류가 조용히 남는다).
 - 구조도(D2)·시퀀스(PlantUML)는 `docs/diagrams/` 원본을 고치고 `python3 scripts/render_diagrams.py`로
