@@ -15,20 +15,23 @@
 
 ```mermaid
 flowchart TD
-  scope["점검 범위 선언<br/>scope.json"] --> auth["validate · authorize"]
+  scope["사용자: 점검 범위 · 인가 근거<br/>scope.json"] --> auth["validate · authorize"]
   auth --> gate{"인가 게이트<br/>READY?"}
   gate -- "아니오" --> stop["중단: 범위 밖 · 기간 · 미승인"]
   gate -- "예" --> decide{"어댑터별 실행 판정<br/>침습도 기준"}
-  decide -- "run" --> exec["스캐너 실행"]
+  decide -- "run<br/>사용자가 직접 실행 허락" --> exec["scan: 스캐너 실행"]
   decide -- "operator" --> op["운영자가 실행<br/>ingest로 출력 들여오기"]
   decide -- "forbidden" --> skip["건너뜀"]
-  exec --> norm["출력 정규화 → SARIF"]
+  exec --> norm["출력 정규화 → SARIF<br/>제외 자산 뺌"]
   op --> norm
   norm --> merge["지문 + CWE로 중복 묶음<br/>findings.json"]
-  merge --> disp["검출별 판정 기록<br/>dispositions.json"]
-  disp -. "오탐 · 범위 밖" .-> user["사용자 확정"]
-  disp --> bridge["확인된 코드 결함<br/>handoff.sarif"]
+  merge --> disp["검출별 판정 기록 · 01 프롬프트<br/>dispositions.json"]
+  disp -- "오탐 · 범위 밖 제안" --> user["사용자: 확정 또는 반려"]
+  user --> disp
+  disp --> bridge["confirmed 코드 결함<br/>handoff.sarif → sast-remediation"]
   disp --> ev["증적 생성<br/>findings.csv · cover.md"]
+  ev -.-> round["new-round<br/>다음 차수 재점검으로 해소 판단"]
+  round -.-> decide
 ```
 
 ## 빠른 시작

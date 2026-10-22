@@ -1,5 +1,5 @@
 # security-assessment 구조도. 고친 뒤 저장소 루트에서 python3 scripts/render_diagrams.py
-grid-rows: 2
+grid-rows: 3
 grid-gap: 40
 classes: {
   store: {shape: cylinder; style: {fill: "#f4efe6"; stroke: "#9a7b4f"}}
@@ -16,17 +16,20 @@ collect: "1 · 인가와 수집" {
   gate: "gate · authorize" {class: proc}
   scan: "scan" {class: proc}
   ext: "외부 스캐너\nsemgrep · osv-scanner 등" {class: ext}
-  scans: "scans/\n어댑터별 결과" {class: store}
-  operator: "운영자 실행\n출력 파일" {class: ext}
+  operator: "운영자\n(scan이 명령 안내)" {class: ext}
   ingest: "ingest" {class: proc}
-  scope -> gate -> scan
+  scans: "scans/\n어댑터별 결과" {class: store}
+  scope -> gate
+  gate -> scan
+  gate -> ingest
   adapters -> scan
+  adapters -> ingest
   scan <-> ext
-  scan -> scans
-  scan -> operator: "명령 안내" {style.stroke-dash: 3}
-  operator -> ingest -> scans
+  scan -> scans: "직접 실행"
+  operator -> ingest: "출력 파일"
+  ingest -> scans: "운영자 실행"
 }
-judge: "2 · 판정과 산출" {
+judge: "2 · 검출과 판정" {
   class: stage
   direction: right
   findings: "findings.json\n합친 결과 · 제외 자산 뺌" {class: store}
@@ -34,21 +37,23 @@ judge: "2 · 판정과 산출" {
   rounds: "rounds/\n지난 차수" {class: store}
   dispositions: "판정 기록\n01 프롬프트" {class: proc}
   disp: "dispositions.json\n판정 · 확인 단계 · 주체" {class: store}
-  bridge: "bridge" {class: proc}
-  ev: "evidence" {class: proc}
-  sarif: "handoff.sarif" {class: out}
-  csv: "evidence/findings.csv" {class: out}
-  cover: "evidence/cover.md" {class: out}
-  sr: "sast-remediation" {class: ext}
-  sarif -> sr
   findings -> round -> rounds
   findings -> dispositions -> disp
   rounds -> dispositions: "해소 비교" {style.stroke-dash: 3}
-  findings -> bridge
-  disp -> bridge -> sarif
-  findings -> ev
-  disp -> ev
+}
+out: "3 · 넘김과 증적" {
+  class: stage
+  direction: right
+  bridge: "bridge" {class: proc}
+  sarif: "handoff.sarif" {class: out}
+  sr: "sast-remediation" {class: ext}
+  ev: "evidence" {class: proc}
+  csv: "evidence/findings.csv" {class: out}
+  cover: "evidence/cover.md" {class: out}
+  bridge -> sarif -> sr
   ev -> csv
   ev -> cover
 }
 collect.scans -> judge.findings: "합침"
+judge.disp -> out.bridge
+judge.disp -> out.ev

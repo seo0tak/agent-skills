@@ -57,7 +57,9 @@ def render(src):
     svg = src.with_suffix(".svg")
     if src.suffix == ".d2":
         d2 = os.environ.get("D2", "d2")
-        subprocess.run([d2, "--layout=elk", "--pad=24", str(src), str(svg)],
+        # 원본이 d2-config로 엔진을 정하면 따르고, 아니면 ELK
+        layout = [] if "layout-engine" in src.read_text(encoding="utf-8") else ["--layout=elk"]
+        subprocess.run([d2, *layout, "--pad=24", str(src), str(svg)],
                        check=True, capture_output=True)
     else:
         with tempfile.TemporaryDirectory() as out:

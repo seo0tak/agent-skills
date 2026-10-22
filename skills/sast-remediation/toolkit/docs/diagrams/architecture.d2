@@ -1,5 +1,7 @@
 # sast-remediation 구조도. 고친 뒤 저장소 루트에서 python3 scripts/render_diagrams.py
-direction: right
+direction: down
+# 위→아래 dagre가 본문 폭(약 1000px)에서 가장 잘 읽힌다
+vars: {d2-config: {layout-engine: dagre}}
 classes: {
   store: {shape: cylinder; style: {fill: "#f4efe6"; stroke: "#9a7b4f"}}
   proc: {shape: oval; style: {fill: "#e8eefb"; stroke: "#3d5f99"}}
@@ -25,7 +27,7 @@ src -> toolkit: "소스 대조"
 prompts -> toolkit: "절차"
 toolkit -> data
 toolkit -> results
-state -> results: "재개 판단"
+state -> results
 activity -> log
 data -> mirror: "sync"
 results -> mirror: "sync"
