@@ -1,15 +1,15 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.15.1 / skill-architect v0.5.0 / security-assessment v0.8.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.15.2 / skill-architect v0.5.1 / security-assessment v0.9.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-10-22 security-assessment 0.8.0 · 문서·다이어그램 정비)
+## 최신 작업 기준 (2026-10-22 security-assessment 0.9.0 · 다이어그램 체계)
 
 배포 버전: sast-remediation **v1.15.2**, skill-architect **v0.5.1**, security-assessment **v0.9.0**.
-최신 커밋 `a8cb209`, 전부 push 완료. 작업 트리 깨끗함.
+최신 커밋 `3a80baa`, 전부 push 완료. 작업 트리 깨끗함.
 
-### security-assessment (신규 스킬)
+### security-assessment
 
 - 보안 취약점을 직접 *검사*하는 인가 기반 오케스트레이터. 설계 정본: 저장소 루트
   `CONTEXT.md`, `docs/adr/0001`(확인/조치 경계)·`0002`(침습도 세 겹), 계획·설계
@@ -17,76 +17,64 @@
 - 완료한 조각: M0 인가 게이트(0.1.0) → M1a 어댑터 선언+침습도 세 겹 판정(0.2.0) →
   M1b 어댑터 실행+SARIF 수집+지문/CWE 묶음(0.3.0) → 카테고리→대상 매핑(0.3.1) →
   M1c JSON→SARIF 정규화기(OSV, 0.4.0) → M2a 판정 레코드(0.5.0) → M2b SARIF 다리(0.6.0)
-  → M2c 증적 CSV+표지 MD(0.7.0) → 기준 점검 결함 수정(0.8.0, `0c9efaf`) → 점검 개선 5(0.9.0).
+  → M2c 증적 CSV+표지 MD(0.7.0) → 기준 점검 결함 1~4 수정(0.8.0, `0c9efaf`) → 점검 개선 5
+  (0.9.0, `35b0326`).
 - 핵심 성질: 인가 게이트는 선언 범위 밖 실수를 막고 인가 주장을 기록하지만 동의 진위는
   검증 못 함(악의적 사용자 못 막음, SKILL.md 명시). 어댑터는 침습도 세 겹으로 실행 판정
   (ADR 0002), 카테고리에 맞는 대상에만. 수집·묶음·정규화는 순수 함수라 도구 없이 테스트
-  (assess 78건), 실제 스캔·다리·증적은 저장소 밖 임시 사본에서 확인.
-- 데이터 흐름: `data/scope.json`(인가) → `scan` → `data/scans/<어댑터>.json`(어댑터별 결과) →
-  `data/findings.json`(합침, 지문+CWE 묶음, 제외 자산 뺌) → `data/dispositions.json`(판정·확인
-  단계, 키 `fingerprint:cwe`) → `bridge` → `data/handoff.sarif`(confirmed 코드 결함만) /
-  `evidence` → `evidence/findings.csv`+`cover.md`(생성물, 드리프트는 validate 에러).
-  `new-round`가 지난 차수를 `data/rounds/round-NNN.json`으로 닫고, 해소는 같은 어댑터가 다시
-  돌았을 때만 인정한다.
+  (assess 78건), 실제 스캔·들여오기·다리·증적은 저장소 밖 임시 사본에서 확인.
+- 데이터 흐름: `data/scope.json`(인가) → `scan`(직접 실행) 또는 `ingest`(운영자 출력) →
+  `data/scans/<어댑터>.json`(어댑터별 결과) → `data/findings.json`(합침, 지문+CWE 묶음, 제외 자산
+  뺌) → `data/dispositions.json`(판정·확인 단계·주체, 키 `fingerprint:cwe`) → `bridge` →
+  `data/handoff.sarif`(confirmed 코드 결함만) / `evidence` → `evidence/findings.csv`+`cover.md`
+  (생성물, 드리프트는 validate 에러). `new-round`가 지난 차수를 `data/rounds/round-NNN.json`으로
+  닫고, 해소는 같은 어댑터가 다시 돌았을 때만 인정한다.
+- 판정 주체 `decidedBy`(user|ai), 사용자 결정 "닫는 판정만 사용자": false-positive·out-of-scope를
+  reviewed로 확정하는 것은 user만(ai면 validate 에러, AI는 in-review로 제안), confirmed·suspected·
+  needs-review는 AI도 확정 가능, reviewed인데 주체 없으면 경고. 증적 CSV `decidedBy` 열, 표지·
+  `dispositions`에 확정한 주체별 건수(`reviewedBy`). 판정 절차는 `prompts/01-triage.md`.
+- `ingest --adapter --file [--target]`: 게이트 READY 필요, forbidden 어댑터 거부, 같은 어댑터·대상
+  결과만 교체, 파일 이름·SHA-256 기록, 출처에 `target`·`collectedBy`(skill|operator). `scan`의
+  operator 안내가 들여오기 명령까지 출력한다.
+- skill-architect 기준 점검(0.7.1 대상, 11개 범주 중 적용 1 / 부분 10)의 결함 1~4와 개선 5를 모두
+  반영했다. 1~4: scan이 기존 검출을 지움(어댑터별 저장), 제외 자산 미적용, 차수 없음으로 해소가
+  validate 에러, SKILL.md 경로 모순.
 - 증적은 표준 라이브러리 원칙상 xlsx가 아닌 CSV·Markdown(사용자 선택).
-- **skill-architect 기준 점검(0.7.1 대상)** 결과 11개 범주 중 적용 1 / 부분 10. 재현된 결함
-  3개와 경로 모순 1개를 0.8.0에서 고쳤다: scan이 기존 검출을 지움(어댑터별 저장), 제외 자산
-  미적용(합칠 때 걸러내고 validate가 강제), 차수 없음으로 해소가 validate 에러(`new-round` +
-  같은 어댑터 재실행 시에만 해소), SKILL.md가 설치본 경로를 고치라고 지시(첫 행동·프로젝트
-  복사본 경로로 정리).
-- 툴킷 원본 상태에서 `validate`는 빈 템플릿 `scope.json` 때문에 에러 7건이 정상이다(변경 전후 동일).
+- 툴킷 원본 상태에서 `validate`는 빈 템플릿 `scope.json` 때문에 에러 7건이 정상이다.
+- 0.8.0 이하 프로젝트 복사본은 업그레이드 뒤 `evidence`를 다시 실행해야 한다(CSV 열 추가).
 
-### 문서·다이어그램 정비
+### 문서와 다이어그램 체계
 
 - README는 스킬 수·범주에 독립적(유형 열 보안/메타, 버전은 마지막 칸, 스킬별 관련 문서).
-  루트 README에는 그림을 두지 않는다. 사용자 문서에서 대화·날짜·개발 단계 표시를 뺐다
-  (CLAUDE.md 문서 규칙). skill-architect는 감사 도구가 아니라 "스킬 설계 기준"으로 재정의
-  (0.5.0, 기준 → 새 스킬 설계 → 기존 스킬 점검 순).
-- 다이어그램은 스킬 단위: README 흐름도(mermaid) 한 장, HOW_IT_WORKS 구조도 한 장,
-  security-assessment만 시퀀스 추가. Mermaid·D2·Graphviz·PlantUML을 비교한 뒤 사용자가
-  **구조도는 D2(ELK), 시퀀스는 PlantUML**을 골랐다(`296c0e9`). 원본은 각 스킬
-  `docs/diagrams/*.d2|*.puml`, SVG를 함께 커밋. 구조도는 좌→우 데이터 흐름이고
-  security-assessment는 "인가와 수집 / 판정과 산출" 두 줄(`grid-rows`).
+  루트 README에는 그림을 두지 않는다. 사용자 문서에는 대화·날짜·개발 단계 표시를 넣지 않는다
+  (CLAUDE.md 문서 규칙). skill-architect는 감사 도구가 아니라 "스킬 설계 기준"(0.5.0).
+- 도구(사용자 선택, `296c0e9`): 흐름도는 README 안 mermaid, 구조도는 D2, 시퀀스·상태도는
+  PlantUML. D2·PlantUML 원본은 각 스킬 `docs/diagrams/*.d2|*.puml`, SVG를 함께 커밋.
+- 현재 그림:
+
+| 스킬 | 흐름도 (README) | 구조도 (HOW_IT_WORKS) | 시퀀스·상태도 |
+|---|---|---|---|
+| sast-remediation | 승인 지점을 "사용자:"로 표시 | 위→아래 dagre, 1171px | HOW_IT_WORKS 시퀀스, ACTIVITY_LOG 기록 순서 |
+| security-assessment | 사용자 단계·확정 복귀·new-round 고리 | 세 줄(인가와 수집 / 검출과 판정 / 넘김과 증적), 1578px | HOW_IT_WORKS 시퀀스(직접·운영자 실행 분기) |
+| skill-architect | 세 갈래(새 스킬·점검·개선 이력) | ELK 좌→우, 1473px | improvement-workflow.md 상태도 |
+
+- 규칙(CLAUDE.md): 승인 지점이 있는 스킬은 HOW_IT_WORKS에 시퀀스, 순서·상태 전이가 핵심인 절차
+  문서는 그 문서에 시퀀스·상태도. 동작을 바꾸면 흐름도·시퀀스·구조도·USAGE 텍스트 흐름이 같은
+  순서와 승인 지점을 보이는지 함께 대조한다.
 - `scripts/render_diagrams.py`가 SVG를 만들고 끝에 원본 해시를 남긴다. `--check`는 도구 없이
-  해시만 비교하며 `scripts.test_packaging`에 포함. d2·plantuml은 이 컴퓨터에 **설치되어 있지
-  않다**(세션 임시 폴더에 받아 썼음). 그림을 고치려면 `brew install d2 plantuml` 또는
-  `D2`·`PLANTUML_JAR`·`JAVA` 환경 변수로 경로를 준다. PlantUML은 Java 8에서 실패했고
-  Homebrew openjdk(25)로 돌렸다.
-- GitHub에서 렌더링 확인함. 구조도는 폭이 넓어 본문 폭에 맞추면 글자가 작다. GitHub 기본
-  이미지 링크는 파일 보기 페이지(작은 미리보기)로 가므로, 이미지를 `[![..](x.svg)](x.svg?raw=true)`로
-  감싸 누르면 raw 원본 크기로 열리게 했다(`a8cb209`, GitHub에서 확인). 구조도 아래에
-  "이미지를 누르면 원래 크기로 열립니다" 안내를 둔다. 설치본을 로컬 뷰어로 볼 때는 이 링크가
-  안 열릴 수 있으나 이미지 표시는 영향 없음. 본문에서 더 크게 보이려면 노드 글꼴 확대나 세 줄
-  분할을 검토.
-
-- **점검 개선 5(0.9.0)**: 판정 절차 프롬프트 `prompts/01-triage.md`, 판정 주체 `decidedBy`
-  (user|ai). 사용자 결정으로 "닫는 판정만 사용자": false-positive·out-of-scope를 reviewed로
-  확정하는 것은 user만(ai면 validate 에러, AI는 in-review로 제안), confirmed·suspected·
-  needs-review는 AI도 확정 가능, reviewed인데 주체 없으면 경고. 증적 CSV에 `decidedBy` 열,
-  표지·`dispositions`에 확정한 주체별 건수(`reviewedBy`). `ingest --adapter --file [--target]`로
-  운영자 출력 들여오기: 게이트 READY 필요, forbidden 어댑터 거부, 같은 어댑터·대상 결과만 교체,
-  파일 이름·SHA-256 기록, 출처에 `target`·`collectedBy`(skill|operator). README 흐름도의
-  운영자 경로가 이제 실제 구현과 맞다. CONTEXT.md에 Decided by·Operator ingest 용어.
-
-### 다이어그램 전체 점검 (sast 1.15.2 · skill-architect 0.5.1, 문서만)
-
-- sast-remediation README 흐름도를 실제 절차에 맞춤: 00 BLOCKED 멈춤, 처리 범위 확인(미설정이면
-  멈춤), 초기 분석 확인·조치 범위 승인, 02는 03에 수시로 들어가는 보류 질문, 대시보드 검토·백업,
-  05 뒤 제출 전 검토. 사람이 정하는 단계는 "사용자:"로 표시. USAGE.md 텍스트 흐름과 SKILL.md 순서
-  문장도 같은 순서로(USAGE.html은 sync로 재생성).
-- sast-remediation에 시퀀스(HOW_IT_WORKS「사람이 정하는 지점」)와 작업 이력 기록 순서 시퀀스
-  (ACTIVITY_LOG) 추가. 실제 순서: 수정 finish 뒤 snapshot → 검증 start → 실행 → finish →
-  결과 기록 → seal-verification.
-- skill-architect 개선 기록 상태도(PlantUML, references/improvement-workflow.md): 적용 전 묶음 →
-  rejected, 적용 후 묶음 → rolled-back.
-- CLAUDE.md 다이어그램 규칙: 승인 지점이 있는 스킬은 시퀀스, 순서·상태 전이가 핵심인 절차 문서는
-  그 문서에 시퀀스·상태도, 동작 변경 시 흐름도·시퀀스·구조도·USAGE 텍스트 흐름을 함께 대조.
-- PlantUML 메시지의 `--a ... --b`는 취소선으로 렌더된다. 옵션은 `~--`로 이스케이프한다.
-- 시인성 점검: GitHub 본문 폭(약 1000px)에서 구조도가 2200~2400px라 글자가 40%로 줄었다. sast 구조도는
-  위→아래 dagre(1171px, 원본 `vars.d2-config.layout-engine`, 렌더 스크립트가 따름), security-assessment는
-  세 줄(인가와 수집 / 검출과 판정 / 넘김과 증적, scan·ingest 병렬, 1578px). 흐름도: security-assessment에
-  사용자 단계·확정 되돌림·new-round 재점검 고리, skill-architect는 기준 점선을 빼고 노드 문구로.
-  링크·이미지 경로 깨짐 없음(백틱 경로는 생성물·프로젝트 복사본 경로라 정상).
+  해시만 비교하며 `scripts.test_packaging`에 포함. d2가 빼먹는 루트 width/height를 viewBox로
+  채운다. 원본에 `vars.d2-config.layout-engine`이 있으면 그 엔진, 없으면 ELK.
+- d2·plantuml은 이 컴퓨터에 **설치되어 있지 않다**(세션 임시 폴더에 받아 썼음). 그림을 고치려면
+  `brew install d2 plantuml` 또는 `D2`·`PLANTUML_JAR`·`JAVA` 환경 변수로 경로를 준다. PlantUML은
+  Java 8에서 실패했고 Homebrew openjdk(25)로 돌렸다.
+- 시인성 기준: GitHub 본문 폭은 약 1000px. 구조도가 2000px를 넘으면 글자가 절반 이하로 줄어
+  읽기 어렵다(처음 2200~2400px였던 것을 위 배치로 줄임). D2의 컨테이너별 direction은 TALA에서만
+  먹으므로 줄 나누기는 `grid-rows`, 긴 체인은 병렬 경로로 단계 수를 줄인다.
+- 이미지는 `[![..](x.svg)](x.svg?raw=true)`로 감싸 누르면 raw 원본 크기로 열린다(GitHub 기본 링크는
+  작은 미리보기 페이지로 감). 넓은 구조도 아래에 "이미지를 누르면 원래 크기로 열립니다" 안내.
+- PlantUML 메시지의 `--a ... --b`는 취소선이 된다. 옵션은 `~--`로 이스케이프한다.
+- 마지막 점검(`3a80baa` push 후): 마크다운 93개 파일의 링크·이미지 48개 깨짐 없음, Mermaid 3개
+  렌더 오류 없음, GitHub에서 그림 6개 로드 확인(넓은 화면 시인성은 로컬 1000px 렌더로 확인).
 
 ### 다음
 
