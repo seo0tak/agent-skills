@@ -1,21 +1,15 @@
 # 0tak agent-skills
 
-이미 생성된 SAST 검출 결과의 검토·조치·검증·증적 관리를 지원하는
-`sast-remediation`과, 에이전트 스킬의 설계와 품질을 검토하는
-`skill-architect`를 제공합니다.
+보안·품질 작업을 돕는 `SKILL.md` 형식 에이전트 스킬 모음입니다. 스킬은 하나씩
+늘어나며, 각 스킬의 상세는 그 스킬 디렉터리(`skills/<이름>/`)의 문서에 있습니다.
+이 README는 공통 설치·업데이트·구조와 스킬 목록만 다룹니다.
 
-[설치](#설치--에이전트별) · [사용 시작](#사용-시작) ·
-[업데이트](#설치본-업데이트) · [관련 문서](#관련-문서)
+[스킬](#스킬) · [설치](#설치--에이전트별) · [사용 시작](#사용-시작) ·
+[업데이트](#설치본-업데이트) · [관련 문서](#관련-문서) · [새 스킬 추가](#새-스킬-추가)
 
-두 스킬은 `SKILL.md` 형식으로 작성되었습니다. 이 형식을 지원하는 에이전트에서
-사용할 수 있으며, 설치 방식과 사용 가능한 도구·전용 에이전트는 환경에 따라 다릅니다.
-
-`sast-remediation`은 새 취약점을 탐지하는 스캐너가 아닙니다. 기존 보고서와
-소스를 대조하고, 오탐 검토·조치·검증 결과와 제출 검토에 필요한 근거를 관리합니다.
-정책은 업무 사실을 중심으로 질문하고, 확인하지 못한 사항은 별도로 남깁니다.
-도구의 데이터 검사와 실제 검증·사용자 권한·제출 승인은 구분합니다.
-피해가 작거나 재현되지 않았다는 이유만으로 오탐으로 처리하지 않습니다.
-검출 규칙의 적용 여부, 실제 영향, 조치 필요성과 작업 상태를 구분해 기록합니다.
+모든 스킬은 `SKILL.md` 형식을 지원하는 에이전트에서 쓸 수 있습니다. 설치 방식과
+사용 가능한 도구·전용 에이전트는 환경에 따라 다릅니다. 공통 설계 원칙은
+[왜 이렇게 만들었나](#왜-이렇게-만들었나)에 있습니다.
 
 ## 스킬
 
@@ -32,16 +26,14 @@
   시스템 운영 기록과 진단 상세를 별도로 조회할 수 있습니다.
 - **skill-architect** — 입력·상태·복구·검증 등 스킬 설계를 10개 범주로
   검토합니다. 요청 시 승인된 개선 범위와 평가·적용·재개 이력을 기록합니다.
-- **security-assessment** — 인가 범위를 선언·검증하고 그 안에서 보안 취약점
-  점검을 조율합니다. 게이트는 선언한 범위를 벗어나는 실수를 막고 인가 주장을
-  기록하지만 동의의 진위는 검증하지 않습니다. 현재는 인가 게이트까지
-  구현되어 있습니다(스캐너 미구현).
+- **security-assessment** — 인가 범위를 선언·검증하고 그 안에서 기성 오픈소스
+  스캐너를 조율해 보안 취약점을 점검합니다. 게이트는 선언한 범위를 벗어나는
+  실수를 막고 인가 주장을 기록하지만 동의의 진위는 검증하지 않습니다(악의적
+  사용자는 막지 못함). 인가 게이트·어댑터 실행 판정·스캔 수집·지문 묶음까지
+  구현되어 있고, 판정·증적은 개발 중입니다.
 
-PDF·스프레드시트 입력 절차는 **Sparrow 보고서**를 기준으로 정리했습니다.
-다른 SAST 검사 도구의 보고서는 컬럼과 위험도 의미를 별도로 대조하며,
-Sparrow의 해석을 그대로 적용하지 않습니다.
-
-편집 기준이 되는 원본(정본)과 플러그인 배포 사본의 위치는 아래
+각 스킬의 설치·사용·원리 문서는 [관련 문서](#관련-문서)에 스킬별로 정리되어
+있습니다. 편집 기준이 되는 원본(정본)과 플러그인 배포 사본의 위치는 아래
 [저장소 구조](#저장소-구조)에 있습니다.
 
 ## 설치 — 에이전트별
@@ -54,7 +46,7 @@ Sparrow의 해석을 그대로 적용하지 않습니다.
 npx skills add seo0tak/agent-skills
 ```
 
-설치할 두 스킬과 대상 에이전트를 선택합니다. 기본 설치 범위는 현재 프로젝트이며,
+설치할 스킬과 대상 에이전트를 선택합니다. 기본 설치 범위는 현재 프로젝트이며,
 여러 프로젝트에서 사용할 사용자 범위 설치에는 `-g`를 추가합니다. 실제 경로와
 심볼릭 링크/복사 방식은 선택한 에이전트와 설치 방식에 따라 다릅니다.
 ([skills CLI 설치 범위](https://github.com/vercel-labs/skills#installation-scope))
@@ -83,7 +75,7 @@ codex plugin add sast-remediation@0tak
 codex plugin add skill-architect@0tak
 ```
 
-설치 후 새 대화 또는 CLI 세션을 시작하고 두 스킬이 표시되는지 확인합니다.
+설치 후 새 대화 또는 CLI 세션을 시작하고 설치한 스킬이 표시되는지 확인합니다.
 플러그인 설치는 이를 지원하는 앱 또는 CLI에서 진행합니다.
 ([Codex 플러그인 안내](https://learn.chatgpt.com/docs/plugins))
 
@@ -93,14 +85,13 @@ codex plugin add skill-architect@0tak
 같은 이름의 설치본이 있으면 먼저 기존 설치 위치와 버전을 확인하고 업데이트 방법을
 선택하세요. 아래 명령은 같은 이름의 대상이 이미 있으면 복사하지 않습니다.
 
+설치할 스킬 이름마다 아래를 반복합니다(`<이름>`은 [스킬](#스킬) 표의 이름).
+
 ```bash
 mkdir -p ~/.agents/skills
-test ! -e ~/.agents/skills/sast-remediation && \
-  test ! -L ~/.agents/skills/sast-remediation && \
-  cp -R skills/sast-remediation ~/.agents/skills/
-test ! -e ~/.agents/skills/skill-architect && \
-  test ! -L ~/.agents/skills/skill-architect && \
-  cp -R skills/skill-architect ~/.agents/skills/
+name=<이름>   # 예: sast-remediation
+test ! -e ~/.agents/skills/$name && test ! -L ~/.agents/skills/$name && \
+  cp -R skills/$name ~/.agents/skills/
 ```
 
 이 경로를 읽는 환경에서 사용하고, 설치 후 새 세션에서 인식 여부를 확인합니다.
@@ -110,13 +101,17 @@ test ! -e ~/.agents/skills/skill-architect && \
 
 설치한 스킬이 보이고 프로젝트 파일에 접근할 수 있는 세션에서 다음처럼 요청합니다.
 
-- **SAST 결과 조치** — "SAST 결과 조치해줘"
-  (PDF·엑셀 또는 SARIF를 `input/`에 넣으라고 안내합니다.)
-- **이어서 작업** — "SAST 조치 이어서 해줘"
-- **처리 범위 지정** — "이번 차수는 높음 이상만 분석·조치해줘"
-  (전체 검출 목록은 보존하고, 선택 범위와 전체의 진행 현황을 구분합니다.)
-- **작업 이력 확인** — "실패한 검증과 종료 확인이 없는 작업 이력을 보여줘"
-- **스킬 품질 점검** — "이 스킬 감사해줘" / "sast-remediation 스킬 감사해줘"
+**sast-remediation**
+- "SAST 결과 조치해줘" (PDF·엑셀 또는 SARIF를 `input/`에 넣으라고 안내)
+- "SAST 조치 이어서 해줘" · "이번 차수는 높음 이상만 분석·조치해줘"
+- "실패한 검증과 종료 확인이 없는 작업 이력을 보여줘"
+
+**security-assessment**
+- "보안 취약점 점검해줘" (먼저 인가 범위를 `scope.json`에 선언하도록 안내)
+- "인가 범위 안에서 소스 스캔 돌려줘"
+
+**skill-architect**
+- "이 스킬 감사해줘" / "sast-remediation 스킬 감사해줘"
 
 ## 설치본 업데이트
 
@@ -126,8 +121,8 @@ test ! -e ~/.agents/skills/skill-architect && \
 
 ```bash
 claude plugin marketplace update 0tak
-claude plugin update sast-remediation@0tak --scope user
-claude plugin update skill-architect@0tak --scope user
+# 설치한 각 스킬에 대해 반복(아래 스킬 표의 이름):
+claude plugin update <이름>@0tak --scope user
 ```
 
 설치된 버전을 확인하고 Claude Code를 재시작하거나 지원되는
@@ -159,29 +154,33 @@ Codex는 다음 세 단계를 구분합니다.
    실제 검증의 충분성이나 사용자 권한·제출 승인은 별도로 확인합니다.
 3. **미확인을 숨기지 않기** — 정책은 업무 사실로 묻고 모르는 내용은 보류하거나
    승인된 관찰 방법으로 확인합니다. 오래된 검증과 현재 검증을 구분합니다.
-4. **목적에 맞는 소스 탐색** — 두 스킬 모두 현재 환경에서 LSP(언어 서버)의
+4. **목적에 맞는 소스 탐색** — 스킬들은 현재 환경에서 LSP(언어 서버)의
    사용 가능 여부를 먼저 확인합니다. 정의·참조·타입은 LSP를 우선하고,
    문구·설정값은 텍스트로 검색합니다. LSP가 없거나 불완전하면 대체 방법과
    확인하지 못한 범위를 남기며, 도구를 임의로 설치하지 않습니다.
 
 ## 관련 문서
 
-- [툴킷 시작하기](skills/sast-remediation/toolkit/README.md) —
-  스킬 설치 없이 툴킷을 복사해 사용하는 방법과 실행 준비
-- [사용 가이드](skills/sast-remediation/toolkit/USAGE.md) —
-  단계별 사용법, AI 요청 예, 명령어 요약, 자주 겪는 상황
-- [동작 원리와 재개](skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md) —
-  저장되는 정보, 중단 후 재개, 검증 결과의 재사용 조건과 한계
-- [위험도별 처리 범위](skills/sast-remediation/toolkit/docs/PROCESSING_SCOPE.md) —
-  처리할 위험도 선택, 적용 요청과 저장의 차이, 범위 밖·미확인 관리
-- [작업 이력과 실행 로그](skills/sast-remediation/toolkit/docs/ACTIVITY_LOG.md) —
-  중요한 기록 보존, 실패·중단 확인, 체크리스트 조회와 브라우저 이력 백업
-- [정책 확인 가이드](skills/sast-remediation/toolkit/SECURITY_GRILL_GUIDE.md) —
-  업무 사실을 중심으로 정책을 확인하는 방법과 확인이 어려울 때의 처리
-- [버전·업그레이드 정책](skills/sast-remediation/toolkit/docs/VERSIONING.md) —
-  버전·호환 정책, 진행 중 차수 업그레이드, 마이그레이션 기록
-- [스킬 품질 기준](skills/skill-architect/ARCHITECTURE_CHECKLIST.md) —
-  스킬 품질 기준 10범주
+스킬별로 그 디렉터리의 문서를 따릅니다. 새 스킬을 추가하면 여기에 그 스킬의
+항목을 더합니다.
+
+**sast-remediation** — `skills/sast-remediation/toolkit/`
+- [툴킷 시작하기](skills/sast-remediation/toolkit/README.md) — 설치 없이 복사해 사용, 실행 준비
+- [사용 가이드](skills/sast-remediation/toolkit/USAGE.md) — 단계별 사용법, AI 요청 예, 명령어 요약
+- [동작 원리와 재개](skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md) — 저장 정보, 재개, 검증 재사용 한계
+- [위험도별 처리 범위](skills/sast-remediation/toolkit/docs/PROCESSING_SCOPE.md) — 위험도 선택, 적용·저장, 범위 밖 관리
+- [작업 이력과 실행 로그](skills/sast-remediation/toolkit/docs/ACTIVITY_LOG.md) — 기록 보존, 실패·중단 확인, 이력 백업
+- [정책 확인 가이드](skills/sast-remediation/toolkit/SECURITY_GRILL_GUIDE.md) — 업무 사실 중심 정책 확인
+- [버전·업그레이드 정책](skills/sast-remediation/toolkit/docs/VERSIONING.md) — 버전·호환, 차수 업그레이드, 마이그레이션
+
+**security-assessment** — `skills/security-assessment/toolkit/`
+- [툴킷 시작하기](skills/security-assessment/toolkit/README.md) — 인가 게이트와 현재 구현 범위
+- [동작 원리](skills/security-assessment/toolkit/docs/HOW_IT_WORKS.md) — 게이트의 보장·한계, 어댑터 판정, 수집·묶음·정규화
+- [인가 절차 프롬프트](skills/security-assessment/toolkit/prompts/00-authorize.md) — 범위 선언과 인가 게이트 통과
+- 설계 정본: [CONTEXT.md](CONTEXT.md), [ADR](docs/adr/), [계획·설계](docs/superpowers/plans/2026-10-14-security-assessment.md)
+
+**skill-architect** — `skills/skill-architect/`
+- [스킬 품질 기준](skills/skill-architect/ARCHITECTURE_CHECKLIST.md) — 10범주 체크리스트
 
 ## 개선 기록과 자동화의 경계
 
@@ -190,7 +189,7 @@ skill-architect의 [선택적 개선 기록](skills/skill-architect/references/i
 한 번의 검토만 요청한 경우에는 별도 개선 기록 디렉터리를 만들지 않습니다.
 기록 도구는 명령·패치·테스트를 실행하지
 않으며 실제 사용자 권한을 부여하거나 인증하지 않습니다.
-두 스킬 모두 자동 재시작·네트워크 감시·무승인 자체 수정·배포는 하지 않습니다.
+스킬들은 자동 재시작·네트워크 감시·무승인 자체 수정·배포는 하지 않습니다.
 
 ## 저장소 구조
 
@@ -215,4 +214,6 @@ Codex 정보 파일과 README 표도 갱신한 뒤 `scripts/check-versions.sh`�
 3. `scripts/sync-plugins.sh`로 사본 생성
 4. 두 카탈로그(`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`)에 등록
 5. `scripts/check-versions.sh`, `scripts/sync-plugins.sh --check` 통과 확인
-6. `skill-architect`로 한 번 감사
+6. README의 [스킬](#스킬) 표와 [관련 문서](#관련-문서)에 그 스킬 항목을 추가
+   (버전 표 행은 `scripts/check-versions.sh`가 강제하고, 문서 항목은 손으로 추가)
+7. `skill-architect`로 한 번 감사

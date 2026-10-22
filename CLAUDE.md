@@ -22,6 +22,9 @@ plugins/<이름>/                ← Claude Code / Codex 플러그인 배포 구
   근거하며, 설치 도구가 바뀌면 별도 승인된 설치 시험으로 다시 확인한다.
 - 버전은 `plugins/*/.claude-plugin/plugin.json`이 정본. 마켓플레이스
   카탈로그에는 version을 쓰지 않는다. README 표는 손으로 맞춘다.
+- 새 스킬을 추가하면 README의 스킬 표(버전은 check-versions가 강제)와 관련 문서
+  섹션에 그 스킬 항목을 더한다. README는 공통 설치·구조·스킬 목록만 담고,
+  스킬별 상세는 각 `skills/<이름>/` 문서에 둔다.
 - 스킬 내부 규칙은 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
   버전·호환은 `skills/sast-remediation/toolkit/docs/VERSIONING.md`, 인수인계는 `HANDOFF.md`.
 

@@ -1,10 +1,28 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-14, v1.15.0 / v0.4.3)
+# HANDOFF — 개발 세션 인수인계 (2026-10-22, v1.15.0 / v0.4.3 / security-assessment v0.4.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-10-14 체커별 진행)
+## 최신 작업 기준 (2026-10-22 신규 스킬 security-assessment M0~M1c)
+
+- **새 스킬 `security-assessment`**(현재 **v0.4.0**)를 추가 중이다. 보안 취약점을
+  직접 *검사*하는 인가 기반 오케스트레이터. 설계 정본: 저장소 루트 `CONTEXT.md`,
+  `docs/adr/0001`(확인/조치 경계)·`0002`(침습도 세 겹), 계획·설계
+  `docs/superpowers/plans|specs/2026-10-14-security-assessment*`. grill-with-docs로
+  M0~M1 설계 결정을 확정했다.
+- 완료한 조각: M0 인가 게이트(0.1.0) → M1a 어댑터 선언+침습도 세 겹 판정(0.2.0) →
+  M1b run 어댑터 실행+SARIF 수집+지문/CWE 묶음(0.3.0) → 카테고리→대상 매핑(0.3.1) →
+  M1c JSON→SARIF 정규화기(OSV, 0.4.0). 작업 커밋 `26a4b71`~`f1429a9`, 전부 push 완료.
+- 핵심 성질: 인가 게이트가 선언 범위 밖 실수를 막고 인가 주장을 기록하되 동의
+  진위는 검증 못 함(악의적 사용자 못 막음, SKILL.md 명시). 어댑터는 침습도 세 겹으로
+  실행 판정(ADR 0002), 카테고리에 맞는 대상에만. 수집·묶음·정규화는 순수 함수라
+  도구 없이 테스트(assess 36건), 실제 스캔은 저장소 밖 임시 사본에서 확인.
+- **다음: M2** — 판정(disposition)·증적(워크북+표지 보고서)·SARIF 다리로
+  sast-remediation 핸드오프. 범위가 커서 조각내야 한다.
+- sast-remediation·skill-architect는 변경 없음(v1.15.0 / v0.4.3 유지).
+
+## 이전 작업 기준 (2026-10-14 체커별 진행)
 
 - 배포 버전은 sast-remediation **v1.15.0**, skill-architect **v0.4.3**이다.
   1.15.0은 대시보드 "분포 및 추천 작업 보기" 안에 "체커별 진행" 패널과
@@ -235,13 +253,10 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
    키보드 왕복, 실제 백업 불러오기/다운로드 및 저장 불가 환경.
    상세 결과 초안 저장은 1.12에서 구현했다. 원문 답변 입력창 자체의 장기 저장,
    백업 차이 미리보기·정책 질문 패널·상세 이전/다음 등은 별도 후보다.
-9. **신규 스킬 `security-assessment`(계획 완료, 구현 미착수)** — 보안 취약점을 직접
-   *검사*하는 인가 기반 오케스트레이터. 계획 `docs/superpowers/plans/2026-10-14-security-assessment.md`,
-   설계 `docs/superpowers/specs/2026-10-14-security-assessment-design.md`. 확정: 전 범위
-   (코드+웹+인프라), 혼합 실행, 별도 스킬+SARIF 다리, 이름 security-assessment, 동의는
-   구조화 필드+참조, 대상은 타입 명시 목록, 테스트는 합성 픽스처+밖 임시 사본. 다음은
-   M0(인가 게이트+뼈대) tracer-bullet. 모의해킹은 인가 스코프 내 탐지 확인·재현이지
-   익스플로잇 작성이 아님.
+9. **security-assessment M2 이후** — 판정·증적·SARIF 다리(ADR 0001), 웹/인프라
+   스캐너(M3~M4), 방법론 체크리스트(M5). gitleaks(시크릿)는 출력에 실제 시크릿이
+   담겨 샘플·저장에 주의 필요. scan의 카테고리→대상은 고정 표(infra 타입은 아직
+   매핑 카테고리 없음). 어댑터가 대상 타입을 직접 선언하는 오버라이드는 YAGNI로 보류.
 
 ## 검증 습관
 
