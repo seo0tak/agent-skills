@@ -1,6 +1,6 @@
 {
   "name": "security-assessment",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "인가 범위를 선언·검증하고 그 안에서 보안 취약점 점검을 조율합니다. 현재는 인가 게이트까지 구현되어 있습니다.",
   "skills": "./skills"
 }

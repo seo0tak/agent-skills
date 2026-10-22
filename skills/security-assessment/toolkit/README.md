@@ -29,6 +29,7 @@ python3 tools/assess_toolkit.py gate
 | `validate` | 스코프 형식·정합성 검사. `--strict`는 게이트 미통과도 에러 |
 | `authorize` | 현재 스코프의 의미 지문 기록, status를 authorized로 |
 | `gate` | 승인·지문·기간 재대조 → READY/BLOCKED |
+| `adapters` | 어댑터별 실행 판정 표시(명령 미실행). `--direct`는 사용자가 직접 실행을 명시했다고 봄 |
 
 ## 테스트
 

@@ -10,9 +10,9 @@ description: Run authorized security assessments — declare an authorization sc
 모의해킹은 임의 대상 공격이 아니라 **인가 스코프 안에서 탐지를 확인·재현**하는
 절차로 다룬다. 설계 정본은 저장소 루트 `CONTEXT.md`와 `docs/adr/`.
 
-## 인가 게이트가 먼저다 (현재 구현 범위 = M0)
+## 인가 게이트가 먼저다 (현재 구현 범위 = M1a)
 
-어떤 점검도 인가 게이트가 READY가 되기 전에는 시작하지 않는다.
+어떤 점검도 인가 게이트가 READY가 되기 전에는 시작하지 않는다. 어댑터를 스킬이 직접 실행할지는 침습도로 판정한다(`adapters` 명령; ADR 0002).
 
 1. `toolkit/data/scope.json`에 점검 범위를 선언한다(`examples/scope.json` 참고):
    대상(`targets`: repo|web|infra), 제외 자산, 기간, 소유자 동의 기록
@@ -29,9 +29,8 @@ description: Run authorized security assessments — declare an authorization sc
 
 ## 아직 없는 것
 
-스캐너 실행(M1~), 판정·증적(M2~), 웹/인프라(M3~M4)는 아직 구현되지 않았다.
-계획은 `docs/superpowers/plans/2026-10-14-security-assessment.md`. 현재는 인가
-게이트와 그 검증만 동작한다.
+스캐너 실행(M1b~), 판정·증적(M2~), 웹/인프라(M3~M4)는 아직 구현되지 않았다.
+계획은 `docs/superpowers/plans/2026-10-14-security-assessment.md`. 현재는 인가 게이트와 어댑터 실행 판정(M1a)까지 동작하며, 어떤 스캐너 명령도 실행하지 않는다.
 
 ## 안 하는 것
 

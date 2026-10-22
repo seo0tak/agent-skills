@@ -25,10 +25,17 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 SCOPE_FILE = DATA_DIR / "scope.json"
+ADAPTER_DIR = ROOT / "adapters"
 SCHEMA_VERSION = "1.0"
 
 TARGET_TYPES = {"repo", "web", "infra"}
-INTRUSIVENESS = {"passive", "active-nondestructive", "intrusive"}
+# 침습도는 순서가 있다: passive < active-nondestructive < intrusive.
+INTRUSIVENESS_RANK = {"passive": 0, "active-nondestructive": 1, "intrusive": 2}
+INTRUSIVENESS = set(INTRUSIVENESS_RANK)
+ADAPTER_CATEGORIES = {"sast", "sca", "secret", "dast", "iac"}
+ADAPTER_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+# M1a까지 정의된 출력 형식. 정규화기가 생기면(M1c~) 그 이름을 추가한다.
+KNOWN_OUTPUT_FORMATS = {"sarif"}
 # 티켓 ID(예: SEC-1234) 또는 http(s) URL.
 REFERENCE_RE = re.compile(r"^(https?://\S+|[A-Za-z][A-Za-z0-9]*-\d+)$")
 
@@ -177,6 +184,77 @@ def validate_scope(report: Report, scope: Any) -> None:
             )
 
 
+def load_adapters() -> list[tuple[str, Any]]:
+    """adapters/*.json을 (파일 stem, 내용)으로 읽는다. 없으면 빈 목록."""
+    if not ADAPTER_DIR.is_dir():
+        return []
+    result: list[tuple[str, Any]] = []
+    for path in sorted(ADAPTER_DIR.glob("*.json")):
+        try:
+            result.append((path.stem, load_json(path)))
+        except (OSError, json.JSONDecodeError) as error:
+            result.append((path.stem, {"__error__": str(error)}))
+    return result
+
+
+def validate_adapter(report: Report, name: str, adapter: Any) -> None:
+    where = f"adapter {name}"
+    if not isinstance(adapter, dict):
+        report.error(f"{where} must be a JSON object")
+        return
+    if "__error__" in adapter:
+        report.error(f"{where} cannot be read: {adapter['__error__']} (likely half-written)")
+        return
+    adapter_id = str(adapter.get("id", ""))
+    if not ADAPTER_ID_RE.match(adapter_id):
+        report.error(f"{where}.id must match ^[a-z][a-z0-9-]*$")
+    elif adapter_id != name:
+        report.error(f"{where}.id {adapter_id!r} does not match filename {name!r}")
+    if adapter.get("category") not in ADAPTER_CATEGORIES:
+        report.error(f"{where}.category must be one of {sorted(ADAPTER_CATEGORIES)}")
+    if adapter.get("intrusiveness") not in INTRUSIVENESS:
+        report.error(f"{where}.intrusiveness must be one of {sorted(INTRUSIVENESS)}")
+    for field in ("availability", "command"):
+        if not str(adapter.get(field, "")).strip():
+            report.error(f"{where}.{field} is empty")
+    output_format = str(adapter.get("output_format", ""))
+    if not output_format:
+        report.error(f"{where}.output_format is empty")
+    elif output_format not in KNOWN_OUTPUT_FORMATS:
+        report.error(
+            f"{where}.output_format {output_format!r} has no normalizer yet; "
+            f"known formats: {sorted(KNOWN_OUTPUT_FORMATS)}"
+        )
+
+
+def execution_decision(
+    adapter: dict[str, Any], scope: dict[str, Any], direct_requested: bool
+) -> tuple[str, str]:
+    """어댑터를 스킬이 직접 실행할지 판정한다. 순수 함수 — 명령을 실행하지 않는다.
+
+    반환: ("run" | "operator" | "forbidden", 사유). 침습도 세 겹 (ADR 0002):
+      ① 어댑터 침습도 > 스코프 상한 → forbidden
+      ② active-nondestructive 이하 + 사용자 직접 실행 명시 → run
+      ③ 그 외(intrusive, 또는 미명시) → operator
+    """
+    adapter_level = INTRUSIVENESS_RANK.get(str(adapter.get("intrusiveness")), None)
+    scope_cap = INTRUSIVENESS_RANK.get(str(scope.get("intrusiveness")), None)
+    if adapter_level is None:
+        return "forbidden", "어댑터 침습도가 유효하지 않음"
+    if scope_cap is None:
+        return "forbidden", "스코프 침습도 상한이 유효하지 않음"
+    if adapter_level > scope_cap:
+        return "forbidden", (
+            f"어댑터 침습도({adapter.get('intrusiveness')})가 스코프 상한"
+            f"({scope.get('intrusiveness')})을 넘음"
+        )
+    if adapter_level > INTRUSIVENESS_RANK["active-nondestructive"]:
+        return "operator", "intrusive 어댑터는 스코프 건별 인가 + 운영자 실행만"
+    if not direct_requested:
+        return "operator", "사용자가 직접 실행을 명시하지 않음 — 명령을 지시"
+    return "run", "active-nondestructive 이하 + 직접 실행 명시"
+
+
 def gate_status(scope: dict[str, Any]) -> tuple[bool, list[str]]:
     """게이트 판정. (ready, blockers). 기계 점검만. 의미 확인은 프롬프트 단계."""
     blockers: list[str] = []
@@ -212,6 +290,8 @@ def run_validate(strict: bool) -> int:
         report.print()
         return 1
     validate_scope(report, scope)
+    for name, adapter in load_adapters():
+        validate_adapter(report, name, adapter)
     if strict and isinstance(scope, dict) and not report.errors:
         ready, blockers = gate_status(scope)
         if not ready:
@@ -263,10 +343,38 @@ def run_gate() -> int:
     return 1
 
 
+def run_adapters(direct: bool) -> int:
+    """어댑터별 실행 판정을 보여 준다. 어떤 명령도 실행하지 않는다(판정만)."""
+    adapters = load_adapters()
+    if not adapters:
+        print("선언된 어댑터가 없습니다 (adapters/*.json). M1b 이후 추가됩니다.")
+        return 0
+    try:
+        scope = load_json(SCOPE_FILE)
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"ERROR: cannot read data/scope.json: {error}")
+        return 1
+    if not isinstance(scope, dict):
+        print("ERROR: scope is not an object")
+        return 1
+    ready, _ = gate_status(scope)
+    print(f"gate: {'READY' if ready else 'BLOCKED'}  |  직접 실행 명시: {direct}")
+    if not ready:
+        print("게이트가 READY가 아니면 'run' 판정이어도 실제 실행은 막힙니다.")
+    for name, adapter in adapters:
+        if not isinstance(adapter, dict) or "__error__" in adapter:
+            print(f"- {name}: (선언 오류 — validate로 확인)")
+            continue
+        decision, reason = execution_decision(adapter, scope, direct)
+        print(f"- {name} [{adapter.get('category')}/{adapter.get('intrusiveness')}] → {decision}: {reason}")
+    return 0
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="security-assessment authorization gate (M0).")
-    parser.add_argument("command", choices=("validate", "authorize", "gate"))
+    parser = argparse.ArgumentParser(description="security-assessment authorization gate and adapter decisions (M1a).")
+    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters"))
     parser.add_argument("--strict", action="store_true", help="treat a not-ready gate as a validation error")
+    parser.add_argument("--direct", action="store_true", help="adapters: 사용자가 직접 실행을 명시했다고 본다")
     return parser.parse_args()
 
 
@@ -276,6 +384,8 @@ def main() -> int:
         return run_validate(args.strict)
     if args.command == "authorize":
         return run_authorize()
+    if args.command == "adapters":
+        return run_adapters(args.direct)
     return run_gate()
 
 

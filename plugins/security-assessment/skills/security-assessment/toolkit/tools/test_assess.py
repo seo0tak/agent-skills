@@ -188,6 +188,64 @@ class AssessCase(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("fix scope errors", out)
 
+    # --- M1a: 어댑터 실행 판정 (순수 함수, 도구 미실행) ---
+    def decide(self, adapter_intrusiveness, scope_intrusiveness, direct):
+        adapter = {"intrusiveness": adapter_intrusiveness}
+        scope = {"intrusiveness": scope_intrusiveness}
+        return assess.execution_decision(adapter, scope, direct)[0]
+
+    def test_adapter_over_scope_cap_is_forbidden(self):
+        self.assertEqual(self.decide("intrusive", "active-nondestructive", True), "forbidden")
+        self.assertEqual(self.decide("active-nondestructive", "passive", True), "forbidden")
+
+    def test_nondestructive_runs_only_when_direct(self):
+        self.assertEqual(self.decide("active-nondestructive", "active-nondestructive", True), "run")
+        self.assertEqual(self.decide("active-nondestructive", "active-nondestructive", False), "operator")
+        self.assertEqual(self.decide("passive", "intrusive", True), "run")
+        self.assertEqual(self.decide("passive", "intrusive", False), "operator")
+
+    def test_intrusive_adapter_is_operator_even_within_cap_and_direct(self):
+        self.assertEqual(self.decide("intrusive", "intrusive", True), "operator")
+        self.assertEqual(self.decide("intrusive", "intrusive", False), "operator")
+
+    def test_invalid_intrusiveness_is_forbidden(self):
+        self.assertEqual(self.decide("weird", "intrusive", True), "forbidden")
+        self.assertEqual(self.decide("passive", "weird", True), "forbidden")
+
+    # --- M1a: 어댑터 선언 검증 ---
+    def adapter_errors(self, name, adapter):
+        report = assess.Report()
+        assess.validate_adapter(report, name, adapter)
+        return report.errors
+
+    def valid_adapter(self, **overrides):
+        base = {"id": "semgrep", "category": "sast", "intrusiveness": "passive",
+                "availability": "semgrep --version", "command": "semgrep scan {target}",
+                "output_format": "sarif"}
+        base.update(overrides)
+        return base
+
+    def test_valid_adapter_passes(self):
+        self.assertEqual(self.adapter_errors("semgrep", self.valid_adapter()), [])
+
+    def test_adapter_id_must_match_filename(self):
+        errors = self.adapter_errors("semgrep", self.valid_adapter(id="semgrip"))
+        self.assertTrue(any("does not match filename" in e for e in errors))
+
+    def test_unknown_output_format_is_rejected_until_normalizer_exists(self):
+        errors = self.adapter_errors("zap", self.valid_adapter(id="zap", category="dast", output_format="zap-json"))
+        self.assertTrue(any("no normalizer yet" in e for e in errors))
+
+    def test_bad_category_and_intrusiveness_are_rejected(self):
+        errors = self.adapter_errors("x", self.valid_adapter(id="x", category="fuzzing", intrusiveness="nuclear"))
+        self.assertTrue(any("category must be" in e for e in errors))
+        self.assertTrue(any("intrusiveness must be" in e for e in errors))
+
+    def test_example_adapter_fixtures_declare_cleanly_except_pending_formats(self):
+        # 픽스처는 선언 형식을 보여 준다. semgrep은 깨끗, zap/sqlmap은 정규화기/형식 대기.
+        semgrep = json.loads((TOOLS_DIR.parent / "examples/adapters/semgrep.json").read_text(encoding="utf-8"))
+        self.assertEqual(self.adapter_errors("semgrep", semgrep), [])
+
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):
         scope = copy.deepcopy(EXAMPLE)

@@ -1,0 +1,9 @@
+{
+  "id": "semgrep",
+  "category": "sast",
+  "intrusiveness": "passive",
+  "availability": "semgrep --version",
+  "command": "semgrep scan --sarif --output {output} {target}",
+  "output_format": "sarif",
+  "description": "정적분석(SAST). 네이티브 SARIF 출력이라 정규화 불필요."
+}

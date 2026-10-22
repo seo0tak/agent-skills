@@ -1,0 +1,9 @@
+{
+  "id": "zap-baseline",
+  "category": "dast",
+  "intrusiveness": "active-nondestructive",
+  "availability": "zap-baseline.py --help",
+  "command": "zap-baseline.py -t {target} -J {output}",
+  "output_format": "zap-json",
+  "description": "웹 비파괴 베이스라인 스캔. 정규화기 필요(M1c 이후)."
+}

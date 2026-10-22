@@ -1,0 +1,9 @@
+{
+  "id": "sqlmap",
+  "category": "dast",
+  "intrusiveness": "intrusive",
+  "availability": "sqlmap --version",
+  "command": "sqlmap -u {target} --batch",
+  "output_format": "sarif",
+  "description": "간섭형 테스트 예시. 스코프 건별 인가 + 운영자 실행만."
+}

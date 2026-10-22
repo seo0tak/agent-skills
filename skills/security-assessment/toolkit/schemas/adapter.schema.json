@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/security-assessment/adapter.schema.json",
+  "title": "Scanner Adapter",
+  "description": "스캐너 하나를 스킬에 붙이는 선언. 선언은 데이터, 출력→SARIF 변환은 output_format이 가리키는 정규화기(코드)가 맡는다. M0~M1a에서는 선언과 실행 판정만 다루고 명령을 실행하지 않는다.",
+  "type": "object",
+  "required": ["id", "category", "intrusiveness", "availability", "command", "output_format"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "어댑터 식별자. 파일명과 같아야 한다." },
+    "category": { "enum": ["sast", "sca", "secret", "dast", "iac"] },
+    "intrusiveness": { "enum": ["passive", "active-nondestructive", "intrusive"] },
+    "availability": { "type": "string", "minLength": 1, "description": "도구 설치 확인 명령(선언만; 실행 판정은 별도)." },
+    "command": { "type": "string", "minLength": 1, "description": "실행 명령 템플릿. 대상·출력 자리표시자를 포함한다." },
+    "output_format": { "type": "string", "minLength": 1, "description": "출력 형식. 'sarif'는 통과, 그 외는 같은 이름의 정규화기가 있어야 한다." },
+    "description": { "type": "string" }
+  },
+  "additionalProperties": true
+}
