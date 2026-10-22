@@ -482,6 +482,7 @@ def run_validate(strict: bool) -> int:
         validate_adapter(report, name, adapter)
     validate_findings_file(report)
     validate_dispositions_file(report)
+    validate_runtime_files(report)
     validate_evidence(report)
     if strict and isinstance(scope, dict) and not report.errors:
         ready, blockers = gate_status(scope)
@@ -570,6 +571,19 @@ def validate_findings_file(report: Report) -> None:
         sources = finding.get("sources")
         if not isinstance(sources, list) or not sources:
             report.error(f"findings[{index}].sources must be a non-empty list")
+    exclusions = _scope_exclusions()
+    for index, finding in enumerate(f for f in findings if isinstance(f, dict)):
+        location_file = str((finding.get("location") or {}).get("file") or "")
+        if exclusions and is_excluded(location_file, exclusions):
+            report.error(f"findings[{index}] is in an excluded asset ({location_file}); run scan to rebuild")
+
+
+def _scope_exclusions() -> list[str]:
+    try:
+        scope = load_json(SCOPE_FILE)
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [str(x) for x in scope.get("exclusions", [])] if isinstance(scope, dict) else []
 
 
 HANDOFF_SARIF = DATA_DIR / "handoff.sarif"
@@ -878,14 +892,14 @@ def validate_dispositions_file(report: Report) -> None:
     if not isinstance(records, dict):
         report.error("dispositions.dispositions must be an object")
         return
-    finding_keys = load_finding_keys()
+    finding_keys = load_finding_keys() | archived_keys()
     for key, record in records.items():
         where = f"disposition {key}"
         if not isinstance(record, dict):
             report.error(f"{where} must be an object")
             continue
         if finding_keys and key not in finding_keys:
-            report.error(f"{where} references no finding (fingerprint:cwe not in findings.json)")
+            report.error(f"{where} references no finding (not in findings.json or any archived round)")
         disposition = record.get("disposition")
         stage = record.get("stage")
         if disposition not in DISPOSITION_VALUES:
@@ -923,14 +937,236 @@ def run_dispositions() -> int:
     records_data = load_json(DISPOSITIONS_FILE) if DISPOSITIONS_FILE.exists() else {"dispositions": {}}
     records = records_data.get("dispositions", {}) if isinstance(records_data, dict) else {}
     summary = disposition_summary(findings, records)
+    try:
+        previous = latest_round()
+        scan_results = load_scan_results()
+    except (ValueError, OSError, json.JSONDecodeError) as error:
+        print(f"ERROR: {error}")
+        return 1
+    if previous is not None:
+        adapters_run = {name for name in scan_results if name != LEGACY_SCAN}
+        resolution = round_resolution(previous.get("findings", []), findings, adapters_run)
+        summary["sincePreviousRound"] = {
+            "round": previous.get("round"),
+            "resolved": resolution["resolved"],
+            "notRechecked": resolution["notRechecked"],
+        }
     print(json_text(summary), end="")
     return 0
 
 
-def run_scan(direct: bool) -> int:
-    """실행 판정이 'run'인 어댑터만 스킬이 돌리고, 출력을 수집·묶어 findings에 쓴다.
+LEGACY_SCAN = "_legacy"
 
-    게이트 READY가 전제. operator/forbidden 어댑터는 실행하지 않고 안내만 한다.
+
+def scans_dir() -> Path:
+    """어댑터별 결과 위치. findings.json 옆에 둔다(같은 툴킷 데이터 안)."""
+    return FINDINGS_FILE.parent / "scans"
+
+
+def rounds_dir() -> Path:
+    """닫힌 차수의 검출 보관 위치."""
+    return FINDINGS_FILE.parent / "rounds"
+
+
+def is_url(value: str) -> bool:
+    return value.startswith(("http://", "https://"))
+
+
+def is_excluded(location_file: str, exclusions: list[str]) -> bool:
+    """검출 위치가 제외 자산에 속하는지. 순수 함수.
+
+    URL 검출은 URL 제외(경계 있는 접두사)나 호스트 제외(같거나 하위 도메인)와 비교하고,
+    파일 검출은 URL이 아닌 제외와 경로 경계 접두사로 비교한다.
+    """
+    from urllib.parse import urlparse
+
+    value = str(location_file or "").strip()
+    if not value:
+        return False
+    if is_url(value):
+        host = (urlparse(value).hostname or "").lower()
+        for raw in exclusions:
+            excl = str(raw).strip()
+            if not excl:
+                continue
+            if is_url(excl):
+                base = excl.rstrip("/")
+                if value == base or value.startswith(base + "/") or value.startswith(base + "?") or value.startswith(base + "#"):
+                    return True
+            elif "/" not in excl and "." in excl:
+                excl_host = excl.lower()
+                if host == excl_host or host.endswith("." + excl_host):
+                    return True
+        return False
+    path = value.removeprefix("./").rstrip("/")
+    for raw in exclusions:
+        excl = str(raw).strip()
+        if not excl or is_url(excl):
+            continue
+        base = excl.removeprefix("./").rstrip("/")
+        if base and (path == base or path.startswith(base + "/")):
+            return True
+    return False
+
+
+def filter_excluded(findings: list[dict[str, Any]], exclusions: list[str]) -> tuple[list[dict[str, Any]], int]:
+    kept = [f for f in findings if not is_excluded(str((f.get("location") or {}).get("file") or ""), exclusions)]
+    return kept, len(findings) - len(kept)
+
+
+def load_scan_results() -> dict[str, dict[str, Any]]:
+    """data/scans/*.json을 어댑터 이름별로 읽는다.
+
+    반쪽 파일을 건너뛰면 그 어댑터의 결과가 빠진 채 검출이 다시 만들어지므로,
+    읽을 수 없는 파일이 있으면 파일 이름과 함께 ValueError를 낸다.
+    """
+    directory = scans_dir()
+    results: dict[str, dict[str, Any]] = {}
+    if not directory.is_dir():
+        return results
+    for path in sorted(directory.glob("*.json")):
+        try:
+            data = load_json(path)
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError(
+                f"cannot read data/scans/{path.name}: {error} (likely half-written); "
+                f"re-run adapter '{path.stem}' with scan, or remove the file to drop its results"
+            ) from error
+        if isinstance(data, dict):
+            results[path.stem] = data
+    return results
+
+
+def adapters_of(finding: dict[str, Any]) -> set[str]:
+    return {str(s.get("adapter")) for s in finding.get("sources") or [] if isinstance(s, dict) and s.get("adapter")}
+
+
+def round_resolution(previous: list[dict[str, Any]], current: list[dict[str, Any]],
+                     adapters_run: set[str]) -> dict[str, list[str]]:
+    """직전 차수 대비 사라진 검출을 분류한다. 순수 함수.
+
+    사라진 검출은 그 검출을 찾았던 어댑터가 이번 차수에 모두 다시 돌았을 때만 해소로 본다.
+    다시 돌지 않았으면 사라진 것이 아니라 확인하지 않은 것이다.
+    """
+    current_keys = {finding_key(f) for f in current}
+    resolved: list[str] = []
+    not_rechecked: list[str] = []
+    for finding in previous:
+        key = finding_key(finding)
+        if key in current_keys:
+            continue
+        sources = adapters_of(finding)
+        if sources and sources <= adapters_run:
+            resolved.append(key)
+        else:
+            not_rechecked.append(key)
+    return {"resolved": sorted(resolved), "notRechecked": sorted(not_rechecked)}
+
+
+def validate_runtime_files(report: Report) -> None:
+    """어댑터별 결과와 보관 차수 파일이 읽히는지 확인하고, 반쪽 파일을 지목한다."""
+    for directory, pattern in ((scans_dir(), "*.json"), (rounds_dir(), "round-*.json")):
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob(pattern)):
+            try:
+                load_json(path)
+            except (OSError, json.JSONDecodeError) as error:
+                report.error(f"cannot read data/{directory.name}/{path.name}: {error} (likely half-written)")
+
+
+def latest_round() -> dict[str, Any] | None:
+    directory = rounds_dir()
+    if not directory.is_dir():
+        return None
+    files = sorted(directory.glob("round-*.json"))
+    if not files:
+        return None
+    data = load_json(files[-1])
+    return data if isinstance(data, dict) else None
+
+
+def archived_keys() -> set[str]:
+    """보관된 차수의 검출 키. 읽을 수 없는 파일은 validate_runtime_files가 따로 지목한다."""
+    directory = rounds_dir()
+    keys: set[str] = set()
+    if directory.is_dir():
+        for path in directory.glob("round-*.json"):
+            try:
+                data = load_json(path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(data, dict):
+                keys |= {finding_key(f) for f in data.get("findings", []) if isinstance(f, dict)}
+    return keys
+
+
+def rebuild_findings(scope: dict[str, Any]) -> tuple[int, int]:
+    """어댑터별 결과를 합쳐 findings.json을 다시 만든다. (검출 수, 제외된 수)."""
+    collected: list[dict[str, Any]] = []
+    for data in load_scan_results().values():
+        collected += [f for f in data.get("findings", []) if isinstance(f, dict)]
+    merged = merge_findings(collected)
+    kept, excluded = filter_excluded(merged, [str(x) for x in scope.get("exclusions", [])])
+    write_json_atomic(FINDINGS_FILE, {
+        "schemaVersion": SCHEMA_VERSION,
+        "generatedAt": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "findings": kept,
+    })
+    return len(kept), excluded
+
+
+def preserve_legacy_findings() -> None:
+    """어댑터별 저장 이전에 만든 findings.json을 한 번만 보존용 결과로 옮긴다."""
+    directory = scans_dir()
+    if directory.is_dir() and any(directory.glob("*.json")):
+        return
+    if not FINDINGS_FILE.exists():
+        return
+    data = load_json(FINDINGS_FILE)
+    findings = data.get("findings", []) if isinstance(data, dict) else []
+    if not findings:
+        return
+    directory.mkdir(parents=True, exist_ok=True)
+    write_json_atomic(directory / f"{LEGACY_SCAN}.json", {
+        "schemaVersion": SCHEMA_VERSION, "adapter": LEGACY_SCAN, "ranAt": None,
+        "targets": [], "findings": findings,
+    })
+
+
+def run_new_round() -> int:
+    """현재 차수의 검출을 보관하고 새 차수를 연다. 판정은 키로 이어지므로 그대로 둔다."""
+    if not FINDINGS_FILE.exists():
+        print("보관할 검출이 없습니다. 먼저 scan을 실행하세요.")
+        return 1
+    current = load_json(FINDINGS_FILE)
+    findings = current.get("findings", []) if isinstance(current, dict) else []
+    directory = rounds_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    number = len(list(directory.glob("round-*.json"))) + 1
+    try:
+        adapters_run = sorted(name for name in load_scan_results() if name != LEGACY_SCAN)
+    except ValueError as error:
+        print(f"ERROR: {error}")
+        return 1
+    write_json_atomic(directory / f"round-{number:03d}.json", {
+        "schemaVersion": SCHEMA_VERSION, "round": number,
+        "closedAt": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "adaptersRun": adapters_run, "findings": findings,
+    })
+    for path in scans_dir().glob("*.json") if scans_dir().is_dir() else []:
+        path.unlink()
+    FINDINGS_FILE.unlink()
+    print(f"{number}차 점검을 닫았습니다: 검출 {len(findings)}건을 data/rounds/round-{number:03d}.json에 보관.")
+    print("새 차수에서 scan을 실행하면 직전 차수 대비 해소 여부를 dispositions로 볼 수 있습니다.")
+    return 0
+
+
+def run_scan(direct: bool) -> int:
+    """실행 판정이 'run'인 어댑터만 스킬이 돌리고, 어댑터별 결과를 저장한 뒤 합쳐 findings를 만든다.
+
+    게이트 READY가 전제. operator/forbidden 어댑터는 실행하지 않고 안내만 한다. 실행된 어댑터의
+    결과만 바뀌고 나머지 어댑터의 결과는 그대로 남는다. 아무것도 실행되지 않으면 쓰지 않는다.
     """
     try:
         scope = load_json(SCOPE_FILE)
@@ -950,8 +1186,14 @@ def run_scan(direct: bool) -> int:
     if not adapters:
         print("선언된 어댑터가 없습니다 (adapters/*.json).")
         return 0
-    collected: list[dict[str, Any]] = []
     import tempfile as _tempfile
+    try:
+        load_scan_results()  # 반쪽 파일이 있으면 아무것도 실행하기 전에 멈춘다
+    except ValueError as error:
+        print(f"ERROR: {error}")
+        return 1
+    preserve_legacy_findings()  # 어댑터별 저장 이전 결과를 첫 쓰기 전에 보존
+    ran: list[str] = []
     for name, adapter in adapters:
         if not isinstance(adapter, dict) or "__error__" in adapter:
             print(f"- {name}: 선언 오류, 건너뜀 (validate로 확인)")
@@ -971,6 +1213,8 @@ def run_scan(direct: bool) -> int:
                 rendered = str(adapter.get("command", "")).replace("{target}", target).replace("{output}", f"{name}.sarif")
                 print(f"    운영자 실행 후 출력을 수집: {rendered}")
             continue
+        adapter_findings: list[dict[str, Any]] = []
+        succeeded: list[str] = []
         for target in targets:
             with _tempfile.TemporaryDirectory() as tmp:
                 output = Path(tmp) / f"{name}.sarif"
@@ -993,15 +1237,28 @@ def run_scan(direct: bool) -> int:
                     print(f"- {name} @ {target}: {error}")
                     continue
                 items = findings_from_sarif(sarif, name)
-                collected += items
+                for item in items:
+                    for source in item["sources"]:
+                        source["adapter"] = name  # 차수 간 해소 판단에 쓴다
+                adapter_findings += items
+                succeeded.append(target)
                 print(f"- {name} @ {target}: run — 검출 {len(items)}건")
-    merged = merge_findings(collected)
-    write_json_atomic(FINDINGS_FILE, {
-        "schemaVersion": SCHEMA_VERSION,
-        "generatedAt": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "findings": merged,
-    })
-    print(f"SCAN: 수집 {len(collected)}건 → 묶음 후 {len(merged)}건. data/findings.json")
+        if not succeeded:
+            print(f"- {name}: 성공한 실행이 없어 이전 결과를 유지합니다")
+            continue
+        scans_dir().mkdir(parents=True, exist_ok=True)
+        write_json_atomic(scans_dir() / f"{name}.json", {
+            "schemaVersion": SCHEMA_VERSION, "adapter": name,
+            "ranAt": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "targets": succeeded, "findings": adapter_findings,
+        })
+        ran.append(name)
+    if not ran:
+        print("SCAN: 실행된 어댑터가 없어 검출을 바꾸지 않았습니다.")
+        return 0
+    total, excluded = rebuild_findings(scope)
+    note = f", 제외 자산 {excluded}건 제외" if excluded else ""
+    print(f"SCAN: 실행 {', '.join(ran)} → 검출 {total}건{note}. data/findings.json")
     return 0
 
 
@@ -1034,7 +1291,7 @@ def run_adapters(direct: bool) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="security-assessment: authorization gate, scanning, dispositions, handoff and evidence.")
-    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan", "dispositions", "bridge", "evidence"))
+    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan", "dispositions", "bridge", "evidence", "new-round"))
     parser.add_argument("--strict", action="store_true", help="treat a not-ready gate as a validation error")
     parser.add_argument("--direct", action="store_true", help="adapters: 사용자가 직접 실행을 명시했다고 본다")
     parser.add_argument("--dry-run", action="store_true", help="bridge: 파일·판정을 쓰지 않고 건수만 보고")
@@ -1058,6 +1315,8 @@ def main() -> int:
         return run_bridge(args.dry_run, args.all_findings)
     if args.command == "evidence":
         return run_evidence()
+    if args.command == "new-round":
+        return run_new_round()
     return run_gate()
 
 

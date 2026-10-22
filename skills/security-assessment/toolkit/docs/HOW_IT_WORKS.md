@@ -6,18 +6,20 @@
 
 ## 구조
 
-입력은 점검 범위와 어댑터 선언이고, 도구는 하나의 명령줄 프로그램이다. 검출과 판정은
-정본 JSON에 남고, 넘김 파일과 증적은 거기서 만들어진다. 점선은 validate의 검사 대상이다.
+입력은 점검 범위와 어댑터 선언이고, 도구는 하나의 명령줄 프로그램이다. 스캔 결과는
+어댑터별로 저장된 뒤 합쳐 검출이 되고, 판정은 따로 남는다. 넘김 파일과 증적은 그
+정본에서 만들어진다. 점선은 validate의 검사 대상과 지난 차수 비교다.
 
 ```mermaid
 flowchart LR
   subgraph IN["입력"]
-    scope["scope.json<br/>대상 · 기간 · 동의"]
+    scope["scope.json<br/>대상 · 제외 · 기간 · 동의"]
     adapters["adapters/*.json<br/>스캐너 선언"]
   end
   subgraph TOOL["assess_toolkit.py"]
     gate["gate · authorize"]
     scan["scan"]
+    round["new-round"]
     disp["dispositions"]
     bridge["bridge"]
     ev["evidence"]
@@ -28,7 +30,9 @@ flowchart LR
     s2["osv-scanner 등 JSON"]
   end
   subgraph DATA["정본 데이터"]
-    f["findings.json"]
+    sc["scans/어댑터.json<br/>어댑터별 결과"]
+    f["findings.json<br/>합친 결과, 제외 자산 뺌"]
+    rd["rounds/round-NNN.json<br/>지난 차수"]
     d["dispositions.json"]
   end
   subgraph OUT["산출물"]
@@ -41,8 +45,12 @@ flowchart LR
   gate --> scan
   scan <--> s1
   scan <--> s2
-  scan --> f
+  scan --> sc
+  sc --> f
+  f --> round
+  round --> rd
   disp --> d
+  rd -.-> disp
   f --> bridge
   d --> bridge
   bridge --> h
@@ -131,6 +139,16 @@ argv로 하며 명령 템플릿의 `{target}`·`{output}`를 토큰으로 치환
 묶인다. 수집·묶음은 순수 함수라 커밋한 SARIF 샘플로 도구 없이 테스트한다. 실제
 도구 연동은 저장소 밖 임시 사본에서 확인한다. 판정은 아래 절에서 다룬다.
 
+결과는 **어댑터별로** `data/scans/<어댑터>.json`에 저장되고, `findings.json`은 그
+결과들을 합쳐 다시 만든다. 이번에 실행된 어댑터의 결과만 바뀌므로, 어댑터 하나만 다시
+돌리거나 `--direct` 없이 실행해도 다른 결과가 사라지지 않는다. 실행된 어댑터가 하나도
+없으면 아무것도 쓰지 않는다. 어댑터별 결과 파일이 반쪽으로 저장돼 있으면 스캔을 시작하지
+않고 그 파일을 지목한다 — 건너뛰고 합치면 그 어댑터의 결과가 조용히 빠지기 때문이다.
+
+합칠 때 **제외 자산**에 속한 검출을 걸러낸다. 파일 위치는 경로 경계로(`src/dao`는
+`src/dao/...`를 제외하지만 `src/daolike`는 아니다), URL 위치는 URL 접두사나 호스트(하위
+도메인 포함)로 비교한다. 제외 자산이 결과에 남아 있으면 validate가 에러를 낸다.
+
 ## 정규화기
 
 네이티브 SARIF를 내지 않는 도구는 `output_format`이 정규화기를 가리킨다.
@@ -155,9 +173,21 @@ confirmed·false-positive·out-of-scope는 근거가 없으면 validate 에러�
 `bridge`는 **confirmed 코드 결함**만 SARIF로 내보낸다(`data/handoff.sarif`). 웹
 (DAST) 검출처럼 위치가 URL인 것은 코드 결함이 아니라 제외한다. 내보낸 판정에는
 handedOff 표시가 붙고, 조치 진행은 sast-remediation이 추적한다(ADR 0001) —
-해소는 다음 차수 재점검으로만 판단한다. 기본은 아직 안 넘긴 것만, `--all`은 전부
+해소는 다음 차수 재점검으로만 판단한다(아래 「점검 차수와 해소」). 기본은 아직 안 넘긴 것만, `--all`은 전부
 다시, `--dry-run`은 건수만. 생성된 SARIF를 sast-remediation 프로젝트의 input/에
 넣어 조치를 잇는다.
+
+## 점검 차수와 해소
+
+다시 점검할 때는 `new-round`로 현재 차수를 닫는다. 현재 검출과 이번 차수에 실행된
+어댑터 목록이 `data/rounds/round-NNN.json`에 보관되고, 어댑터별 결과와 `findings.json`이
+비워진다. 판정은 `fingerprint:cwe` 키로 이어지므로 그대로 둔다. 보관된 차수에만 있는
+검출을 가리키는 판정은 유효한 기록이라 validate가 에러로 보지 않는다.
+
+새 차수에서 스캔한 뒤 `dispositions`를 보면 `sincePreviousRound`에 직전 차수 대비
+결과가 나온다. 사라진 검출은 **그 검출을 찾았던 어댑터가 이번 차수에 모두 다시 돌았을
+때만** `resolved`(해소)다. 다시 돌지 않았으면 `notRechecked`(재확인 안 됨)로 남는다.
+스캐너를 돌리지 않아 안 보이는 것을 고쳐진 것으로 세지 않기 위해서다.
 
 ## 증적
 

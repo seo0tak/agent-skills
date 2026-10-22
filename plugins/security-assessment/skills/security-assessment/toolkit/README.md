@@ -69,10 +69,11 @@ python3 tools/assess_toolkit.py validate
 | `authorize` | 현재 스코프의 의미 지문 기록, status를 authorized로 |
 | `gate` | 승인·지문·기간 재대조 → READY/BLOCKED |
 | `adapters` | 어댑터별 실행 판정 표시(명령 미실행). `--direct`는 사용자가 직접 실행을 명시했다고 봄 |
-| `scan` | 게이트 READY일 때 'run' 판정 어댑터를 실행하고 출력을 수집·묶어 `data/findings.json`에 쓴다. `--direct` 필요. operator 판정은 명령만 안내 |
-| `dispositions` | 검출별 판정·확인 단계 집계(JSON). 레코드 없는 검출은 unreviewed로 센다 |
+| `scan` | 게이트 READY일 때 'run' 판정 어댑터를 실행해 어댑터별 결과(`data/scans/`)를 갱신하고, 합친 결과에서 제외 자산을 빼 `data/findings.json`을 만든다. `--direct` 필요. 실행된 어댑터가 없으면 아무것도 바꾸지 않는다 |
+| `dispositions` | 검출별 판정·확인 단계 집계(JSON). 레코드 없는 검출은 unreviewed로 센다. 지난 차수가 있으면 해소·재확인 안 됨도 표시 |
 | `bridge` | confirmed 코드 결함을 SARIF(`data/handoff.sarif`)로 내보내고 handedOff 표시. `--dry-run`·`--all` |
 | `evidence` | 증적 워크북 `evidence/findings.csv`와 표지 보고서 `evidence/cover.md`를 데이터에서 생성. 데이터가 바뀌면 validate가 드리프트를 에러로 |
+| `new-round` | 현재 차수의 검출을 `data/rounds/`에 보관하고 새 차수를 연다. 판정은 유지되고, 다음 스캔 뒤 `dispositions`가 직전 차수 대비 해소를 보여 준다 |
 
 ## 테스트
 

@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-22, v1.15.0 / v0.4.3 / security-assessment v0.7.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.15.1 / skill-architect v0.5.0 / security-assessment v0.8.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-22 신규 스킬 security-assessment M0~M2)
 
-- **새 스킬 `security-assessment`**(현재 **v0.7.0**)를 추가 중이다. 보안 취약점을
+- **새 스킬 `security-assessment`**(현재 **v0.8.0**)를 추가 중이다. 보안 취약점을
   직접 *검사*하는 인가 기반 오케스트레이터. 설계 정본: 저장소 루트 `CONTEXT.md`,
   `docs/adr/0001`(확인/조치 경계)·`0002`(침습도 세 겹), 계획·설계
   `docs/superpowers/plans|specs/2026-10-14-security-assessment*`. grill-with-docs로
@@ -28,8 +28,19 @@
   스킬별 관련 문서), 원리 4를 LSP 중심에서 "목적에 맞는 소스 탐색 + 현재 수단 명시"로,
   mermaid 다이어그램 2개(README 스킬 관계, security-assessment 흐름). CLAUDE.md에
   범주 비전제·유형 열 규약.
-- **다음: M3~M5** — 웹(DAST)·인프라 스캐너, 방법론 체크리스트. 웹 스캐너는 실행 중인
-  대상에 실제 요청을 보내므로 M3 착수 전 설계 점검(grill)을 권한다.
+- **skill-architect 기준 점검(0.7.1 대상)** 결과 11개 범주 중 적용 1 / 부분 10. 재현된 결함
+  3개와 경로 모순 1개를 0.8.0에서 고쳤다: scan이 기존 검출을 지움(어댑터별 저장으로 해결),
+  제외 자산 미적용(합칠 때 걸러내고 validate가 강제), 차수 없음으로 해소가 validate 에러가
+  됨(`new-round` + 같은 어댑터 재실행 시에만 해소), SKILL.md가 설치본 경로를 고치라고
+  지시(첫 행동·프로젝트 복사본 경로로 정리). 테스트 66건.
+- **남은 점검 개선 5번(미적용)**: 판정 절차 요청문과 결정 주체 기록, 운영자가 돌린 출력을
+  들여오는 명령. README 흐름도의 "운영자 → 정규화" 화살표는 아직 구현되지 않은 경로라 이때
+  함께 정정해야 한다.
+- 같은 날 문서 정비: 스킬별 흐름도(README)·구조도(HOW_IT_WORKS), 사용자 문서에서 대화·날짜·
+  개발 단계 표시 제거(CLAUDE.md 문서 규칙), skill-architect를 감사 도구가 아니라 "스킬 설계
+  기준"으로 재정의(0.5.0, 기준 → 새 스킬 설계 → 기존 스킬 점검 순).
+- **다음**: 점검 개선 5번, 그 뒤 M3~M5(웹 DAST·인프라 스캐너, 방법론 체크리스트). 웹 스캐너는
+  실행 중인 대상에 실제 요청을 보내므로 M3 착수 전 설계 점검을 권한다.
 - sast-remediation·skill-architect는 변경 없음(v1.15.0 / v0.4.3 유지).
 
 ## 이전 작업 기준 (2026-10-14 체커별 진행)

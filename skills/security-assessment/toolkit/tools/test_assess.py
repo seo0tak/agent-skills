@@ -348,9 +348,8 @@ class AssessCase(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual(calls, [])
         self.assertIn("operator", out)
-        self.assertIsNotNone(data)
-        assert data is not None
-        self.assertEqual(data["findings"], [])
+        self.assertIn("검출을 바꾸지 않았습니다", out)
+        self.assertIsNone(data)  # 아무것도 실행되지 않으면 findings를 쓰지 않는다
 
     # --- M1: 카테고리 → 대상 타입 매핑 ---
     def test_category_maps_to_target_types(self):
@@ -669,6 +668,182 @@ class AssessCase(unittest.TestCase):
             self.assertIn("cover.md is hand-written", out)
 
         self._with_evidence_paths(body)
+
+    # --- 점검 결함 1: scan이 기존 검출을 지우지 않는다 ---
+    def _scan_env(self):
+        """findings·어댑터·실행부를 임시 위치로 돌리는 컨텍스트 값과 복구 함수."""
+        base = Path(self._tmp.name)
+        adapter_dir = base / "adapters"
+        adapter_dir.mkdir(exist_ok=True)
+        orig = (assess.ADAPTER_DIR, assess.FINDINGS_FILE, assess.DISPOSITIONS_FILE, assess.execute_adapter)
+        assess.ADAPTER_DIR, assess.FINDINGS_FILE, assess.DISPOSITIONS_FILE = adapter_dir, base / "findings.json", base / "dispositions.json"
+
+        def restore():
+            assess.ADAPTER_DIR, assess.FINDINGS_FILE, assess.DISPOSITIONS_FILE, assess.execute_adapter = orig
+        return adapter_dir, restore
+
+    def _set_adapter(self, adapter_dir, name, sarif_doc, category="sast", intrusiveness="passive"):
+        (adapter_dir / f"{name}.json").write_text(json.dumps({
+            "id": name, "category": category, "intrusiveness": intrusiveness, "availability": "x",
+            "command": f"{name} -o {{output}} {{target}}", "output_format": "sarif"}), encoding="utf-8")
+        self._fixtures = getattr(self, "_fixtures", {})
+        self._fixtures[name] = json.dumps(sarif_doc)
+
+        def fake_execute(command_template, target, output_path, timeout=600):
+            Path(output_path).write_text(self._fixtures[command_template.split()[0]], encoding="utf-8")
+            return 0
+        assess.execute_adapter = fake_execute
+
+    def _scan(self, direct=True):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = assess.run_scan(direct)
+        return code, buf.getvalue()
+
+    def _findings(self):
+        return json.loads(assess.FINDINGS_FILE.read_text(encoding="utf-8"))["findings"]
+
+    def test_scan_without_direct_keeps_previous_findings(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            self.assertEqual(self._scan(direct=True)[0], 0)
+            self.assertEqual(len(self._findings()), 2)
+            code, out = self._scan(direct=False)
+            self.assertEqual(code, 0, out)
+            self.assertEqual(len(self._findings()), 2)  # 지워지지 않음
+        finally:
+            restore()
+
+    def test_running_one_adapter_keeps_other_adapters_results(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            self._set_adapter(adapter_dir, "other", self.sarif("other-sample.sarif"))
+            self._scan()
+            # semgrep이 이번에 실행되지 않아도(상한 초과로 건너뜀) semgrep 결과는 남는다
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"), intrusiveness="intrusive")
+            _code, out = self._scan()
+            self.assertIn("semgrep: forbidden", out)
+            self.assertIn("실행 other", out)
+            self.assertEqual({f["cwe"] for f in self._findings()}, {"CWE-89", "CWE-330"})
+        finally:
+            restore()
+
+    def test_existing_findings_are_preserved_on_upgrade(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            legacy = assess.merge_findings(assess.findings_from_sarif(self.sarif("semgrep-sample.sarif"), "semgrep"))
+            assess.FINDINGS_FILE.write_text(json.dumps({"schemaVersion": "1.0", "generatedAt": None, "findings": legacy}), encoding="utf-8")
+            other = self.sarif("other-sample.sarif")
+            other["runs"][0]["results"][0]["locations"][0]["logicalLocations"][0]["fullyQualifiedName"] = "Other.fn"
+            self._set_adapter(adapter_dir, "other", other)
+            self._scan()
+            self.assertEqual(len(self._findings()), 3)  # 이전 2건 + 새 1건
+        finally:
+            restore()
+
+    def test_half_written_scan_result_stops_scan_and_is_named(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            self._scan()
+            (assess.scans_dir() / "semgrep.json").write_text('{"findings": [', encoding="utf-8")
+            code, out = self._scan()
+            self.assertEqual(code, 1)
+            self.assertIn("data/scans/semgrep.json", out)
+            code, out = self.validate()
+            self.assertEqual(code, 1)
+            self.assertIn("data/scans/semgrep.json", out)
+        finally:
+            restore()
+
+    # --- 점검 결함 2: 제외 자산 ---
+    def test_is_excluded_paths_urls_and_hosts(self):
+        ex = ["src/dao", "https://staging.example.test/admin", "prod.example.test"]
+        self.assertTrue(assess.is_excluded("src/dao/UserDao.java", ex))
+        self.assertTrue(assess.is_excluded("./src/dao", ex))
+        self.assertFalse(assess.is_excluded("src/daolike/X.java", ex))  # 경로 경계
+        self.assertTrue(assess.is_excluded("https://staging.example.test/admin/users", ex))
+        self.assertFalse(assess.is_excluded("https://staging.example.test/administrator", ex))
+        self.assertTrue(assess.is_excluded("https://api.prod.example.test/x", ex))
+        self.assertFalse(assess.is_excluded("https://staging.example.test/", ex))
+
+    def test_scan_drops_findings_in_excluded_assets(self):
+        scope = authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}],
+                                 exclusions=["src/dao"])
+        scope["approvalFingerprint"] = assess.semantic_fingerprint(scope)
+        self.write(scope)
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            code, out = self._scan()
+            self.assertIn("제외 자산 1건 제외", out)
+            self.assertEqual([f["location"]["file"] for f in self._findings()], ["src/util/Token.java"])
+        finally:
+            restore()
+
+    def test_validate_rejects_findings_in_excluded_assets(self):
+        scope = authorized_scope(exclusions=["src/dao"])
+        scope["approvalFingerprint"] = assess.semantic_fingerprint(scope)
+        self.write(scope)
+        orig = assess.FINDINGS_FILE
+        assess.FINDINGS_FILE = self.scope_file.parent / "findings.json"
+        try:
+            assess.FINDINGS_FILE.write_text(json.dumps({"schemaVersion": "1.0", "generatedAt": None, "findings": [
+                {"fingerprint": "f", "cwe": "CWE-89", "location": {"file": "src/dao/A.java"}, "sources": [{"scanner": "s", "ruleId": "r"}]}]}),
+                encoding="utf-8")
+            code, out = self.validate()
+        finally:
+            assess.FINDINGS_FILE = orig
+        self.assertEqual(code, 1)
+        self.assertIn("excluded asset", out)
+
+    # --- 점검 결함 3: 차수와 해소 판단 ---
+    def test_round_resolution_requires_the_finding_adapter_to_rerun(self):
+        prev = [
+            {"fingerprint": "a", "cwe": "CWE-89", "sources": [{"adapter": "semgrep"}]},
+            {"fingerprint": "b", "cwe": "CWE-79", "sources": [{"adapter": "zap"}]},
+            {"fingerprint": "c", "cwe": "CWE-1", "sources": [{"adapter": "semgrep"}]},
+        ]
+        current = [{"fingerprint": "c", "cwe": "CWE-1", "sources": [{"adapter": "semgrep"}]}]
+        result = assess.round_resolution(prev, current, {"semgrep"})
+        self.assertEqual(result, {"resolved": ["a:CWE-89"], "notRechecked": ["b:CWE-79"]})
+
+    def test_handed_off_finding_disappearing_next_round_is_resolved_not_an_error(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            self._scan()
+            records = json.loads((TOOLS_DIR.parent / "examples/dispositions.json").read_text(encoding="utf-8"))
+            assess.DISPOSITIONS_FILE.write_text(json.dumps(records), encoding="utf-8")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(assess.run_new_round(), 0)
+            fixed = self.sarif("semgrep-sample.sarif")
+            fixed["runs"][0]["results"] = fixed["runs"][0]["results"][1:]  # SQL 결함이 고쳐짐
+            self._set_adapter(adapter_dir, "semgrep", fixed)
+            self._scan()
+            code, out = self.validate()
+            self.assertNotIn("references no finding", out)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                assess.run_dispositions()
+            summary = json.loads(buf.getvalue())
+            self.assertEqual(summary["sincePreviousRound"]["resolved"], ["7872908dde452cab:CWE-89"])
+            self.assertEqual(summary["sincePreviousRound"]["notRechecked"], [])
+        finally:
+            restore()
+
+    def test_disposition_for_unknown_key_is_still_an_error(self):
+        code, out = self.setup_findings_and_dispositions(
+            [self.a_finding()], {"nope:CWE-1": {"disposition": "suspected", "stage": "in-review"}})
+        self.assertEqual(code, 1)
+        self.assertIn("references no finding", out)
 
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):
