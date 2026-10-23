@@ -31,20 +31,18 @@ const IN_SCOPE = JSON.stringify({
   byChecker: {},
 })
 
-// 1.15.0 이전 툴킷: summary에 byChecker가 없고, query 행으로 센다.
-const ROWS = JSON.stringify([
-  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'verified' } },
-  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'todo' } },
-  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'analyzed' } },
-  { checker: { code: 'XSS' }, progress: { workflowStatus: 'verified' } },
-])
+// 1.15.0 이전 툴킷: summary에 byChecker가 없고, 패널이 짧은 스크립트(python -c)로 데이터 파일을 센다.
+const COUNTED = JSON.stringify({
+  XSS: { total: 1, verified: 1, deferred: 0, remaining: 0 },
+  SQL_INJECTION: { total: 3, verified: 1, deferred: 0, remaining: 2 },
+})
 
 type Seen = { opened: number; status: string[]; argv0: string[] }
 
 // 엔진을 대신하는 훅. hasToolkit이 거짓이면 프로젝트에 툴킷 복사본이 없는 상태, minRisk가 null이면 처리 범위 미설정.
 const STORE_ALIAS = 'Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.'
 
-function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null, windows = false, oldToolkit = false) {
+function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null, windows = false, oldToolkit = false, noCheckers = false) {
   on('command.register', () => ({ value: { command: 'sast-progress' } }))
   on('ui.open', () => { seen.opened += 1; return { value: { isPlaced: true } } })
   on('ui.status', (_: unknown, e: { text?: string }) => { seen.status.push(String(e.text)); return { value: {} } })
@@ -65,9 +63,10 @@ function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null
     // Windows: python3는 Store 바로가기라 9009로 끝나고, py -3이 실제 파이썬이다.
     if (windows && e.argv[0] === 'python3') return { value: { exitCode: 9009, stdout: '', stderr: STORE_ALIAS } }
     if (windows && e.argv[0] === 'python') throw new Error('spawn python ENOENT')
-    if (oldToolkit && !e.argv.includes('--summary')) return { value: { exitCode: 0, stdout: ROWS, stderr: '' } }
+    if (e.argv.includes('-c')) return { value: { exitCode: 0, stdout: oldToolkit ? COUNTED : '{}', stderr: '' } }
     const summary = e.argv.includes('in-scope') ? IN_SCOPE : ALL
-    return { value: { exitCode: 0, stdout: oldToolkit ? JSON.stringify({ ...JSON.parse(summary), byChecker: undefined }) : summary, stderr: '' } }
+    const older = oldToolkit || noCheckers
+    return { value: { exitCode: 0, stdout: older ? JSON.stringify({ ...JSON.parse(summary), byChecker: undefined }) : summary, stderr: '' } }
   })
   on('skill.prompt', (_: unknown, e: { text: string }) => ({ text: e.text }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
@@ -82,12 +81,13 @@ test('the summary card leads with the in-scope completion and both surfaces draw
 
   for (const [surface, sep] of [['terminal', ', '], ['desktop', ' · ']] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /^68%  15\/22$/ }))?.text).toBeTruthy() // 머리 띠
+    expect((await ui.find({ type: 'Text', text: /🔍 SAST 진행률   68%  15 \/ 22/ }))?.text).toBeTruthy() // 머리 띠, 왼쪽 정렬
     expect((await ui.find({ type: 'Text', text: /처리 범위/ }))?.text).toContain(`위험도 높음 이상${sep}남음 7${sep}📦 전체 29 / 48`)
-    expect((await ui.find({ type: 'Text', text: /^💤3 보류$/ }))?.text).toBeTruthy() // 아이콘 범례(전체 기준)
+    expect((await ui.find({ type: 'Text', text: /^💤 3 보류$/ }))?.text).toBeTruthy() // 아이콘 범례(전체 기준)
     expect((await ui.find({ type: 'Text', text: /🔴 SQL_INJECTION/ }))?.text).toBeTruthy() // 남은 7건은 빨강 신호
     expect((await ui.find({ type: 'Text', text: surface === 'terminal' ? /남음 7 +5\/12/ : /남음 7 · 5\/12/ }))?.text).toBeTruthy()
-    expect((await ui.find({ type: 'Button', text: /📋 체커/ }))).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /^ 1 📋 체커 $/ }))?.text).toBeTruthy() // 지금 탭은 반전 알약
+    expect((await ui.find({ type: 'Button', text: /🧠 토큰/ }))).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /🕒 .*갱신/ }))?.text).toContain('$18.42') // 바닥 줄
     await ui.unmount()
   }
@@ -169,7 +169,7 @@ test('the terminal drawing uses no ambiguous-width characters and no borders', a
   engine(on, seen, true, 'high')
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  for (const key of ['tab-checkers', 'tab-tokens', 'tab-scope']) {
+  for (const key of ['tab-tokens', 'tab-scope', 'tab-checkers']) {
     await ui.press({ key })
     const tree = await ui.drawn()
     const text = strings(tree).join('')
@@ -183,12 +183,21 @@ test('the terminal drawing uses no ambiguous-width characters and no borders', a
   await ui.unmount()
 })
 
-test('with an older toolkit the checker tab counts from query rows', async ($, on) => {
+test('with an older toolkit the checker tab counts the data files', async ($, on) => {
   const seen: Seen = { opened: 0, status: [], argv0: [] }
   engine(on, seen, true, 'high', false, true)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: /🟡 SQL_INJECTION.*남음 2 +1\/3/ }))?.text).toBeTruthy()
   expect((await ui.find({ type: 'Text', text: /🟢 XSS.*남음 0 +1\/1/ }))?.text).toBeTruthy()
+  await ui.unmount()
+})
+
+test('an empty checker list says so instead of drawing nothing', async ($, on) => {
+  const seen: Seen = { opened: 0, status: [], argv0: [] }
+  engine(on, seen, true, 'high', false, false, true)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /체커별 집계를 읽지 못했습니다/ }))?.text).toBeTruthy()
   await ui.unmount()
 })

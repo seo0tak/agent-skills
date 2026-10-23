@@ -34,7 +34,7 @@ const STAGES: { key: string; label: string; icon: string; hex: string; theme: st
 // 아이콘은 Emoji_Presentation 문자만 쓴다. 이 문자들은 어느 터미널에서나 정확히 두 칸이라 폭이 어긋나지 않는다.
 // ⚠ ⏸ ★ 같은 기호나 FE0F를 붙여야 그림이 되는 이모지(🛡️ 등)는 폭이 모호해 쓰지 않는다(테스트가 검사).
 const ICON = {
-  title: '🔍', scope: '🎯', all: '📦', outside: '➖', empty: '📭', checkers: '📋', context: '🧠', cost: '💰',
+  title: '🔍', scope: '🎯', all: '📦', empty: '📭', checkers: '📋', context: '🧠', cost: '💰',
   io: '📨', cache: '📚', requests: '🔁', fiveHour: '⌛', sevenDay: '📅', clock: '🕒',
 }
 // 남은 건수 신호등: 5건 이상 빨강, 3~4 주황, 1~2 노랑, 0 초록
@@ -65,11 +65,15 @@ let python: string[] | null = null
 const NOT_FOUND = /Python was not found|is not recognized as an internal or external command/i
 
 async function runToolkit($: EngineInterface, args: string[]) {
+  return runPython($, ['tools/sast_toolkit.py', ...args])
+}
+
+async function runPython($: EngineInterface, args: string[]) {
   const candidates = python ? [python, ...PYTHONS.filter(c => c.join(' ') !== python!.join(' '))] : PYTHONS
   for (const candidate of candidates) {
     let run
     try {
-      run = await $.process.run([...candidate, '-B', 'tools/sast_toolkit.py', ...args], { cwd: TOOLKIT, timeoutMs: 20000 })
+      run = await $.process.run([...candidate, '-B', ...args], { cwd: TOOLKIT, timeoutMs: 20000 })
     } catch {
       continue // 실행 파일이 없어 시작하지 못함
     }
@@ -95,28 +99,35 @@ function counts(summary: Summary): Counts {
 export function parseSummary(stdout: string, checkedAt: number, scoped: string | null = null,
   minRisk: string | null = null): ProgressView {
   const summary = JSON.parse(stdout) as Summary
-  const checkers = Object.entries(summary.byChecker ?? {}).map(([code, c]) => ({
-    code, total: c.total, verified: c.verified, remaining: c.remaining,
-  }))
+  const checkers = checkersFromCounts(JSON.stringify(summary.byChecker ?? {}))
   const scope: ScopeCounts | null = scoped && minRisk
     ? { ...counts(JSON.parse(scoped) as Summary), minRisk }
     : null
   return { kind: 'ok', all: counts(summary), scope, risk: summary.by?.risk ?? {}, checkers, checkedAt }
 }
 
-// byChecker가 없는 옛 툴킷(1.15.0 이전)용: query 행에서 체커별 진행을 직접 센다(대시보드와 같은 정의).
-export function checkersFromRows(stdout: string) {
-  const rows = JSON.parse(stdout) as { checker?: { code?: string }; progress?: { workflowStatus?: string } }[]
-  const by = new Map<string, { code: string; total: number; verified: number; remaining: number }>()
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const code = row.checker?.code || 'unknown'
-    const entry = by.get(code) ?? { code, total: 0, verified: 0, remaining: 0 }
-    entry.total += 1
-    if (row.progress?.workflowStatus === 'verified') entry.verified += 1
-    entry.remaining = entry.total - entry.verified
-    by.set(code, entry)
-  }
-  return [...by.values()].sort((a, b) => b.remaining - a.remaining || b.total - a.total || a.code.localeCompare(b.code))
+// byChecker가 없는 옛 툴킷(1.15.0 이전)용: 데이터 파일을 읽기만 해서 체커별 진행을 센다(대시보드와 같은 정의).
+// query 행 전체는 검출이 수천 건이면 출력 한도(4 MiB)를 넘어 잘리므로, 집계만 출력하는 짧은 스크립트를 쓴다.
+export const CHECKER_COUNT_SCRIPT = [
+  'import json',
+  "f = json.load(open('data/findings.json', encoding='utf-8'))",
+  "p = json.load(open('data/progress.json', encoding='utf-8')).get('items', {})",
+  'b = {}',
+  'for i in f:',
+  '    if not isinstance(i, dict): continue',
+  "    c = str((i.get('checker') or {}).get('code') or 'unknown')",
+  "    s = (p.get(str(i.get('id', ''))) or {}).get('workflowStatus') or 'todo'",
+  "    e = b.setdefault(c, {'total': 0, 'verified': 0, 'deferred': 0})",
+  "    e['total'] += 1; e['verified'] += s == 'verified'; e['deferred'] += s == 'deferred'",
+  "for e in b.values(): e['remaining'] = e['total'] - e['verified']",
+  'print(json.dumps(b))',
+].join('\n')
+
+export function checkersFromCounts(stdout: string) {
+  const by = JSON.parse(stdout) as Summary['byChecker']
+  return Object.entries(by ?? {})
+    .map(([code, c]) => ({ code, total: c.total, verified: c.verified, remaining: c.remaining }))
+    .sort((a, b) => b.remaining - a.remaining || b.total - a.total || a.code.localeCompare(b.code))
 }
 
 async function minRiskOf($: EngineInterface): Promise<string | null> {
@@ -152,8 +163,8 @@ async function refreshProgress($: EngineInterface, force = false) {
       }
       view = parseSummary(run.stdout, now, scoped, minRisk)
       if (view.kind === 'ok' && view.checkers.length === 0 && view.all.total > 0) {
-        const rows = await runToolkit($, ['query'])
-        if (rows.exitCode === 0 && !rows.isStdoutTruncated) view = { ...view, checkers: checkersFromRows(rows.stdout) }
+        const counted = await runPython($, ['-c', CHECKER_COUNT_SCRIPT])
+        if (counted.exitCode === 0) view = { ...view, checkers: checkersFromCounts(counted.stdout) }
       }
     } catch (error) {
       const previous = await read($, progress)
@@ -371,9 +382,10 @@ export const register: Register = on => {
 
     // ---- 머리 띠: 제목과 완료율 ----
     const band = (
-      <Box flexDirection="row" justifyContent="space-between" columnGap={2} backgroundColor="suggestion" paddingX={1}>
-        <Text bold color="inverseText" wrap="truncate">{ICON.title} SAST 진행률</Text>
-        {main && <Text bold color="inverseText" tabular>{mainPct}%  {main.verified}/{main.total}</Text>}
+      <Box backgroundColor="suggestion" paddingX={1}>
+        <Text bold color="inverseText" wrap="truncate">
+          {ICON.title} SAST 진행률{main ? `   ${mainPct}%  ${main.verified} / ${main.total}` : ''}
+        </Text>
       </Box>
     )
 
@@ -390,7 +402,7 @@ export const register: Register = on => {
       const legend = (
         <Box flexDirection="row" columnGap={2} flexWrap="wrap">
           {stages.map(s => (
-            <Text key={`stage-${s.key}`}><Text color={s.theme} bold>{s.icon}{p.all.byStatus[s.key]}</Text> <Text dimColor>{s.label}</Text></Text>
+            <Text key={`stage-${s.key}`}><Text color={s.theme} bold>{s.icon} {p.all.byStatus[s.key]}</Text> <Text dimColor>{s.label}</Text></Text>
           ))}
         </Box>
       )
@@ -421,12 +433,9 @@ export const register: Register = on => {
     })()
 
     // ---- 탭: 지금 탭은 색 띠 위에 ----
+    // 지금 탭은 반전 색 알약(버튼이 아님: 버튼의 단축키 색이 띠 색과 같아 글자가 묻혔다). 다른 탭은 버튼.
     const tabButton = (name: PaneTab, label: string, hotkey: string) => current === name
-      ? (
-        <Box backgroundColor="suggestion" paddingX={1}>
-          <Button key={`tab-${name}`} label={label} hotkey={hotkey} plain onPress={setTab(name)} />
-        </Box>
-      )
+      ? <Text key={`tab-${name}`} backgroundColor="suggestion" color="inverseText" bold> {hotkey} {label} </Text>
       : <Button key={`tab-${name}`} label={label} hotkey={hotkey} plain dimColor onPress={setTab(name)} />
     const tabs = (
       <Box flexDirection="row" columnGap={2}>
@@ -449,6 +458,9 @@ export const register: Register = on => {
       const room = Svg ? Math.max(3, Math.min(8, Math.floor((rows - 14) / 2))) : Math.max(3, Math.min(12, rows - 12))
       const shown = p.checkers.slice(0, room)
       const rest = p.checkers.slice(room)
+      if (shown.length === 0) {
+        return <Text dimColor wrap="wrap">{ICON.empty} 체커별 집계를 읽지 못했습니다. /sast-progress로 다시 읽거나 툴킷을 1.15.0 이상으로 올려 주세요.</Text>
+      }
       const more = rest.length > 0 && (
         <Text dimColor>외 {rest.length}개 체커{sep}남음 {rest.reduce((sum, c) => sum + c.remaining, 0)}</Text>
       )
@@ -531,7 +543,7 @@ export const register: Register = on => {
           <Text>{ICON.scope} 기준: 위험도 <Text bold>{RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk}</Text> 이상</Text>
           <Text tabular>{ICON.all} 범위 안 {p.scope.total}{sep}그 밖 {outside}</Text>
           <Box flexDirection="column">
-            {levels.map(level => labelValue(`${where(level) === '범위 안' ? ICON.scope : ICON.outside} ${RISK_LABEL[level] ?? level}`,
+            {levels.map(level => labelValue(`${where(level) === '범위 안' ? ICON.scope : '  '} ${RISK_LABEL[level] ?? level}`,
               `${p.risk[level]}건${sep}${where(level)}`, where(level) !== '범위 안', `risk-${level}`))}
           </Box>
           <Text dimColor wrap="wrap">범위 밖과 미확인 항목도 입력과 기록은 그대로 보존됩니다. 범위 안 완료를 전체 완료로 보지 않습니다.</Text>

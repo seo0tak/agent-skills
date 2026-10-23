@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.18.0 / skill-architect v0.5.3 / security-assessment v0.12.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.18.1 / skill-architect v0.5.3 / security-assessment v0.12.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23)
 
-배포 버전: sast-remediation **v1.18.0**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
+배포 버전: sast-remediation **v1.18.1**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
 최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`ef6b721`).
 
 ### 남은 일
@@ -74,7 +74,11 @@
   FE0F가 없는지 검사. 시안 B·C·D·E는 설계안 아티팩트(KdE2ACe1hwuh83NghDPTEL)에 있다.
 - 참고: 모드 API에 `Image`(kitty·Ghostty·iTerm2 3.5+ 전체 화면에서 PNG)와 `Raster`(터미널 칸 격자)가 있다.
   Windows Terminal은 Image를 alt로만 그려 아이콘에는 쓰지 않았다.
-- 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(7건),
+- 1.18.1(사용자 Windows 화면 제보, 검출 2361건): 체커 탭이 여전히 비었다. 옛 툴킷 대안인 `query` 전체 행이
+  4 MiB 출력 한도를 넘어 잘렸던 것. 이제 `python -c`로 findings.json·progress.json을 읽기만 해 집계(CHECKER_COUNT_SCRIPT),
+  실패하면 안내 문구. 띠 오른쪽 정렬 숫자가 잘려 왼쪽 정렬로, 지금 탭은 버튼 대신 반전 Text 알약(버튼 단축키 색이
+  띠 색과 같아 묻힘), 아이콘 뒤 한 칸 띄움, 범위 밖 위험도 줄의 ➖ 제거. 테스트 8건.
+- 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(8건),
   타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로).
 
 ### 문서와 다이어그램 체계
