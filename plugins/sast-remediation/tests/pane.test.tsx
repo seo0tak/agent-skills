@@ -68,15 +68,16 @@ test('the summary card leads with the in-scope completion and both surfaces draw
   engine(on, seen, true, 'high')
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect(seen.opened).toBe(1)
-  expect(seen.status.at(-1)).toBe('SAST 15/22 범위 · 29/48 전체 │ ctx 41% │ $18.42')
+  expect(seen.status.at(-1)).toBe('SAST 15/22 범위, 29/48 전체 | ctx 41% | $18.42')
 
-  for (const surface of ['terminal', 'desktop'] as const) {
+  for (const [surface, sep] of [['terminal', ', '], ['desktop', ' · ']] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /^15 \/ 22/ }))?.text).toContain('68%')
-    expect((await ui.find({ type: 'Text', text: /처리 범위\(위험도 높음 이상\)/ }))?.text).toContain('전체 29 / 48')
+    expect((await ui.find({ type: 'Text', text: /처리 범위\(위험도 높음 이상\)/ }))?.text).toContain(`검증 완료${sep}전체 29 / 48`)
     expect((await ui.find({ type: 'Text', text: /^보류 1$/ }))?.text).toBe('보류 1')
-    expect((await ui.find({ type: 'Text', text: /^SQL_INJECTION$/ }))?.text).toBe('SQL_INJECTION')
-    expect((await ui.find({ type: 'Text', text: /남음 7 · 5\/12/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /SQL_INJECTION/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: new RegExp(`남음 7${sep}5/12`) }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Button', text: /\[체커\]/ }))).toBeTruthy() // 지금 탭은 대괄호
     await ui.unmount()
   }
 })
@@ -88,12 +89,12 @@ test('the tabs switch to tokens and scope', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
   await ui.press({ key: 'tab-tokens' })
-  expect((await ui.find({ type: 'Text', text: /^컨텍스트 41%/ }))?.text).toContain('412.3k / 1.00M')
-  expect((await ui.find({ type: 'Text', text: /^\$18\.42$/ }))?.text).toBe('$18.42')
+  expect((await ui.find({ type: 'Text', text: /^컨텍스트 41%/ }))?.text).toContain('41%, 412.3k / 1.00M')
+  expect((await ui.find({ type: 'Text', text: /이번 세션 비용/ }))?.text).toContain('$18.42')
 
   await ui.press({ key: 'tab-scope' })
-  expect((await ui.find({ type: 'Text', text: /^범위 안 22/ }))?.text).toBe('범위 안 22 · 그 밖 26')
-  expect((await ui.find({ type: 'Text', text: /^2건 · 미확인$/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /^범위 안 22/ }))?.text).toBe('범위 안 22, 그 밖 26')
+  expect((await ui.find({ type: 'Text', text: /2건, 미확인/ }))?.text).toBeTruthy()
   await ui.unmount()
 })
 
@@ -101,7 +102,7 @@ test('without a processing scope the card counts everything', async ($, on) => {
   const seen: Seen = { opened: 0, status: [], argv0: [] }
   engine(on, seen, true, null)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  expect(seen.status.at(-1)).toBe('SAST 29/48 │ ctx 41% │ $18.42')
+  expect(seen.status.at(-1)).toBe('SAST 29/48 | ctx 41% | $18.42')
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /^29 \/ 48/ }))?.text).toContain('60%')
   await ui.press({ key: 'tab-scope' })
@@ -121,7 +122,7 @@ test('without the toolkit nothing shows until the skill runs', async ($, on) => 
 
   await $.skill.prompt({ skill: 'sast-remediation:sast-remediation', text: '' })
   expect(seen.opened).toBe(1)
-  expect(seen.status.at(-1)).toBe('SAST 준비 전 │ ctx 41% │ $18.42')
+  expect(seen.status.at(-1)).toBe('SAST 준비 전 | ctx 41% | $18.42')
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /sast-remediation-toolkit/ }))?.text).toBeTruthy()
   await ui.unmount()
@@ -131,10 +132,39 @@ test('on Windows the panel falls back from the Store alias to py -3', async ($, 
   const seen: Seen = { opened: 0, status: [], argv0: [] }
   engine(on, seen, true, 'high', true)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  expect(seen.status.at(-1)).toBe('SAST 15/22 범위 · 29/48 전체 │ ctx 41% │ $18.42')
+  expect(seen.status.at(-1)).toBe('SAST 15/22 범위, 29/48 전체 | ctx 41% | $18.42')
   expect(seen.argv0.slice(0, 3)).toEqual(['python3', 'python', 'py'])
   expect(seen.argv0.at(-1)).toBe('py') // 찾은 뒤에는 py로 바로 간다
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /Python was not found/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+// 폭이 모호한 문자(·, ●, █, ░, │, 상자 테두리 등)는 한글 글꼴 터미널에서 두 칸으로 그려져 줄이 잘린다.
+const AMBIGUOUS = /[\u00A1-\u00BF\u2010-\u2027\u2030-\u203E\u2190-\u21FF\u2460-\u24FF\u2500-\u257F\u2580-\u259F\u25A0-\u25FF\u2600-\u26FF]/
+
+function strings(node: unknown, out: string[] = []): string[] {
+  if (typeof node === 'string') out.push(node)
+  else if (Array.isArray(node)) node.forEach(n => strings(n, out))
+  else if (node && typeof node === 'object') {
+    const value = node as Record<string, unknown>
+    for (const key of ['children', 'label', 'props']) if (key in value) strings(value[key], out)
+  }
+  return out
+}
+
+test('the terminal drawing uses no ambiguous-width characters and no borders', async ($, on) => {
+  const seen: Seen = { opened: 0, status: [], argv0: [] }
+  engine(on, seen, true, 'high')
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  for (const key of ['tab-checkers', 'tab-tokens', 'tab-scope']) {
+    await ui.press({ key })
+    const tree = await ui.drawn()
+    const text = strings(tree).join('')
+    expect(text.match(AMBIGUOUS)).toBeNull()
+    expect(JSON.stringify(tree)).not.toContain('"borderStyle"')
+  }
+  expect(seen.status.at(-1)?.match(AMBIGUOUS)).toBeFalsy()
   await ui.unmount()
 })

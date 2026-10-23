@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.3 / skill-architect v0.5.3 / security-assessment v0.12.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.4 / skill-architect v0.5.3 / security-assessment v0.12.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23)
 
-배포 버전: sast-remediation **v1.17.3**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
+배포 버전: sast-remediation **v1.17.4**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
 최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`ef6b721`).
 
 ### 남은 일
@@ -58,10 +58,15 @@
   (`skill.prompt`). 그 전에는 패널·상태 줄 모두 없음. `/sast-progress`로 즉시 열기·새로 고침.
 - 화면(설계안 A, 사례 조사 후 사용자 선택): 요약 카드(처리 범위 안 완료율 링·완료/대상·전체, 남음·보류·작업
   중 칩, 작업 단계 막대, 갱신 시각과 오래됨) + 탭 1 체커 · 2 토큰 · 3 범위. Svg가 있는 화면은 그래픽,
-  터미널은 블록 문자. 상태 줄 `SAST 15/22 범위 · 29/48 전체 │ ctx 41% │ $18.42`.
+  터미널은 블록 문자. 상태 줄 `SAST 15/22 범위, 29/48 전체 | ctx 41% | $18.42`.
 - 데이터: `query --summary`(처리 범위가 있으면 `--scope in-scope`도)를 읽기만 한다. 파이썬은 `python3` →
   `python` → `py -3` 순으로 찾는다(Windows Store 바로가기 대응, 1.17.3).
-- 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(5건),
+- 터미널 수정(1.17.4, 사용자 Windows 화면 제보): 오른쪽이 잘리고 막대가 안 보였다. 원인 둘 — `$.ui.resolve`가
+  터미널에도 `Svg`를 빈 조각으로 채워 돌려줘서 `'Svg' in ui`로 가르면 터미널이 그래픽 경로를 탔고, `·`·`●`·`█`·
+  `│`·둥근 테두리 같은 폭이 모호한 문자를 한글 글꼴 터미널이 두 칸으로 그렸다. 이제 `e.surface`로 가르고,
+  터미널은 색칠한 빈칸 막대(backgroundColor)·ASCII 구분자(`, `)·왼쪽 정렬·테두리 없음, 지금 탭은 `[이름]`.
+  상태 줄 구분자 `|`. 테스트에 "터미널 트리에 폭 모호 문자·borderStyle 없음" 검사 추가(6건).
+- 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(6건),
   타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로).
 
 ### 문서와 다이어그램 체계

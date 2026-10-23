@@ -202,18 +202,15 @@ function barSvg(parts: { value: number; hex: string }[], total: number, height =
 }
 
 // ---- 글자(터미널) ----
-const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
+// 터미널은 ·, ●, █, ░, │, 상자 테두리 같은 '폭이 모호한' 문자를 한글 글꼴(예: Windows)에서 두 칸으로
+// 그리는데 엔진은 한 칸으로 센다. 그러면 줄이 계산보다 길어져 오른쪽이 잘리고 막대가 사라진다.
+// 그래서 터미널 쪽은 ASCII 구분자와 색칠한 빈칸 막대만 쓰고 테두리를 두지 않는다.
+const TERM_SEP = ', '
+const GRAPHIC_SEP = ' · '
 
-function textBar(pct: number, width: number) {
-  const cells = (Math.min(100, Math.max(0, pct)) / 100) * width
-  const full = Math.floor(cells)
-  const part = EIGHTHS[Math.round((cells - full) * 8)] ?? ''
-  const used = full + (part ? 1 : 0)
-  return { filled: '█'.repeat(full) + part, empty: '░'.repeat(Math.max(0, width - used)) }
-}
-
-function stageCells(byStatus: Record<string, number>, total: number, width: number) {
-  return STAGES.map(stage => ({ stage, cells: total > 0 ? Math.round(((byStatus[stage.key] ?? 0) / total) * width) : 0 }))
+function cellsOf(pct: number, width: number) {
+  const filled = Math.round((Math.min(100, Math.max(0, pct)) / 100) * width)
+  return { filled, empty: Math.max(0, width - filled) }
 }
 
 async function showStatus($: EngineInterface) {
@@ -223,14 +220,15 @@ async function showStatus($: EngineInterface) {
   const parts: string[] = []
   if (p.kind === 'ok') {
     parts.push(p.scope
-      ? `SAST ${p.scope.verified}/${p.scope.total} 범위 · ${p.all.verified}/${p.all.total} 전체`
+      ? `SAST ${p.scope.verified}/${p.scope.total} 범위, ${p.all.verified}/${p.all.total} 전체`
       : `SAST ${p.all.verified}/${p.all.total}`)
   } else {
     parts.push('SAST 준비 전')
   }
   if (u.contextPercent !== undefined) parts.push(`ctx ${Math.round(u.contextPercent)}%`)
   if (u.costUsd !== undefined) parts.push(`$${u.costUsd.toFixed(2)}`)
-  await $.ui.status(parts.join(' │ '))
+  // 상태 줄은 모든 화면이 터미널처럼 그리므로 ASCII 구분자만 쓴다.
+  await $.ui.status(parts.join(' | '))
 }
 
 function usageFrom(source: { context: { percent?: number; tokens?: number; window: number };
@@ -297,42 +295,73 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
-    // 그래픽은 Svg가 있는 화면(데스크톱 · VS Code · 모바일)에서만. 터미널은 글자로 그린다.
-    const Svg = 'Svg' in ui ? ui.Svg : null
+    // 그래픽은 데스크톱 · VS Code · 모바일에서만. 터미널은 글자로 그린다. resolve가 돌려주는 표에는 터미널에도
+    // Svg가 (빈 조각으로) 채워져 있으므로 표가 아니라 화면 종류로 가른다.
+    const Svg = e.surface !== 'terminal' && 'Svg' in ui ? ui.Svg : null
+    const sep = Svg ? GRAPHIC_SEP : TERM_SEP
     const p = await read($, progress)
     const u = await read($, usage)
     const t = await read($, tokens)
     const current = await read($, tab)
     const now = await $.clock.now()
     const columns = e.props?.bodyColumns ?? 40
-    const barWidth = Math.max(10, Math.min(28, columns - 18))
+    const barWidth = Math.max(10, Math.min(30, columns - 6))
     const rows = e.props?.scroll?.bodyRows ?? 24
 
     const setTab = (next: PaneTab) => () => update($, tab, () => next)
 
+    // 막대: 그래픽은 Svg, 터미널은 색칠한 빈칸(어느 글꼴에서나 한 칸).
+    const bar = (parts: { value: number; hex: string; theme: string }[], total: number, alt: string, height = 8) => {
+      if (Svg) return <Svg source={barSvg(parts, total, height)} alt={alt} height={height} />
+      let used = 0
+      const segments = parts.map(part => {
+        const cells = total > 0 ? Math.round((part.value / total) * barWidth) : 0
+        const take = Math.min(cells, barWidth - used)
+        used += take
+        return take > 0 ? <Text backgroundColor={part.theme}>{' '.repeat(take)}</Text> : ''
+      })
+      return <Text>{segments}{used < barWidth ? <Text backgroundColor="inactive">{' '.repeat(barWidth - used)}</Text> : ''}</Text>
+    }
+    const pctBar = (pct: number, hex: string, theme: string, alt: string, height = 6) =>
+      Svg
+        ? <Svg source={barSvg([{ value: pct, hex }], 100, height)} alt={alt} height={height} />
+        : (() => { const c = cellsOf(pct, barWidth)
+            return <Text><Text backgroundColor={theme}>{' '.repeat(c.filled)}</Text><Text backgroundColor="inactive">{' '.repeat(c.empty)}</Text></Text> })()
+
+    // 이름과 값: 그래픽은 양끝 정렬, 터미널은 왼쪽 정렬(폭 계산이 어긋나도 값이 잘리지 않게).
+    const labelValue = (label: string, value: string, dimValue = false, key?: string) => Svg
+      ? (
+        <Box key={key} flexDirection="row" justifyContent="space-between" columnGap={2}>
+          <Text wrap="truncate">{label}</Text><Text tabular dimColor={dimValue}>{value}</Text>
+        </Box>
+      )
+      : <Text key={key} wrap="truncate"><Text dimColor>{label}</Text>  <Text dimColor={dimValue}>{value}</Text></Text>
+
     const header = (() => {
       if (p.kind !== 'ok') return <Text bold>SAST 조치 진행</Text>
       const stale = now - p.checkedAt > STALE_MS
+      const when = `${clockText(p.checkedAt)} 갱신${stale ? `${sep}오래됨` : ''}`
+      if (!Svg) {
+        return <Text><Text bold>SAST 조치 진행</Text>  <Text dimColor={!stale} color={stale ? 'warning' : undefined}>{when}</Text></Text>
+      }
       return (
         <Box flexDirection="row" justifyContent="space-between">
           <Text bold>SAST 조치 진행</Text>
-          <Text dimColor={!stale} color={stale ? 'warning' : undefined}>
-            <Text color={stale ? 'warning' : 'success'}>●</Text> {clockText(p.checkedAt)} {stale ? '갱신 · 오래됨' : '갱신'}
-          </Text>
+          <Text dimColor={!stale} color={stale ? 'warning' : undefined}><Text color={stale ? 'warning' : 'success'}>●</Text> {when}</Text>
         </Box>
       )
     })()
 
     // ---- 요약 카드 ----
     const summaryCard = (() => {
-      if (p.kind === 'none') return <Text dimColor>{p.reason}</Text>
-      if (p.kind === 'error') return <Text color="error">진행률을 읽지 못했습니다: {p.message}</Text>
+      if (p.kind === 'none') return <Text dimColor wrap="wrap">{p.reason}</Text>
+      if (p.kind === 'error') return <Text color="error" wrap="wrap">진행률을 읽지 못했습니다: {p.message}</Text>
       const main = p.scope ?? p.all
       const pct = percent(main.verified, main.total)
       const remaining = main.total - main.verified
       const headline = `${main.verified} / ${main.total}`
       const caption = p.scope
-        ? `처리 범위(위험도 ${RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk} 이상) 검증 완료 · 전체 ${p.all.verified} / ${p.all.total}`
+        ? `처리 범위(위험도 ${RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk} 이상) 검증 완료${sep}전체 ${p.all.verified} / ${p.all.total}`
         : '전체 검증 완료'
       const chips = (
         <Box flexDirection="row" columnGap={2} flexWrap="wrap">
@@ -341,11 +370,10 @@ export const register: Register = on => {
           {main.inProgress > 0 && <Text color="suggestion">작업 중 {main.inProgress}</Text>}
         </Box>
       )
-      const legend = (
-        <Text dimColor wrap="wrap">
-          {STAGES.filter(s => (p.all.byStatus[s.key] ?? 0) > 0).map(s => `${s.label} ${p.all.byStatus[s.key]}`).join(' · ')}
-        </Text>
-      )
+      const stages = STAGES.filter(s => (p.all.byStatus[s.key] ?? 0) > 0)
+      const legend = <Text dimColor wrap="wrap">{stages.map(s => `${s.label} ${p.all.byStatus[s.key]}`).join(sep)}</Text>
+      const stageBar = bar(stages.map(s => ({ value: p.all.byStatus[s.key] ?? 0, hex: s.hex, theme: s.theme })), p.all.total,
+        `작업 단계: ${stages.map(s => `${s.label} ${p.all.byStatus[s.key]}`).join(', ')}`)
       if (Svg) {
         return (
           <Box flexDirection="column" gap={1} borderStyle="round" paddingX={1}>
@@ -353,50 +381,45 @@ export const register: Register = on => {
               <Svg source={ringSvg(pct)} alt={`완료 ${pct}%`} width={64} height={64} />
               <Box flexDirection="column">
                 <Text size="heading" weight="bold" tabular>{headline}  <Text color="success">{pct}%</Text></Text>
-                <Text dimColor size="footnote">{caption}</Text>
+                <Text dimColor size="footnote" wrap="wrap">{caption}</Text>
                 {chips}
               </Box>
             </Box>
-            <Svg source={barSvg(STAGES.map(s => ({ value: p.all.byStatus[s.key] ?? 0, hex: s.hex })), p.all.total)}
-              alt={`작업 단계: ${STAGES.map(s => `${s.label} ${p.all.byStatus[s.key] ?? 0}`).join(', ')}`} height={8} />
+            {stageBar}
             {legend}
           </Box>
         )
       }
-      const bar = textBar(pct, barWidth)
       return (
-        <Box flexDirection="column" borderStyle="round" paddingX={1}>
+        <Box flexDirection="column" paddingLeft={1}>
           <Text><Text bold>{headline}</Text>  <Text color="success" bold>{pct}%</Text></Text>
-          <Text><Text color="success">{bar.filled}</Text><Text dimColor>{bar.empty}</Text></Text>
+          {pctBar(pct, OK, 'success', `완료 ${pct}%`)}
           <Text dimColor wrap="wrap">{caption}</Text>
           {chips}
-          <Text>
-            {stageCells(p.all.byStatus, p.all.total, barWidth).map(({ stage, cells }) =>
-              cells > 0 ? <Text color={stage.theme}>{'█'.repeat(cells)}</Text> : '')}
-          </Text>
+          <Text> </Text>
+          {stageBar}
           {legend}
         </Box>
       )
     })()
 
-    // ---- 탭 ----
+    // ---- 탭: 지금 탭은 대괄호로 표시(흐리게 하는 것만으로는 터미널에서 구분이 안 된다) ----
+    const tabButton = (name: PaneTab, label: string, hotkey: string) => (
+      <Button key={`tab-${name}`} label={current === name ? `[${label}]` : label} hotkey={hotkey} plain
+        dimColor={current !== name} onPress={setTab(name)} />
+    )
     const tabs = (
       <Box flexDirection="row" columnGap={2}>
-        <Button key="tab-checkers" label="체커" hotkey="1" plain dimColor={current !== 'checkers'} onPress={setTab('checkers')} />
-        <Button key="tab-tokens" label="토큰" hotkey="2" plain dimColor={current !== 'tokens'} onPress={setTab('tokens')} />
-        <Button key="tab-scope" label="범위" hotkey="3" plain dimColor={current !== 'scope'} onPress={setTab('scope')} />
+        {tabButton('checkers', '체커', '1')}
+        {tabButton('tokens', '토큰', '2')}
+        {tabButton('scope', '범위', '3')}
       </Box>
     )
 
-    const progressRow = (label: string, detail: string, pct: number, hex: string, theme: string) => (
-      <Box flexDirection="column">
-        <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
-          <Text wrap="truncate">{label}</Text>
-          <Text dimColor tabular>{detail}</Text>
-        </Box>
-        {Svg
-          ? <Svg source={barSvg([{ value: pct, hex }], 100, 5)} alt={`${label} ${pct}%`} height={5} />
-          : (() => { const b = textBar(pct, barWidth); return <Text><Text color={theme}>{b.filled}</Text><Text dimColor>{b.empty}</Text></Text> })()}
+    const progressRow = (key: string, label: string, detail: string, pct: number, hex: string, theme: string) => (
+      <Box key={key} flexDirection="column">
+        {labelValue(label, detail, true)}
+        {pctBar(pct, hex, theme, `${label} ${pct}%`, 5)}
       </Box>
     )
 
@@ -407,9 +430,10 @@ export const register: Register = on => {
       const rest = p.checkers.slice(room)
       return (
         <Box flexDirection="column" gap={1}>
-          {shown.map(c => progressRow(c.code, `남음 ${c.remaining} · ${c.verified}/${c.total}`, percent(c.verified, c.total), OK, 'success'))}
+          {shown.map(c => progressRow(c.code, c.code, `남음 ${c.remaining}${sep}${c.verified}/${c.total}`,
+            percent(c.verified, c.total), OK, 'success'))}
           {rest.length > 0 && (
-            <Text dimColor>외 {rest.length}개 체커 · 남음 {rest.reduce((sum, c) => sum + c.remaining, 0)}</Text>
+            <Text dimColor>외 {rest.length}개 체커{sep}남음 {rest.reduce((sum, c) => sum + c.remaining, 0)}</Text>
           )}
         </Box>
       )
@@ -419,38 +443,34 @@ export const register: Register = on => {
       const ctx = u.contextPercent
       const incoming = t.input + t.cacheRead + t.cacheWrite
       const hit = incoming > 0 ? Math.round((t.cacheRead / incoming) * 100) : undefined
+      const ctxTheme = (ctx ?? 0) >= 85 ? 'error' : (ctx ?? 0) >= 70 ? 'warning' : 'suggestion'
       const gauge = Svg
         ? <Svg source={barSvg([{ value: ctx ?? 0, hex: contextColor(ctx) }], 100, 10, [70, 85])}
             alt={`컨텍스트 ${ctx === undefined ? '알 수 없음' : `${Math.round(ctx)}%`}, 주의 70%, 위험 85%`} height={10} />
-        : (() => { const b = textBar(ctx ?? 0, barWidth); const theme = (ctx ?? 0) >= 85 ? 'error' : (ctx ?? 0) >= 70 ? 'warning' : 'suggestion'
-            return <Text><Text color={theme}>{b.filled}</Text><Text dimColor>{b.empty}</Text></Text> })()
-      const kv = (k: string, v: string) => (
-        <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
-          <Text dimColor>{k}</Text><Text tabular>{v}</Text>
-        </Box>
-      )
+        : pctBar(ctx ?? 0, contextColor(ctx), ctxTheme, '컨텍스트')
+      const limitTheme = (pct: number) => pct >= 85 ? 'error' : pct >= 70 ? 'warning' : 'suggestion'
+      const limitHex = (pct: number) => pct >= 85 ? BAD : pct >= 70 ? WARN : BLUE
       return (
         <Box flexDirection="column" gap={1}>
           <Box flexDirection="column">
-            <Text dimColor>컨텍스트 {ctx === undefined ? '-' : `${Math.round(ctx)}%`} · {compact(u.contextTokens)} / {compact(u.contextWindow)}</Text>
+            <Text dimColor>컨텍스트 {ctx === undefined ? '-' : `${Math.round(ctx)}%`}{sep}{compact(u.contextTokens)} / {compact(u.contextWindow)}</Text>
             {gauge}
           </Box>
           <Box flexDirection="column">
-            {kv('이번 세션 비용', u.costUsd === undefined ? '-' : `$${u.costUsd.toFixed(2)}`)}
-            {kv('입력 · 출력', `${compact(t.input)} · ${compact(t.output)}`)}
-            {kv('캐시 적중', hit === undefined ? '-' : `${hit}% (읽기 ${compact(t.cacheRead)})`)}
-            {kv('모델 요청', `${t.requests}회`)}
+            {labelValue('이번 세션 비용', u.costUsd === undefined ? '-' : `$${u.costUsd.toFixed(2)}`, false, 'cost')}
+            {labelValue('입력, 출력', `${compact(t.input)}, ${compact(t.output)}`, false, 'io')}
+            {labelValue('캐시 적중', hit === undefined ? '-' : `${hit}% (읽기 ${compact(t.cacheRead)})`, false, 'cache')}
+            {labelValue('모델 요청', `${t.requests}회`, false, 'requests')}
           </Box>
           {u.rateLimits.length > 0 && (
             <Box flexDirection="column" gap={1}>
-              {u.rateLimits.map(r => progressRow(
+              {u.rateLimits.map(r => progressRow(`limit-${r.kind}`,
                 r.kind === 'five_hour' ? '5시간 한도' : r.kind === 'seven_day' ? '7일 한도' : r.kind,
-                `${Math.round(r.percentUsed)}%${untilText(r.resetsAt, now) ? ` · ${untilText(r.resetsAt, now)}` : ''}`,
-                r.percentUsed, r.percentUsed >= 85 ? BAD : r.percentUsed >= 70 ? WARN : BLUE,
-                r.percentUsed >= 85 ? 'error' : r.percentUsed >= 70 ? 'warning' : 'suggestion'))}
+                `${Math.round(r.percentUsed)}%${untilText(r.resetsAt, now) ? `${sep}${untilText(r.resetsAt, now)}` : ''}`,
+                r.percentUsed, limitHex(r.percentUsed), limitTheme(r.percentUsed)))}
             </Box>
           )}
-          <Text dimColor>토큰은 이 세션에서 패널이 켜진 뒤의 모델 요청을 서브에이전트까지 더한 값입니다.</Text>
+          <Text dimColor wrap="wrap">토큰은 이 세션에서 패널이 켜진 뒤의 모델 요청을 서브에이전트까지 더한 값입니다.</Text>
         </Box>
       )
     })()
@@ -471,16 +491,12 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column" gap={1}>
           <Text>기준: 위험도 <Text bold>{RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk}</Text> 이상</Text>
-          <Text tabular>범위 안 {p.scope.total} · 그 밖 {outside}</Text>
+          <Text tabular>범위 안 {p.scope.total}{sep}그 밖 {outside}</Text>
           <Box flexDirection="column">
-            {levels.map(level => (
-              <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
-                <Text>{RISK_LABEL[level] ?? level}</Text>
-                <Text tabular dimColor={where(level) !== '범위 안'}>{p.risk[level]}건 · {where(level)}</Text>
-              </Box>
-            ))}
+            {levels.map(level => labelValue(RISK_LABEL[level] ?? level, `${p.risk[level]}건${sep}${where(level)}`,
+              where(level) !== '범위 안', `risk-${level}`))}
           </Box>
-          <Text dimColor wrap="wrap">범위 밖·미확인 항목도 입력과 기록은 그대로 보존됩니다. 범위 안 완료를 전체 완료로 보지 않습니다.</Text>
+          <Text dimColor wrap="wrap">범위 밖과 미확인 항목도 입력과 기록은 그대로 보존됩니다. 범위 안 완료를 전체 완료로 보지 않습니다.</Text>
         </Box>
       )
     })()
