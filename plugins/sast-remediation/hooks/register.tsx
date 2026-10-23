@@ -48,6 +48,29 @@ type Summary = {
 }
 
 let lastRefresh = 0
+// 툴킷을 돌릴 파이썬. Windows에는 python3가 없거나 Microsoft Store 바로가기라 python, py -3도 차례로 시도한다.
+const PYTHONS: string[][] = [['python3'], ['python'], ['py', '-3']]
+let python: string[] | null = null
+// 실행 파일이 아예 없으면 process.run이 실패하고, Windows의 Store 바로가기는 9009와 이 문구로 끝난다.
+// 툴킷 자체의 오류(예: 파일 없음)는 다음 후보로 넘기지 않고 그대로 보여 준다.
+const NOT_FOUND = /Python was not found|is not recognized as an internal or external command/i
+
+async function runToolkit($: EngineInterface, args: string[]) {
+  const candidates = python ? [python, ...PYTHONS.filter(c => c.join(' ') !== python!.join(' '))] : PYTHONS
+  for (const candidate of candidates) {
+    let run
+    try {
+      run = await $.process.run([...candidate, '-B', 'tools/sast_toolkit.py', ...args], { cwd: TOOLKIT, timeoutMs: 20000 })
+    } catch {
+      continue // 실행 파일이 없어 시작하지 못함
+    }
+    const text = `${run.stderr}\n${run.stdout}`
+    if (run.exitCode !== 0 && (run.exitCode === 9009 || NOT_FOUND.test(text))) continue
+    python = candidate
+    return run
+  }
+  throw new Error('Python 3을 찾지 못했습니다(python3, python, py -3을 시도함). Python 3을 설치하고 PATH에 추가해 주세요.')
+}
 
 function counts(summary: Summary): Counts {
   const byStatus = summary.by?.workflowStatus ?? {}
@@ -93,15 +116,14 @@ async function refreshProgress($: EngineInterface, force = false) {
     view = { kind: 'none', reason: '아직 검출이 등록되지 않았습니다. 입력 확인(00)과 초기 분석(01)이 끝나면 표시됩니다.' }
   } else {
     try {
-      const query = ['python3', '-B', 'tools/sast_toolkit.py', 'query', '--summary']
-      const run = await $.process.run(query, { cwd: TOOLKIT, timeoutMs: 20000 })
+      const run = await runToolkit($, ['query', '--summary'])
       if (run.exitCode !== 0) {
         throw new Error((run.stderr || run.stdout).trim().split('\n')[0] || `종료 코드 ${run.exitCode}`)
       }
       const minRisk = await minRiskOf($)
       let scoped: string | null = null
       if (minRisk) {
-        const inScope = await $.process.run([...query, '--scope', 'in-scope'], { cwd: TOOLKIT, timeoutMs: 20000 })
+        const inScope = await runToolkit($, ['query', '--summary', '--scope', 'in-scope'])
         scoped = inScope.exitCode === 0 ? inScope.stdout : null
       }
       view = parseSummary(run.stdout, now, scoped, minRisk)

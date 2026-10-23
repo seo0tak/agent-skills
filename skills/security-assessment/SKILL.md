@@ -12,6 +12,9 @@ description: Run authorized security assessments — declare an authorization sc
 
 ## 1. 툴킷 배치 (첫 행동)
 
+명령의 `python3`는 Python 3 실행 파일을 뜻한다. `python3`가 없거나 Windows처럼 Microsoft Store
+바로가기로 연결되면 `py -3`이나 `python`(버전이 3인지 확인)으로 바꿔 실행한다.
+
 프로젝트 루트에 `security-assessment-toolkit/`이 있는지 확인한다. 아래 모든 명령과
 경로는 이 프로젝트 복사본 기준이다. 이 스킬 디렉터리의 `toolkit/`은 원본이므로
 직접 고치거나 그 안에서 명령을 실행하지 않는다.

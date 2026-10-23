@@ -10,6 +10,9 @@ description: Manage and remediate SAST findings you already have — input gate,
 
 ## 1. 툴킷 배치
 
+명령의 `python3`는 Python 3 실행 파일을 뜻한다. `python3`가 없거나 Windows처럼 Microsoft Store
+바로가기로 연결되면 `py -3`이나 `python`(버전이 3인지 확인)으로 바꿔 실행한다.
+
 프로젝트 루트에 `sast-remediation-toolkit/` 디렉터리가 있는지 확인한다.
 
 - **없으면**: 이 스킬 디렉터리(이 SKILL.md가 있는 곳)의 `toolkit/`을

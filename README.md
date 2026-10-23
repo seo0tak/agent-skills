@@ -15,8 +15,8 @@
 
 | 스킬 | 유형 | 버전 |
 |---|---|---|
-| **sast-remediation** | 보안 | 1.17.2 |
-| **security-assessment** | 보안 | 0.11.1 |
+| **sast-remediation** | 보안 | 1.17.3 |
+| **security-assessment** | 보안 | 0.11.2 |
 | **skill-architect** | 메타(스킬 설계 기준) | 0.5.3 |
 
 각 스킬의 작업 흐름과 구조 그림은 [관련 문서](#관련-문서)의 스킬별 문서에 있습니다.

@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.2 / skill-architect v0.5.3 / security-assessment v0.11.1)
+# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.3 / skill-architect v0.5.3 / security-assessment v0.11.2)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23 security-assessment 0.11.0 M4 · 패널 개편 · 시인성 재점검)
 
-배포 버전: sast-remediation **v1.17.2**, skill-architect **v0.5.3**, security-assessment **v0.11.1**.
+배포 버전: sast-remediation **v1.17.3**, skill-architect **v0.5.3**, security-assessment **v0.11.2**.
 최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료.
 
 ### security-assessment
@@ -133,6 +133,11 @@
   확정은 사용자(decidedBy)와 근거. 어댑터 항목 매핑 + 커버리지로 "스캔으로 점검됨" 제안만. 필요 침습도가
   스코프 상한을 넘거나 대상이 없으면 범위 밖. 표지에 기준별 진행, 워크북에 항목 근거. CONTEXT.md에
   Checklist item.
+- **패널 Windows 수정(sast 1.17.3)**: 사용자가 Windows에서 패널을 띄웠더니 "Python was not found…App execution
+  aliases"로 진행률을 못 읽었다. `python3`가 Store 바로가기(종료 9009)였기 때문. 패널이 `python3` → `python` →
+  `py -3` 순으로 찾고 찾은 것을 기억한다(실행 불가·9009·Windows 문구만 다음 후보로, 툴킷 자체 오류는 그대로
+  표시). 테스트 5건(Windows 대체 경로 포함). 두 스킬 SKILL.md에 "`python3`가 없으면 `py -3`·`python`" 한 줄
+  (security-assessment 0.11.2). 툴킷 문서의 다른 명령 예시는 여전히 `python3` 표기.
 - 다음: M5 구현. 인증 웹 스캔·네트워크 스캔은 별도 설계.
 - **진행률 패널을 플러그인에 포함(sast-remediation 1.17.0)**: `plugins/sast-remediation/hooks/register.tsx`
   (+ `hooks/hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`, plugin.json `types`). Claude Code 전용
