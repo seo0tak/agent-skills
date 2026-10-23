@@ -7,7 +7,7 @@
 ## 최신 작업 기준 (2026-10-23)
 
 배포 버전: sast-remediation **v1.18.1**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
-최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`ef6b721`).
+최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`6dda77c`).
 
 ### 남은 일
 
@@ -16,9 +16,14 @@
   - 실제 스캐너 출력 검증: nuclei·ZAP·Prowler·Checkov의 예시 출력은 형식에 맞춘 표본이다. 출력 구조와
     파일 이름(`output_file`)을 실제 버전으로 확인해야 한다. 실제 대상에 요청을 보내는 확인은 사용자가
     인가한 대상·계정에서만 한다.
-- sast-remediation 진행률 패널: 실제 Claude Code 화면(툴킷이 있는 프로젝트, Windows 포함)으로 아직 보지
-  않았다. 설치본으로 불러오는 확인과 Codex 설치본이 `hooks/`를 무시하는지도 아직이다 — 설치 시험은
-  실제 마켓플레이스 이름(0tak)으로 하지 말 것(메모리 규칙).
+- sast-remediation 진행률 패널:
+  - 1.18.1을 사용자 Windows 화면에서 다시 확인해야 한다. 특히 체커 탭(집계 스크립트 `python -c`가 Windows·
+    `py -3`에서 여러 줄 인자로 도는지 — 실패하면 "체커별 집계를 읽지 못했습니다" 문구가 뜬다), 머리 띠 잘림,
+    지금 탭 알약의 대비.
+  - 설치본으로 불러오는 확인과 Codex 설치본이 `hooks/`를 무시하는지는 아직이다 — 설치 시험은 실제
+    마켓플레이스 이름(0tak)으로 하지 말 것(메모리 규칙).
+  - 체커 집계 스크립트는 턴마다 findings.json 전체를 읽는다. 검출이 수만 건이면 느려질 수 있어 필요하면
+    캐시(파일 수정 시각 기준)를 검토.
 
 ### security-assessment (v0.12.0, M0~M5 완료)
 
@@ -50,36 +55,36 @@
 - 툴킷 원본 상태에서 `validate`는 빈 템플릿 `scope.json` 때문에 에러 7건이 정상이다.
 - 업그레이드 주의는 `toolkit/docs/VERSIONING.md`(0.9.0 증적 열 추가, 0.11.0 iac 묶음 키 변경 등).
 
-### sast-remediation 진행률 패널 (v1.17.x, Claude Code 전용)
+### sast-remediation 진행률 패널 (v1.18.1, Claude Code 전용)
 
 - 위치: `plugins/sast-remediation/hooks/register.tsx`(+ `hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`).
   `skills/` 정본이 아니라 플러그인 쪽이 원본(agents/와 같은 위치). mod API는 Claude Code 미리 보기 기능.
+  타입 정의는 plugin-authoring 스킬의 `types/claude-code.d.ts`(Image·Raster·Box backgroundColor 등 확인 가능).
 - 열리는 조건: 프로젝트에 `sast-remediation-toolkit/`이 있으면 세션 시작 시, 없으면 이 스킬이 실행될 때
-  (`skill.prompt`). 그 전에는 패널·상태 줄 모두 없음. `/sast-progress`로 즉시 열기·새로 고침.
-- 화면(설계안 A, 사례 조사 후 사용자 선택): 요약 카드(처리 범위 안 완료율 링·완료/대상·전체, 남음·보류·작업
-  중 칩, 작업 단계 막대, 갱신 시각과 오래됨) + 탭 1 체커 · 2 토큰 · 3 범위. Svg가 있는 화면은 그래픽,
-  터미널은 블록 문자. 상태 줄 `SAST 15/22 범위, 29/48 전체 | ctx 41% | $18.42`.
-- 데이터: `query --summary`(처리 범위가 있으면 `--scope in-scope`도)를 읽기만 한다. 파이썬은 `python3` →
-  `python` → `py -3` 순으로 찾는다(Windows Store 바로가기 대응, 1.17.3).
-- 터미널 수정(1.17.4, 사용자 Windows 화면 제보): 오른쪽이 잘리고 막대가 안 보였다. 원인 둘 — `$.ui.resolve`가
-  터미널에도 `Svg`를 빈 조각으로 채워 돌려줘서 `'Svg' in ui`로 가르면 터미널이 그래픽 경로를 탔고, `·`·`●`·`█`·
-  `│`·둥근 테두리 같은 폭이 모호한 문자를 한글 글꼴 터미널이 두 칸으로 그렸다. 이제 `e.surface`로 가르고,
-  터미널은 색칠한 빈칸 막대(backgroundColor)·ASCII 구분자(`, `)·왼쪽 정렬·테두리 없음, 지금 탭은 `[이름]`.
-  상태 줄 구분자 `|`. 테스트에 "터미널 트리에 폭 모호 문자·borderStyle 없음" 검사 추가(6건).
-- 체커 탭 빈 화면(1.17.5): 프로젝트 툴킷 복사본이 1.15.0 이전이면 `query --summary`에 `byChecker`가 없다.
-  패널이 그때 `query` 행을 직접 세어 채운다(`checkersFromRows`). 테스트 7건.
-- 2차 디자인(1.18.0, 사용자 선택 E안 = 띠 머리 + 아이콘): 머리 띠(Box backgroundColor="suggestion")에 제목·완료율,
-  단계 아이콘 범례, 체커 한 줄(신호등 + 칸 막대 + 남음 + 검증/전체), 지금 탭은 색 띠, 바닥 줄 ctx·비용·갱신.
-  아이콘은 Emoji_Presentation 문자만(항상 두 칸). 테스트가 터미널 트리의 비ASCII·비한글 문자가 모두 그림 문자인지,
-  FE0F가 없는지 검사. 시안 B·C·D·E는 설계안 아티팩트(KdE2ACe1hwuh83NghDPTEL)에 있다.
-- 참고: 모드 API에 `Image`(kitty·Ghostty·iTerm2 3.5+ 전체 화면에서 PNG)와 `Raster`(터미널 칸 격자)가 있다.
-  Windows Terminal은 Image를 alt로만 그려 아이콘에는 쓰지 않았다.
-- 1.18.1(사용자 Windows 화면 제보, 검출 2361건): 체커 탭이 여전히 비었다. 옛 툴킷 대안인 `query` 전체 행이
-  4 MiB 출력 한도를 넘어 잘렸던 것. 이제 `python -c`로 findings.json·progress.json을 읽기만 해 집계(CHECKER_COUNT_SCRIPT),
-  실패하면 안내 문구. 띠 오른쪽 정렬 숫자가 잘려 왼쪽 정렬로, 지금 탭은 버튼 대신 반전 Text 알약(버튼 단축키 색이
-  띠 색과 같아 묻힘), 아이콘 뒤 한 칸 띄움, 범위 밖 위험도 줄의 ➖ 제거. 테스트 8건.
+  (`skill.prompt`). 그 전에는 패널·상태 줄 모두 없음. `/sast-progress`로 즉시 열기·새로 고침. 높이 22줄.
+- 지금 화면(E안 = 띠 머리 + 아이콘, 사용자 선택. 시안 B·C·D·E는 설계안 아티팩트 KdE2ACe1hwuh83NghDPTEL):
+  - 머리 띠: `Box backgroundColor="suggestion"` 안 Text 한 줄 `🔍 SAST 진행률   68%  15 / 22`(왼쪽 정렬 — 오른쪽
+    정렬은 Windows에서 잘렸다).
+  - 요약: `🎯 처리 범위  위험도 … 이상, 남음 N, 📦 전체 a / b`, 작업 단계 칸 막대(전체 기준), 아이콘 범례
+    `✅ 29 검증 완료` 등(📥 시작 전 · ⏳ 작업 중 · 🔎 분석 · 🔧 수정 완료 · ✅ 검증 완료 · 💤 보류).
+  - 탭: 지금 탭은 반전 Text 알약(` 1 📋 체커 `), 나머지는 Button(단축키 2·3). 버튼으로 두면 단축키 색이 띠
+    색과 같아 묻혔다.
+  - 체커: 한 줄씩 `🔴 CODE  [칸 막대]  남음 N  검증/전체`, 신호등 🔴 5건 이상 · 🟠 3~4 · 🟡 1~2 · 🟢 0. 비면 안내 문구.
+  - 토큰·범위 탭은 줄마다 아이콘(🧠 💰 📨 📚 🔁 ⌛ 📅 🎯), 범위 밖 위험도 줄은 들여쓰기만.
+  - 바닥 줄: `🧠 ctx 7%   💰 $0.74   🕒 17:42 갱신`(2분 넘으면 오래됨).
+  - 데스크톱·VS Code·모바일은 같은 배치에 링·막대를 Svg로. 상태 줄 `SAST 15/22 범위, 29/48 전체 | ctx 41% | $18.42`.
+- 터미널 규칙(1.17.4에서 배운 것): 화면 종류는 `e.surface`로 가른다(`$.ui.resolve`가 터미널에도 Svg를 빈 조각으로
+  채움). 폭이 모호한 문자(·, ●, █, │, 상자 테두리, ⚠ ⏸ ★, FE0F가 필요한 이모지)와 borderStyle을 쓰지 않는다 —
+  한글 글꼴 터미널이 두 칸으로 그려 줄이 잘린다. 아이콘은 Emoji_Presentation 문자만(항상 두 칸), 아이콘 뒤 한 칸.
+  막대는 backgroundColor 칠한 빈칸. 테스트가 터미널 트리를 검사한다.
+- 데이터: `query --summary`(처리 범위가 있으면 `--scope in-scope`도)를 읽기만 한다. 요약에 `byChecker`가 없는
+  옛 툴킷(1.15.0 이전)은 `python -c CHECKER_COUNT_SCRIPT`로 findings.json·progress.json을 읽어 체커별만 출력한다
+  (`query` 전체 행은 검출 수천 건에서 4 MiB 출력 한도를 넘어 잘렸다, 1.18.1). 파이썬은 `python3` → `python` →
+  `py -3` 순(Windows Store 바로가기 대응).
+- 이력: 1.17.0 패널 → 1.17.1 요약 카드+탭(A안) → 1.17.3 Windows 파이썬 → 1.17.4 터미널 잘림 → 1.17.5 체커 대안 →
+  1.18.0 E안 → 1.18.1 큰 프로젝트 체커·띠·탭 대비. 자세한 건 `toolkit/docs/VERSIONING.md`.
 - 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(8건),
-  타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로).
+  타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로 plugin-authoring 타입 + hooks + types를 묶어 tsc).
 
 ### 문서와 다이어그램 체계
 
