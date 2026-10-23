@@ -82,12 +82,13 @@ test('the summary card leads with the in-scope completion and both surfaces draw
 
   for (const [surface, sep] of [['terminal', ', '], ['desktop', ' · ']] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /^15 \/ 22/ }))?.text).toContain('68%')
-    expect((await ui.find({ type: 'Text', text: /처리 범위\(위험도 높음 이상\)/ }))?.text).toContain(`검증 완료${sep}전체 29 / 48`)
-    expect((await ui.find({ type: 'Text', text: /^보류 1$/ }))?.text).toBe('보류 1')
-    expect((await ui.find({ type: 'Text', text: /SQL_INJECTION/ }))?.text).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: new RegExp(`남음 7${sep}5/12`) }))?.text).toBeTruthy()
-    expect((await ui.find({ type: 'Button', text: /\[체커\]/ }))).toBeTruthy() // 지금 탭은 대괄호
+    expect((await ui.find({ type: 'Text', text: /^68%  15\/22$/ }))?.text).toBeTruthy() // 머리 띠
+    expect((await ui.find({ type: 'Text', text: /처리 범위/ }))?.text).toContain(`위험도 높음 이상${sep}남음 7${sep}📦 전체 29 / 48`)
+    expect((await ui.find({ type: 'Text', text: /^💤3 보류$/ }))?.text).toBeTruthy() // 아이콘 범례(전체 기준)
+    expect((await ui.find({ type: 'Text', text: /🔴 SQL_INJECTION/ }))?.text).toBeTruthy() // 남은 7건은 빨강 신호
+    expect((await ui.find({ type: 'Text', text: surface === 'terminal' ? /남음 7 +5\/12/ : /남음 7 · 5\/12/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Button', text: /📋 체커/ }))).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /🕒 .*갱신/ }))?.text).toContain('$18.42') // 바닥 줄
     await ui.unmount()
   }
 })
@@ -99,11 +100,11 @@ test('the tabs switch to tokens and scope', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
   await ui.press({ key: 'tab-tokens' })
-  expect((await ui.find({ type: 'Text', text: /^컨텍스트 41%/ }))?.text).toContain('41%, 412.3k / 1.00M')
+  expect((await ui.find({ type: 'Text', text: /🧠 컨텍스트 41%/ }))?.text).toContain('412.3k / 1.00M')
   expect((await ui.find({ type: 'Text', text: /이번 세션 비용/ }))?.text).toContain('$18.42')
 
   await ui.press({ key: 'tab-scope' })
-  expect((await ui.find({ type: 'Text', text: /^범위 안 22/ }))?.text).toBe('범위 안 22, 그 밖 26')
+  expect((await ui.find({ type: 'Text', text: /범위 안 22/ }))?.text).toBe('📦 범위 안 22, 그 밖 26')
   expect((await ui.find({ type: 'Text', text: /2건, 미확인/ }))?.text).toBeTruthy()
   await ui.unmount()
 })
@@ -173,6 +174,9 @@ test('the terminal drawing uses no ambiguous-width characters and no borders', a
     const tree = await ui.drawn()
     const text = strings(tree).join('')
     expect(text.match(AMBIGUOUS)).toBeNull()
+    // ASCII·한글 밖의 문자는 항상 두 칸인 그림 문자(Emoji_Presentation)만. FE0F 변형 선택자도 쓰지 않는다.
+    expect([...text].filter(ch => ch > '\u007e' && !/[\uac00-\ud7a3]/.test(ch) && !/\p{Emoji_Presentation}/u.test(ch))).toEqual([])
+    expect(text.includes('\ufe0f')).toBe(false)
     expect(JSON.stringify(tree)).not.toContain('"borderStyle"')
   }
   expect(seen.status.at(-1)?.match(AMBIGUOUS)).toBeFalsy()
@@ -184,7 +188,7 @@ test('with an older toolkit the checker tab counts from query rows', async ($, o
   engine(on, seen, true, 'high', false, true)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: /남음 2, 1\/3/ }))?.text).toBeTruthy()
-  expect((await ui.find({ type: 'Text', text: /남음 0, 1\/1/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /🟡 SQL_INJECTION.*남음 2 +1\/3/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /🟢 XSS.*남음 0 +1\/1/ }))?.text).toBeTruthy()
   await ui.unmount()
 })

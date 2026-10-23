@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.5 / skill-architect v0.5.3 / security-assessment v0.12.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.18.0 / skill-architect v0.5.3 / security-assessment v0.12.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23)
 
-배포 버전: sast-remediation **v1.17.5**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
+배포 버전: sast-remediation **v1.18.0**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
 최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`ef6b721`).
 
 ### 남은 일
@@ -68,7 +68,12 @@
   상태 줄 구분자 `|`. 테스트에 "터미널 트리에 폭 모호 문자·borderStyle 없음" 검사 추가(6건).
 - 체커 탭 빈 화면(1.17.5): 프로젝트 툴킷 복사본이 1.15.0 이전이면 `query --summary`에 `byChecker`가 없다.
   패널이 그때 `query` 행을 직접 세어 채운다(`checkersFromRows`). 테스트 7건.
-- 다음: 패널 2차 시안(B 띠 머리+색 견본 / C 큰 숫자 / D 표+줄무늬, 설계안 아티팩트) 중 사용자 선택 대기.
+- 2차 디자인(1.18.0, 사용자 선택 E안 = 띠 머리 + 아이콘): 머리 띠(Box backgroundColor="suggestion")에 제목·완료율,
+  단계 아이콘 범례, 체커 한 줄(신호등 + 칸 막대 + 남음 + 검증/전체), 지금 탭은 색 띠, 바닥 줄 ctx·비용·갱신.
+  아이콘은 Emoji_Presentation 문자만(항상 두 칸). 테스트가 터미널 트리의 비ASCII·비한글 문자가 모두 그림 문자인지,
+  FE0F가 없는지 검사. 시안 B·C·D·E는 설계안 아티팩트(KdE2ACe1hwuh83NghDPTEL)에 있다.
+- 참고: 모드 API에 `Image`(kitty·Ghostty·iTerm2 3.5+ 전체 화면에서 PNG)와 `Raster`(터미널 칸 격자)가 있다.
+  Windows Terminal은 Image를 alt로만 그려 아이콘에는 쓰지 않았다.
 - 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(7건),
   타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로).
 
