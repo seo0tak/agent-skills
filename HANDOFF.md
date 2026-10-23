@@ -7,7 +7,7 @@
 ## 최신 작업 기준 (2026-10-23)
 
 배포 버전: sast-remediation **v1.18.2**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
-최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`6dda77c`).
+최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`f27722b`).
 
 ### 남은 일
 
