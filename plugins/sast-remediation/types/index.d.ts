@@ -19,6 +19,8 @@ export type ProgressView =
       scope: ScopeCounts | null
       risk: Record<string, number>
       checkers: { code: string; total: number; verified: number; remaining: number }[]
+      // 처리 범위 안 항목만의 체커별 진행. 범위가 없거나 셀 수 없으면 null.
+      scopeCheckers: { code: string; total: number; verified: number; remaining: number }[] | null
       checkedAt: number
     }
 
@@ -36,6 +38,8 @@ export type TokenTotals = { input: number; output: number; cacheRead: number; ca
 
 export type PaneTab = 'checkers' | 'tokens' | 'scope'
 
+export type CheckerView = 'scope' | 'all'
+
 declare module 'claude-code' {
   interface PluginState {
     'sast-remediation': {
@@ -45,6 +49,7 @@ declare module 'claude-code' {
       active: boolean
       tab: PaneTab
       listOffset: number
+      checkerView: CheckerView
     }
   }
 }

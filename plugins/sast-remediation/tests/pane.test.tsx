@@ -32,8 +32,17 @@ const IN_SCOPE = JSON.stringify({
     workflowStatus: { analyzed: 3, 'change-complete': 2, verified: 15, deferred: 1, 'in-progress': 1 },
     conclusion: { fix: 14, 'false-positive': 5, 'needs-review': 2, unreviewed: 1 },
   },
-  byChecker: {},
+  byChecker: {
+    SQL_INJECTION: { total: 8, verified: 5, deferred: 1, remaining: 3 },
+    XSS_REFLECTED: { total: 6, verified: 6, deferred: 0, remaining: 0 },
+  },
 })
+
+// 옛 툴킷의 범위 안 체커는 query --scope in-scope 행으로 센다
+const SCOPE_ROWS = JSON.stringify([
+  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'verified' } },
+  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'analyzed' } },
+])
 
 // 1.15.0 이전 툴킷: summary에 byChecker가 없고, 패널이 짧은 스크립트(python -c)로 데이터 파일을 센다.
 const COUNTED = JSON.stringify({
@@ -87,6 +96,9 @@ function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null
     if (windows && e.argv[0] === 'python3') return { value: { exitCode: 9009, stdout: '', stderr: STORE_ALIAS } }
     if (windows && e.argv[0] === 'python') throw new Error('spawn python ENOENT')
     if (e.argv.includes('-c')) return { value: { exitCode: 0, stdout: oldToolkit ? COUNTED : '{}', stderr: '' } }
+    if (!e.argv.includes('--summary') && e.argv.includes('in-scope')) {
+      return { value: { exitCode: 0, stdout: noCheckers ? '[]' : SCOPE_ROWS, stderr: '' } }
+    }
     const summary = e.argv.includes('in-scope') ? IN_SCOPE : ALL
     const older = oldToolkit || noCheckers
     if (many && !e.argv.includes('in-scope')) return { value: { exitCode: 0, stdout: MANY, stderr: '' } }
@@ -106,10 +118,17 @@ test('the summary card leads with the in-scope completion and both surfaces draw
   for (const [surface, sep] of [['terminal', ', '], ['desktop', ' · ']] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /🔍 SAST 진행률   68%  15 \/ 22/ }))?.text).toBeTruthy() // 머리 띠, 왼쪽 정렬
-    expect((await ui.find({ type: 'Text', text: /처리 범위/ }))?.text).toContain(`위험도 높음 이상${sep}남음 7${sep}📦 전체 29 / 48`)
-    expect((await ui.find({ type: 'Text', text: /^💤 3 보류$/ }))?.text).toBeTruthy() // 아이콘 범례(전체 기준)
-    expect((await ui.find({ type: 'Text', text: /🔴 SQL_INJECTION/ }))?.text).toBeTruthy() // 남은 7건은 빨강 신호
+    expect((await ui.find({ type: 'Text', text: /처리 범위/ }))?.text).toContain(`위험도 높음 이상${sep}남음 7${sep}전체 29 / 48`)
+    expect((await ui.find({ type: 'Text', text: /^💤 1 보류$/ }))?.text).toBeTruthy() // 범례도 범위 안 기준
+    // 체커 목록도 기본은 범위 안. 신호등은 목록 안 최대 남은 건수 대비
+    expect((await ui.find({ type: 'Text', text: /^범위 안 체커 2개/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /🔴 SQL_INJECTION/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /🟢 XSS_REFLECTED/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: surface === 'terminal' ? /남음 3 +5\/8/ : /남음 3 · 5\/8/ }))?.text).toBeTruthy()
+    await ui.press({ key: 'checker-view' }) // v: 전체 보기
+    expect((await ui.find({ type: 'Text', text: /^전체 체커 3개/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: surface === 'terminal' ? /남음 7 +5\/12/ : /남음 7 · 5\/12/ }))?.text).toBeTruthy()
+    await ui.press({ key: 'checker-view' })
     expect((await ui.find({ type: 'Text', text: /^ 1 📋 체커 $/ }))?.text).toBeTruthy() // 지금 탭은 반전 알약
     expect((await ui.find({ type: 'Button', text: /🧠 토큰/ }))).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /🕒 .*갱신/ }))?.text).toContain('$18.42') // 바닥 줄
@@ -132,10 +151,11 @@ test('the tabs switch to tokens and scope', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /MCP 도구/ })).toBeUndefined() // 지연 로드 도구는 뺀다
 
   await ui.press({ key: 'tab-scope' })
-  expect((await ui.find({ type: 'Text', text: /범위 안 22/ }))?.text).toBe('📦 범위 안 22, 그 밖 26')
+  expect((await ui.find({ type: 'Text', text: /범위 안 22/ }))?.text).toBe('기준: 위험도 높음 이상, 범위 안 22, 그 밖 26')
   expect((await ui.find({ type: 'Text', text: /2건, 미확인/ }))?.text).toBeTruthy()
-  expect((await ui.find({ type: 'Text', text: /범위 안 작업 단계/ }))?.text).toContain('15 / 22 검증 완료')
-  expect((await ui.find({ type: 'Text', text: /^⏳ 1 작업 중$/ }))?.text).toBeTruthy() // 범위 안 단계 범례
+  expect((await ui.find({ type: 'Text', text: /전체 작업 단계/ }))?.text).toContain('29 / 48 검증 완료') // 요약이 범위 기준이라 여기는 전체
+  expect((await ui.find({ type: 'Text', text: /^💤 3 보류$/ }))?.text).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^🔎 3 분석$/ })).toBeUndefined() // 요약은 한 줄로 접힘
   expect((await ui.find({ type: 'Text', text: /^수정 필요 .*14건$/ }))?.text).toBeTruthy()
   expect((await ui.find({ type: 'Text', text: /^미검토 .*1건$/ }))?.text).toBeTruthy()
   await ui.unmount()
@@ -220,7 +240,9 @@ test('with an older toolkit the checker tab counts the data files', async ($, on
   engine(on, seen, true, 'high', false, true)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: /🟡 SQL_INJECTION.*남음 2 +1\/3/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /🔴 SQL_INJECTION.*남음 1 +1\/2/ }))?.text).toBeTruthy() // 범위 안: query 행
+  await ui.press({ key: 'checker-view' })
+  expect((await ui.find({ type: 'Text', text: /🔴 SQL_INJECTION.*남음 2 +1\/3/ }))?.text).toBeTruthy() // 전체: 집계 스크립트
   expect((await ui.find({ type: 'Text', text: /🟢 XSS.*남음 0 +1\/1/ }))?.text).toBeTruthy()
   await ui.unmount()
 })
@@ -238,7 +260,11 @@ test('the checker rows follow the pane width', async ($, on) => {
   const seen: Seen = { opened: 0, status: [], argv0: [] }
   engine(on, seen, true, 'high')
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  const at = (bodyColumns: number) => $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns } })
+  const at = async (bodyColumns: number) => {
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns } })
+    if (!(await ui.find({ type: 'Text', text: /^전체 체커/ }))) await ui.press({ key: 'checker-view' })
+    return ui
+  }
 
   const wide = await at(120) // 넓으면 긴 체커 이름을 자르지 않고, 검증/전체도 보인다
   expect((await wide.find({ type: 'Text', text: /FORBIDDEN\.LOCAL_STORAGE_ACCESS .*남음 3 +0\/3/ }))?.text).toBeTruthy()
@@ -259,14 +285,15 @@ test('a long checker list scrolls under a pinned header', async ($, on) => {
   const seen: Seen = { opened: 0, status: [], argv0: [] }
   engine(on, seen, true, 'high', false, false, false, true)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  // 높이 19줄: 열 제목 한 줄을 뺀 체커 6줄 자리 중 한 줄은 위치 안내라 5개씩 보인다
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, scroll: { offset: 0, bodyRows: 19 } } })
+  // 높이 22줄: 고정 줄(띠·요약·탭·관점·열 제목·범례·바닥)을 뺀 체커 6줄 자리 중 한 줄은 위치 안내라 5개씩 보인다
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, scroll: { offset: 0, bodyRows: 22 } } })
+  await ui.press({ key: 'checker-view' }) // 전체 10개
   const position = async () => (await ui.find({ type: 'Text', text: /개 체커, 휠이나 방향키로 스크롤/ }))?.text ?? ''
   expect(await position()).toMatch(/^1-5 \/ 10개 체커/)
   expect(await ui.find({ type: 'Text', text: /CHECKER_06/ })).toBeUndefined()
 
   const scroll = (by: number) => $.ui.scroll({ component: 'Pane', requestId: 'sast-progress', offset: 0, by,
-    bodyRows: 19, contentRows: 19, origin: { kind: 'person' } } as any)
+    bodyRows: 22, contentRows: 22, origin: { kind: 'person' } } as any)
   await scroll(1) // 휠 한 칸
   await ui.redraw()
   expect(await position()).toMatch(/^2-6 \/ 10개 체커.*Home 맨 위/)
@@ -276,7 +303,7 @@ test('a long checker list scrolls under a pinned header', async ($, on) => {
   await scroll(30) // 끝을 넘으면 마지막에 멈춘다(End)
   await ui.redraw()
   expect(await position()).toMatch(/^6-10 \/ 10개 체커/)
-  await scroll(-19) // Home
+  await scroll(-22) // Home
   await ui.redraw()
   expect(await position()).toMatch(/^1-5 \/ 10개 체커/)
 

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Counts, PaneTab, ProgressView, ScopeCounts, TokenTotals, UsageView } from '../types'
+import type { CheckerView, Counts, PaneTab, ProgressView, ScopeCounts, TokenTotals, UsageView } from '../types'
 
 // Claude Code 전용 진행률 패널. 프로젝트에 툴킷 복사본이 있거나 이 스킬이 실행되면 열린다.
 // 진행률은 툴킷의 query --summary(읽기 전용)를 그대로 보여 줄 뿐 상태를 바꾸지 않는다.
@@ -25,6 +25,8 @@ const tab = atom({ plugin: 'sast-remediation', key: 'tab' } as const, 'checkers'
 const listOffset = atom({ plugin: 'sast-remediation', key: 'listOffset' } as const, 0)
 // 마지막으로 그린 체커 목록 창: 보이는 줄 수와 전체 체커 수. 스크롤 훅이 이 범위 안에서만 움직인다.
 let listWindow = { room: 0, count: 0 }
+// 체커 목록 관점: 처리 범위가 있으면 기본은 범위 안. v 키로 전체와 바꾼다.
+const checkerView = atom({ plugin: 'sast-remediation', key: 'checkerView' } as const, 'scope' as CheckerView)
 
 // 작업 단계: 표시 순서·이름·색. 색은 의미에만 쓴다(완료 초록, 진행 파랑, 수정 완료 주황, 보류 보라).
 const STAGES: { key: string; label: string; icon: string; hex: string; theme: string }[] = [
@@ -41,18 +43,28 @@ const ICON = {
   title: '🔍', scope: '🎯', all: '📦', conclusion: '📝', empty: '📭', checkers: '📋', context: '🧠', cost: '💰',
   io: '📨', cache: '📚', requests: '🔁', fiveHour: '⌛', sevenDay: '📅', clock: '🕒',
 }
-// 남은 건수 신호등: 5건 이상 빨강, 3~4 주황, 1~2 노랑, 0 초록
-const signal = (remaining: number) => remaining >= 5 ? '🔴' : remaining >= 3 ? '🟠' : remaining >= 1 ? '🟡' : '🟢'
-const heat = (remaining: number) => remaining >= 5 ? 'error' : remaining >= 3 ? 'warning' : remaining >= 1 ? 'suggestion' : 'success'
-// 결론: 표시 순서·이름·색(실제 결함 빨강, 오탐 초록, 운영·예외 보라, 추가 검토 파랑, 미검토 회색)
+// 남은 건수 신호등: 보이는 목록의 최대 남은 건수 대비 상대 구간. 절대 기준이면 큰 프로젝트에서 전부 빨강이 된다.
+// 절반 이상 빨강, 5분의 1 이상 주황, 그 밖에 남았으면 노랑, 다 끝났으면 초록.
+function tier(remaining: number, max: number) {
+  if (remaining <= 0) return 0
+  const share = max > 0 ? remaining / max : 1
+  return share >= 0.5 ? 3 : share >= 0.2 ? 2 : 1
+}
+const signal = (remaining: number, max: number) => ['🟢', '🟡', '🟠', '🔴'][tier(remaining, max)]!
+const heat = (remaining: number, max: number) => ['success', 'text', 'warning', 'error'][tier(remaining, max)]!
+// 결론: 표시 순서·이름·색. 경보색(빨강)은 아직 판단이 끝나지 않은 추가 검토에만 쓴다. 수정 필요는 해야 할
+// 변경(주황), 오탐은 할 일 없음(초록), 운영·예외는 다른 경로(보라), 미검토는 회색.
 const CONCLUSIONS: { key: string; label: string; theme: string; hex: string }[] = [
-  { key: 'fix', label: '수정 필요', theme: 'error', hex: '#d4483f' },
+  { key: 'fix', label: '수정 필요', theme: 'warning', hex: '#d9962b' },
   { key: 'false-positive', label: '오탐', theme: 'success', hex: '#2fa36b' },
   { key: 'operations', label: '운영 조치', theme: 'merged', hex: '#8b6fd6' },
   { key: 'exception', label: '예외', theme: 'merged', hex: '#8b6fd6' },
-  { key: 'needs-review', label: '추가 검토', theme: 'suggestion', hex: '#5b7cf0' },
+  { key: 'needs-review', label: '추가 검토', theme: 'error', hex: '#d4483f' },
   { key: 'unreviewed', label: '미검토', theme: 'inactive', hex: '#8a8f99' },
 ]
+// 처리 범위 안을 칠하는 색. 띠 색(suggestion)은 띠와 지금 탭에만 쓴다.
+const SCOPE_THEME = 'claude'
+const SCOPE_HEX = '#d97757'
 // 컨텍스트 구성 이름(/context가 영어로 줌)과 그래픽용 색(엔진은 테마 키로 줌)
 const CONTEXT_LABEL: Record<string, string> = {
   'System prompt': '시스템 프롬프트', 'System tools': '시스템 도구', 'MCP tools': 'MCP 도구', 'Custom agents': '에이전트',
@@ -129,10 +141,10 @@ export function parseSummary(stdout: string, checkedAt: number, scoped: string |
   minRisk: string | null = null): ProgressView {
   const summary = JSON.parse(stdout) as Summary
   const checkers = checkersFromCounts(JSON.stringify(summary.byChecker ?? {}))
-  const scope: ScopeCounts | null = scoped && minRisk
-    ? { ...counts(JSON.parse(scoped) as Summary), minRisk }
-    : null
-  return { kind: 'ok', all: counts(summary), scope, risk: summary.by?.risk ?? {}, checkers, checkedAt }
+  const scopedSummary = scoped && minRisk ? JSON.parse(scoped) as Summary : null
+  const scope: ScopeCounts | null = scopedSummary ? { ...counts(scopedSummary), minRisk: minRisk! } : null
+  const scopeCheckers = scopedSummary?.byChecker ? checkersFromCounts(JSON.stringify(scopedSummary.byChecker)) : null
+  return { kind: 'ok', all: counts(summary), scope, risk: summary.by?.risk ?? {}, checkers, scopeCheckers, checkedAt }
 }
 
 // byChecker가 없는 옛 툴킷(1.15.0 이전)용: 데이터 파일을 읽기만 해서 체커별 진행을 센다(대시보드와 같은 정의).
@@ -151,6 +163,20 @@ export const CHECKER_COUNT_SCRIPT = [
   "for e in b.values(): e['remaining'] = e['total'] - e['verified']",
   'print(json.dumps(b))',
 ].join('\n')
+
+// 옛 툴킷의 범위 안 체커: query --scope in-scope 행을 센다(범위 안은 보통 수백 건이라 출력 한도 안).
+export function checkersFromRows(stdout: string) {
+  const rows = JSON.parse(stdout) as { checker?: { code?: string }; progress?: { workflowStatus?: string } }[]
+  const by: Record<string, { total: number; verified: number; deferred: number; remaining: number }> = {}
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const entry = by[row.checker?.code || 'unknown'] ??= { total: 0, verified: 0, deferred: 0, remaining: 0 }
+    entry.total += 1
+    if (row.progress?.workflowStatus === 'verified') entry.verified += 1
+    if (row.progress?.workflowStatus === 'deferred') entry.deferred += 1
+    entry.remaining = entry.total - entry.verified
+  }
+  return checkersFromCounts(JSON.stringify(by))
+}
 
 export function checkersFromCounts(stdout: string) {
   const by = JSON.parse(stdout) as Summary['byChecker']
@@ -194,6 +220,10 @@ async function refreshProgress($: EngineInterface, force = false) {
       if (view.kind === 'ok' && view.checkers.length === 0 && view.all.total > 0) {
         const counted = await runPython($, ['-c', CHECKER_COUNT_SCRIPT])
         if (counted.exitCode === 0) view = { ...view, checkers: checkersFromCounts(counted.stdout) }
+      }
+      if (view.kind === 'ok' && view.scope && view.scope.total > 0 && !view.scopeCheckers?.length) {
+        const rows = await runToolkit($, ['query', '--scope', 'in-scope'])
+        if (rows.exitCode === 0 && !rows.isStdoutTruncated) view = { ...view, scopeCheckers: checkersFromRows(rows.stdout) }
       }
     } catch (error) {
       const previous = await read($, progress)
@@ -405,6 +435,7 @@ export const register: Register = on => {
     const t = await read($, tokens)
     const current = await read($, tab)
     const offset = await read($, listOffset)
+    const view = await read($, checkerView)
     const now = await $.clock.now()
     const columns = e.props?.bodyColumns ?? 40
     // 반응형: 막대·체커 이름·목록 길이를 본문 폭(bodyColumns)과 높이(bodyRows)에 맞춘다. 크기가 바뀌면 다시 그려진다.
@@ -428,8 +459,8 @@ export const register: Register = on => {
       })
       return <Text>{segments}{used < barWidth ? <Text backgroundColor="inactive">{' '.repeat(barWidth - used)}</Text> : ''}</Text>
     }
-    // 양 막대: 길이가 건수(가장 큰 값 대비), 그 안의 초록이 검증 완료. 나머지 칸은 비워 둔다(회색 덩어리 방지).
-    const volumeBar = (done: number, total: number, max: number, width: number, theme = 'suggestion') => {
+    // 양 막대: 길이가 건수(가장 큰 값 대비), 그 안의 초록이 검증 완료, 남은 부분은 중립 회색. 막대 밖은 비운다.
+    const volumeBar = (done: number, total: number, max: number, width: number, theme = 'inactive') => {
       const length = max > 0 && total > 0 ? Math.max(1, Math.round((total / max) * width)) : 0
       const green = total > 0 ? Math.round((done / total) * length) : 0
       return (
@@ -500,14 +531,16 @@ export const register: Register = on => {
       )
     }
 
+    // 처리 범위가 있으면 요약·막대·체커 목록 모두 범위 안 기준. 전체는 보조 줄로만.
     const main = p.kind === 'ok' ? p.scope ?? p.all : null
     const mainPct = main ? percent(main.verified, main.total) : 0
+    const scopeDone = p.kind === 'ok' && !!p.scope && p.scope.total > 0 && p.scope.verified === p.scope.total
 
-    // ---- 머리 띠: 제목과 완료율 ----
+    // ---- 머리 띠: 제목과 완료율. 범위를 다 끝내면 그렇다고 말한다 ----
     const band = (
       <Box backgroundColor="suggestion" paddingX={1}>
         <Text bold color="inverseText" wrap="truncate">
-          {ICON.title} SAST 진행률{main ? `   ${mainPct}%  ${main.verified} / ${main.total}` : ''}
+          {ICON.title} SAST 진행률{main ? `   ${scopeDone ? '처리 범위 완료' : `${mainPct}%`}  ${main.verified} / ${main.total}` : ''}
         </Text>
       </Box>
     )
@@ -519,9 +552,11 @@ export const register: Register = on => {
       const top = p.scope ?? p.all
       const remaining = top.total - top.verified
       const scopeLine = p.scope
-        ? <Text wrap="wrap"><Text bold>{ICON.scope} 처리 범위</Text>  <Text dimColor>위험도 {RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk} 이상{sep}남음 {remaining}{sep}{ICON.all} 전체 {p.all.verified} / {p.all.total}</Text></Text>
+        ? <Text wrap="wrap"><Text bold>{ICON.scope} 처리 범위</Text>  <Text dimColor>위험도 {RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk} 이상{sep}남음 {remaining}{sep}전체 {p.all.verified} / {p.all.total}</Text></Text>
         : <Text wrap="wrap"><Text bold>{ICON.all} 전체</Text>  <Text dimColor>검증 완료 기준{sep}남음 {remaining}</Text></Text>
-      const { stageBar, legend } = stageView(p.all, 'all')
+      const { stageBar, legend } = stageView(top, 'top')
+      // 토큰·범위 탭에서는 요약을 한 줄로 접어 본문 자리를 준다
+      if (current !== 'checkers') return scopeLine
       if (Svg) {
         return (
           <Box flexDirection="column" gap={1}>
@@ -569,24 +604,44 @@ export const register: Register = on => {
     // ---- 체커: 남은 건수 신호등 + 진행 막대 ----
     const checkersTab = (() => {
       if (p.kind !== 'ok') return <Text dimColor>{ICON.empty} 검출이 등록되면 체커별 진행이 보입니다.</Text>
-      const fits = Svg ? Math.max(3, Math.floor((rows - 14) / 2)) : Math.max(3, rows - 13)
+      // 관점: 처리 범위가 있고 범위 안 집계가 있으면 기본은 범위 안, v로 전체와 바꾼다.
+      const canScope = !!p.scope && !!p.scopeCheckers
+      const scoped = canScope && view === 'scope'
+      const list = scoped ? p.scopeCheckers! : p.checkers
+      const viewLine = (
+        <Box flexDirection="row" columnGap={2}>
+          <Text bold>{scoped ? '범위 안 체커' : '전체 체커'} {list.length}개</Text>
+          {canScope && (
+            <Button key="checker-view" label={scoped ? '전체 보기' : '범위 안 보기'} hotkey="v" plain dimColor
+              onPress={async () => { await update($, checkerView, v => v === 'scope' ? 'all' : 'scope'); await update($, listOffset, () => 0) }} />
+          )}
+        </Box>
+      )
+      const fits = Svg ? Math.max(3, Math.floor((rows - 16) / 2)) : Math.max(3, rows - 16)
       // 넘치면 한 줄을 위치 안내에 쓴다
-      const room = p.checkers.length > fits ? Math.max(3, fits - 1) : fits
-      listWindow = { room, count: p.checkers.length }
-      const start = Math.max(0, Math.min(offset, p.checkers.length - room))
-      const shown = p.checkers.slice(start, start + room)
+      const room = list.length > fits ? Math.max(3, fits - 1) : fits
+      listWindow = { room, count: list.length }
+      const start = Math.max(0, Math.min(offset, list.length - room))
+      const shown = list.slice(start, start + room)
       if (shown.length === 0) {
-        return <Text dimColor wrap="wrap">{ICON.empty} 체커별 집계를 읽지 못했습니다. /sast-progress로 다시 읽거나 툴킷을 1.15.0 이상으로 올려 주세요.</Text>
+        return (
+          <Box flexDirection="column">
+            {viewLine}
+            <Text dimColor wrap="wrap">{ICON.empty} 체커별 집계를 읽지 못했습니다. /sast-progress로 다시 읽거나 툴킷을 1.15.0 이상으로 올려 주세요.</Text>
+          </Box>
+        )
       }
-      const more = p.checkers.length > room && (
+      const maxRemaining = Math.max(...list.map(c => c.remaining))
+      const more = list.length > room && (
         <Text dimColor wrap="truncate">
-          {start + 1}-{start + shown.length} / {p.checkers.length}개 체커{sep}휠이나 방향키로 스크롤{start > 0 ? `${sep}Home 맨 위` : ''}
+          {start + 1}-{start + shown.length} / {list.length}개 체커{sep}휠이나 방향키로 스크롤{start > 0 ? `${sep}Home 맨 위` : ''}
         </Text>
       )
       if (Svg) {
         return (
           <Box flexDirection="column" gap={1}>
-            {shown.map(c => progressRow(c.code, `${signal(c.remaining)} ${c.code}`, `남음 ${c.remaining}${sep}${c.verified}/${c.total}`,
+            {viewLine}
+            {shown.map(c => progressRow(c.code, `${signal(c.remaining, maxRemaining)} ${c.code}`, `남음 ${c.remaining}${sep}${c.verified}/${c.total}`,
               percent(c.verified, c.total), OK, 'success'))}
             {more}
           </Box>
@@ -600,17 +655,18 @@ export const register: Register = on => {
       const nameWidth = Math.min(longest, narrow ? 14 : wide ? 44 : 26, Math.max(8, columns - 3 - tailWidth - 2))
       const miniWidth = narrow ? 0 : Math.min(40, columns - 3 - nameWidth - 1 - tailWidth - 1)
       const name = (code: string) => code.length > nameWidth ? `${code.slice(0, nameWidth - 1)}~` : code.padEnd(nameWidth)
-      const maxTotal = Math.max(...p.checkers.map(c => c.total))
+      const maxTotal = Math.max(...list.map(c => c.total))
       const barHint = ['건수(초록 = 검증 완료)', '건수'].find(hint => cellWidth(hint) <= miniWidth) ?? ''
       return (
         <Box flexDirection="column">
+          {viewLine}
           <Text dimColor wrap="truncate">
             {'   '}{'체커'}{' '.repeat(nameWidth - cellWidth('체커'))}{miniWidth >= 6 ? ` ${barHint}${' '.repeat(miniWidth - cellWidth(barHint))}` : ''}{'  '}남음
           </Text>
           {shown.map(c => (
             <Text key={c.code} wrap="truncate">
-              {signal(c.remaining)} {name(c.code)}{miniWidth >= 6 ? <Text> {volumeBar(c.verified, c.total, maxTotal, miniWidth)}</Text> : ''}
-              {'  '}<Text color={heat(c.remaining)} bold>남음 {String(c.remaining).padStart(remWidth)}</Text>
+              {signal(c.remaining, maxRemaining)} {name(c.code)}{miniWidth >= 6 ? <Text> {volumeBar(c.verified, c.total, maxTotal, miniWidth)}</Text> : ''}
+              {'  '}<Text color={heat(c.remaining, maxRemaining)} bold>남음 {String(c.remaining).padStart(remWidth)}</Text>
               {!narrow && <Text dimColor>  {`${c.verified}/${c.total}`.padStart(fracWidth)}</Text>}
             </Text>
           ))}
@@ -623,12 +679,18 @@ export const register: Register = on => {
       const ctx = u.contextPercent
       const incoming = t.input + t.cacheRead + t.cacheWrite
       const hit = incoming > 0 ? Math.round((t.cacheRead / incoming) * 100) : undefined
-      const ctxTheme = (ctx ?? 0) >= 85 ? 'error' : (ctx ?? 0) >= 70 ? 'warning' : 'suggestion'
+      const ctxTheme = (ctx ?? 0) >= 85 ? 'error' : (ctx ?? 0) >= 70 ? 'warning' : 'permission'
       // 컨텍스트 막대 하나: 쓰는 항목을 저마다 색으로 칠하고, 남은 칸은 회색 바탕, 압축 예비는 맨 끝 점무늬.
       // 구성을 못 읽으면 쓴 비율만 칠한다. 엔진이 주는 /context 색은 회색이 겹쳐(시스템 프롬프트·도구·남은 칸)
       // 쓰는 항목에는 패널 고유 색을 차례로 준다.
       const rows = u.breakdown ?? []
-      const used = rows.filter(c => c.kind === 'used')
+      const rowsTotal = rows.reduce((sum, c) => sum + c.tokens, 0)
+      // 1% 미만 항목이 둘 이상이면 '기타' 한 줄로 합친다
+      const small = rows.filter(c => c.kind === 'used' && rowsTotal > 0 && c.tokens / rowsTotal < 0.01)
+      const used = [
+        ...rows.filter(c => c.kind === 'used' && !(small.length > 1 && small.includes(c))),
+        ...(small.length > 1 ? [{ name: '기타', tokens: small.reduce((sum, c) => sum + c.tokens, 0), color: 'subtle', kind: 'used' }] : []),
+      ]
       const free = rows.filter(c => c.kind === 'free')
       const buffer = rows.filter(c => c.kind === 'buffer')
       const ordered = [...used, ...free, ...buffer]
@@ -637,6 +699,7 @@ export const register: Register = on => {
         c.kind === 'used' ? CONTEXT_THEMES[index % CONTEXT_THEMES.length] ?? 'claude' : 'inactive'
       const label = (c: { name: string; kind: string }) =>
         c.kind === 'free' ? '남은 칸' : c.kind === 'buffer' ? '압축 예비' : CONTEXT_LABEL[c.name] ?? c.name
+      const smallNames = small.length > 1 ? small.map(c => label(c)).join(', ') : ''
       const share = (tokens: number) => {
         const pct = all > 0 ? (tokens / all) * 100 : 0
         return pct > 0 && pct < 1 ? '<1%' : `${Math.round(pct)}%`
@@ -682,7 +745,7 @@ export const register: Register = on => {
           </Box>
         )
       })()
-      const limitTheme = (pct: number) => pct >= 85 ? 'error' : pct >= 70 ? 'warning' : 'suggestion'
+      const limitTheme = (pct: number) => pct >= 85 ? 'error' : pct >= 70 ? 'warning' : 'permission'
       const limitHex = (pct: number) => pct >= 85 ? BAD : pct >= 70 ? WARN : BLUE
       return (
         <Box flexDirection="column" gap={1}>
@@ -690,6 +753,7 @@ export const register: Register = on => {
             <Text><Text bold>{ICON.context} 컨텍스트 <Text color={ctxTheme}>{ctx === undefined ? '-' : `${Math.round(ctx)}%`}</Text></Text>  <Text dimColor>{compact(u.contextTokens)} / {compact(u.contextWindow)}</Text></Text>
             {gauge}
             {composition}
+            {smallNames && <Text dimColor wrap="truncate">기타: {smallNames}</Text>}
           </Box>
           <Box flexDirection="column">
             {labelValue(`${ICON.cost} 이번 세션 비용`, u.costUsd === undefined ? '-' : `$${u.costUsd.toFixed(2)}`, false, 'cost')}
@@ -709,7 +773,6 @@ export const register: Register = on => {
                 r.percentUsed, limitHex(r.percentUsed), limitTheme(r.percentUsed)))}
             </Box>
           )}
-          <Text dimColor wrap="wrap">토큰은 이 세션에서 패널이 켜진 뒤의 모델 요청을 서브에이전트까지 더한 값입니다.</Text>
         </Box>
       )
     })()
@@ -727,7 +790,7 @@ export const register: Register = on => {
         return cut >= 0 && index <= cut ? '범위 안' : '범위 밖'
       }
       const outside = p.all.total - p.scope.total
-      const scopeStages = stageView(p.scope, 'scope')
+      const allStages = stageView(p.all, 'all')
       // 결론 분포: 범위 안 항목 기준. 알 수 없는 값도 그대로 보인다.
       const known = CONCLUSIONS.map(c => c.key)
       const conclusions = [
@@ -740,15 +803,14 @@ export const register: Register = on => {
       }))
       return (
         <Box flexDirection="column" gap={1}>
-          <Text>{ICON.scope} 기준: 위험도 <Text bold>{RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk}</Text> 이상</Text>
           <Box flexDirection="column">
-            <Text tabular>{ICON.all} 범위 안 {p.scope.total}{sep}그 밖 {outside}</Text>
-            {pctBar(percent(p.scope.total, p.all.total), BLUE, 'suggestion', `범위 안 ${percent(p.scope.total, p.all.total)}%`)}
+            <Text>기준: 위험도 <Text bold>{RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk}</Text> 이상{sep}<Text tabular>범위 안 {p.scope.total}{sep}그 밖 {outside}</Text></Text>
+            {pctBar(percent(p.scope.total, p.all.total), SCOPE_HEX, SCOPE_THEME, `범위 안 ${percent(p.scope.total, p.all.total)}%`)}
           </Box>
           <Box flexDirection="column">
-            <Text bold>{ICON.scope} 범위 안 작업 단계  <Text dimColor>{p.scope.verified} / {p.scope.total} 검증 완료</Text></Text>
-            {scopeStages.stageBar}
-            {scopeStages.legend}
+            <Text bold>{ICON.all} 전체 작업 단계  <Text dimColor>{p.all.verified} / {p.all.total} 검증 완료</Text></Text>
+            {allStages.stageBar}
+            {allStages.legend}
           </Box>
           {conclusions.length > 0 && (
             <Box flexDirection="column">
@@ -757,16 +819,16 @@ export const register: Register = on => {
             </Box>
           )}
           <Box flexDirection="column">
-            <Text bold>{ICON.all} 위험도별</Text>
+            <Text bold>위험도별</Text>
             {Svg
               ? (
                 <Box flexDirection="column">
-                  {levels.map(level => labelValue(`${where(level) === '범위 안' ? ICON.scope : '  '} ${RISK_LABEL[level] ?? level}`,
+                  {levels.map(level => labelValue(RISK_LABEL[level] ?? level,
                     `${p.risk[level]}건${sep}${where(level)}`, where(level) !== '범위 안', `risk-${level}`))}
                 </Box>
               )
               : (() => {
-                // 위험도별 건수 막대: 범위 안은 띠 색, 밖은 회색. 이름은 화면 폭(한글 두 칸)으로 맞춘다.
+                // 위험도별 건수 막대: 범위 안은 범위 색, 밖은 회색. 이름은 화면 폭(한글 두 칸)으로 맞춘다.
                 const max = Math.max(...levels.map(level => p.risk[level] ?? 0))
                 const labelWidth = Math.max(...levels.map(level => cellWidth(RISK_LABEL[level] ?? level)))
                 const riskBar = narrow ? 0 : Math.max(6, Math.min(30, columns - labelWidth - 26))
@@ -777,8 +839,8 @@ export const register: Register = on => {
                       const inside = where(level) === '범위 안'
                       return (
                         <Text key={`risk-${level}`} wrap="truncate">
-                          {inside ? ICON.scope : '  '} {label}{' '.repeat(labelWidth - cellWidth(label))}
-                          {riskBar > 0 ? <Text> {volumeBar(0, p.risk[level] ?? 0, max, riskBar, inside ? 'suggestion' : 'inactive')}</Text> : ''}
+                          <Text bold={inside} dimColor={!inside}>{label}</Text>{' '.repeat(labelWidth - cellWidth(label))}
+                          {riskBar > 0 ? <Text> {volumeBar(0, p.risk[level] ?? 0, max, riskBar, inside ? SCOPE_THEME : 'inactive')}</Text> : ''}
                           {'  '}<Text bold={inside} dimColor={!inside}>{p.risk[level]}건{sep}{where(level)}</Text>
                         </Text>
                       )
@@ -787,20 +849,26 @@ export const register: Register = on => {
                 )
               })()}
           </Box>
-          <Text dimColor wrap="wrap">범위 밖과 미확인 항목도 입력과 기록은 그대로 보존됩니다. 범위 안 완료를 전체 완료로 보지 않습니다.</Text>
         </Box>
       )
     })()
 
-    // ---- 바닥 줄: 컨텍스트 · 비용 · 갱신 시각 ----
+    // ---- 범례 한 줄(탭마다) + 바닥 줄: 컨텍스트 · 비용 · 갱신 시각. 토큰 탭은 본문에 있으니 갱신 시각만 ----
+    const legend = p.kind !== 'ok' ? null
+      : current === 'checkers' ? '막대 길이 = 건수, 초록 = 검증 완료. 🔴 남은 건수가 가장 많은 쪽, 🟢 다 끝남'
+      : current === 'tokens' ? '구성은 엔진 추정치. 입력, 출력, 캐시는 패널이 켜진 뒤 이 세션 요청(서브에이전트 포함)부터'
+      : '굵게 = 범위 안. 범위 안 완료를 전체 완료로 보지 않고, 범위 밖 기록도 그대로 둡니다'
     const footer = (() => {
       const stale = p.kind === 'ok' && now - p.checkedAt > STALE_MS
       return (
-        <Text dimColor wrap="truncate">
-          {ICON.context} ctx {u.contextPercent === undefined ? '-' : `${Math.round(u.contextPercent)}%`}
-          {'   '}{ICON.cost} {u.costUsd === undefined ? '-' : `$${u.costUsd.toFixed(2)}`}
-          {p.kind === 'ok' && <Text>{'   '}{ICON.clock} {clockText(p.checkedAt)} 갱신{stale && <Text color="warning">{sep}오래됨</Text>}</Text>}
-        </Text>
+        <Box flexDirection="column">
+          {legend && <Text dimColor wrap="truncate">{legend}</Text>}
+          <Text dimColor wrap="truncate">
+            {current !== 'tokens' && <Text>{ICON.context} ctx {u.contextPercent === undefined ? '-' : `${Math.round(u.contextPercent)}%`}
+              {'   '}{ICON.cost} {u.costUsd === undefined ? '-' : `$${u.costUsd.toFixed(2)}`}{'   '}</Text>}
+            {p.kind === 'ok' && <Text>{ICON.clock} {clockText(p.checkedAt)} 갱신{stale && <Text color="warning">{sep}오래됨</Text>}</Text>}
+          </Text>
+        </Box>
       )
     })()
 
