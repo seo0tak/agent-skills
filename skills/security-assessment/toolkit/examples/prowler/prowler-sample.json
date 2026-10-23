@@ -1,0 +1,38 @@
+[
+  {
+    "status_code": "FAIL",
+    "severity": "High",
+    "metadata": { "event_code": "iam_root_mfa_enabled" },
+    "finding_info": { "title": "Root account has no MFA" },
+    "cloud": { "account": { "uid": "123456789012" }, "region": "us-east-1" },
+    "resources": [ { "uid": "arn:aws:iam::123456789012:root", "region": "global" } ],
+    "unmapped": { "compliance": { "CIS-2.0": ["1.5"] } }
+  },
+  {
+    "status_code": "FAIL",
+    "severity": "Medium",
+    "metadata": { "event_code": "s3_bucket_public_access" },
+    "finding_info": { "title": "S3 bucket allows public access" },
+    "cloud": { "account": { "uid": "123456789012" }, "region": "ap-northeast-2" },
+    "resources": [ { "uid": "arn:aws:s3:::example-logs", "region": "ap-northeast-2" } ],
+    "unmapped": { "compliance": { "CIS-2.0": ["2.1.4"] } }
+  },
+  {
+    "status_code": "PASS",
+    "severity": "Medium",
+    "metadata": { "event_code": "cloudtrail_multi_region_enabled" },
+    "finding_info": { "title": "CloudTrail is multi-region" },
+    "cloud": { "account": { "uid": "123456789012" }, "region": "ap-northeast-2" },
+    "resources": [ { "uid": "arn:aws:cloudtrail:ap-northeast-2:123456789012:trail/main", "region": "ap-northeast-2" } ],
+    "unmapped": { "compliance": { "CIS-2.0": ["3.1"] } }
+  },
+  {
+    "status_code": "MANUAL",
+    "severity": "Low",
+    "metadata": { "event_code": "account_security_contact_information_is_registered" },
+    "finding_info": { "title": "Security contact registered" },
+    "cloud": { "account": { "uid": "123456789012" }, "region": "us-east-1" },
+    "resources": [ { "uid": "arn:aws:iam::123456789012:account", "region": "global" } ],
+    "unmapped": { "compliance": { "CIS-2.0": ["1.2"] } }
+  }
+]

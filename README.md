@@ -16,7 +16,7 @@
 | 스킬 | 유형 | 버전 |
 |---|---|---|
 | **sast-remediation** | 보안 | 1.17.0 |
-| **security-assessment** | 보안 | 0.10.0 |
+| **security-assessment** | 보안 | 0.11.0 |
 | **skill-architect** | 메타(스킬 설계 기준) | 0.5.2 |
 
 각 스킬의 작업 흐름과 구조 그림은 [관련 문서](#관련-문서)의 스킬별 문서에 있습니다.
@@ -33,7 +33,7 @@
 - **security-assessment** — 인가 범위를 선언·검증하고 그 안에서 기성 오픈소스
   스캐너를 조율해 보안 취약점을 점검합니다. 게이트는 선언한 범위를 벗어나는
   실수를 막고 인가 주장을 기록하지만 동의의 진위는 검증하지 않습니다(악의적
-  사용자는 막지 못함). 소스와 웹(비인증·비파괴)을 점검하며, 인가 게이트부터 스캔
+  사용자는 막지 못함). 소스·IaC, 웹(비인증·비파괴), 클라우드 계정 설정(읽기 전용)을 점검하며, 인가 게이트부터 스캔
   수집(운영자 실행 출력 포함)·판정·증적 생성, sast-remediation으로의 SARIF 인계까지
   구현되어 있습니다. 웹 스캔은 실행 전에 사용자가 실행 계획을 확인합니다. 오탐·범위 밖 확정은
   사용자가 합니다.
@@ -190,6 +190,7 @@ Codex는 다음 세 단계를 구분합니다.
 - [인가 절차 프롬프트](skills/security-assessment/toolkit/prompts/00-authorize.md) — 범위 선언과 인가 게이트 통과
 - [판정 절차 프롬프트](skills/security-assessment/toolkit/prompts/01-triage.md) — 검출 판정, 판정 주체, 사용자 확인
 - [웹 스캔 프롬프트](skills/security-assessment/toolkit/prompts/02-web-scan.md) — 범위 제어, 요청 상한, 실행 계획 확인
+- [클라우드 설정 점검 프롬프트](skills/security-assessment/toolkit/prompts/03-cloud-scan.md) — 리전, 자격증명 참조, 기준 대조
 - 설계 정본: [CONTEXT.md](CONTEXT.md), [ADR](docs/adr/), [계획·설계](docs/superpowers/plans/2026-10-14-security-assessment.md)
 
 **skill-architect** — `skills/skill-architect/`

@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.17.0 / skill-architect v0.5.2 / security-assessment v0.10.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.17.0 / skill-architect v0.5.2 / security-assessment v0.11.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23 security-assessment 0.10.0 M3 · 다이어그램 체계)
 
-배포 버전: sast-remediation **v1.17.0**, skill-architect **v0.5.2**, security-assessment **v0.10.0**.
+배포 버전: sast-remediation **v1.17.0**, skill-architect **v0.5.2**, security-assessment **v0.11.0**.
 최신 커밋 `318a4d6`(M3 구현), 전부 push 완료. 작업 트리 깨끗함.
 
 ### security-assessment
@@ -109,7 +109,18 @@
   없으면 점검 ID). 기준별 통과·실패·수동 건수를 실행 기록·표지에(통과는 검출로 만들지 않음). 클라우드
   해소 = 같은 계정·리전·점검 항목 재확인. confirmed IaC는 넘기고 클라우드 설정 결함은 증적에만.
   CONTEXT.md에 Control·Credential reference. 저장소 IaC 점검(Checkov SARIF → repo)은 지금도 동작한다.
-- 다음: M4 구현, 이어서 M5(방법론 체크리스트). 인증 웹 스캔·네트워크 스캔은 별도 설계.
+- **M4 구현 완료(0.11.0)**: infra 대상 검증(`aws:<계정>`, regions, credential{profile, readOnlyConfirmed:true,
+  비밀값 필드 거부}) 및 인가 지문 포함(있을 때만), `cloud` 카테고리 → infra, 어댑터 `cloud_args`
+  (profile·regions(`{regions}` 토큰은 여러 인자로)·exclude_resource), 리전 인자 없으면 거부, 프로파일 인자
+  없으면 operator, 허용 리전 = 선언 − 제외 리전(`aws:<계정>:<리전>`), 계정 제외(`aws:<계정>`)면 건너뜀,
+  출력에 다른 계정·허용 밖 리전이 있으면 scan은 버리고 ingest는 거부(`cloud_scope_violation`). Prowler
+  정규화기(`prowler-ocsf`, FAIL만 결과, 통제 결과·점검 범위는 run.properties), 통제 건수는 제외 자산을
+  뺀 뒤 집계(`summarize_controls`) → scans `controls` → 표지 「5. 기준 대조」. 묶음 키는 iac·cloud에서 CWE가
+  없을 때만 `group`(통제 항목 또는 `check:<ID>`) — 소스·웹 키는 그대로. 클라우드 커버리지(리전·점검
+  항목) 해소, 클라우드 검출은 is_code_level 거짓(넘기지 않음), 어댑터 `output_file`. 프롬프트
+  `03-cloud-scan.md`, 예시 checkov·prowler·prowler 표본. assess 103건, 가짜 Prowler로 CLI 왕복 확인.
+  **실제 Prowler·Checkov 출력으로는 아직 검증하지 않았다**(표본 형식 기준, 출력 파일 이름도 버전에 따라 다름).
+- 다음: M5(방법론 체크리스트). 인증 웹 스캔·네트워크 스캔은 별도 설계.
 - **진행률 패널을 플러그인에 포함(sast-remediation 1.17.0)**: `plugins/sast-remediation/hooks/register.tsx`
   (+ `hooks/hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`, plugin.json `types`). Claude Code 전용
   mod, `skills/` 정본이 아니라 플러그인 쪽(agents/와 같은 위치)이 원본. 열리는 조건: 프로젝트에
@@ -371,7 +382,7 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
   (claude·codex 매니페스트·README 표) — 커밋 전 둘 다 통과
 - 설치 경로 검증은 사용자가 설치 테스트를 승인한 별도 작업에서 수행한다.
   기존 설치를 일괄 제거하거나 캐시를 삭제하지 않는다.
-- security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(92건).
+- security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(103건).
   CLI 왕복은 저장소 밖 임시 사본에서(저장소 안에서 scan·evidence를 돌리지 않는다).
 - mermaid를 고치면 브라우저에서 렌더링해 파싱 오류 0을 확인한다(문법 오류가 조용히 남는다).
 - 구조도(D2)·시퀀스(PlantUML)는 `docs/diagrams/` 원본을 고치고 `python3 scripts/render_diagrams.py`로

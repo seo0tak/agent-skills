@@ -2,8 +2,8 @@
 
 인가 기반 보안 취약점 점검 오케스트레이터. 인가 범위를 선언하고, 그 안에서
 기성 오픈소스 스캐너를 조율해 검출을 모으고, 판정·증적을 만들며, 확인된 코드
-결함은 sast-remediation으로 넘긴다. 소스와 웹(비인증·비파괴)을 점검한다. 인프라
-스캐너와 방법론 체크리스트는 아직 없다.
+결함은 sast-remediation으로 넘긴다. 소스·IaC, 웹(비인증·비파괴), 클라우드 계정 설정(읽기
+전용)을 점검한다. 네트워크·호스트 스캔과 방법론 체크리스트는 아직 없다.
 
 이 스킬은 **인가된 점검**만 수행한다. 게이트는 선언한 범위를 벗어나는 실수를
 막고 인가 주장을 기록하지만, 동의가 진짜인지는 검증하지 못한다(악의적 사용자는
@@ -19,21 +19,23 @@ flowchart TD
   auth --> gate{"인가 게이트<br/>READY?"}
   gate -- "아니오" --> stop["중단: 범위 밖 · 기간 · 미승인"]
   gate -- "예" --> decide{"어댑터별 실행 판정<br/>침습도 기준"}
-  decide -- "run<br/>사용자가 직접 실행 허락" --> web{"웹 대상?"}
-  web -- "아니오" --> exec["scan: 스캐너 실행"]
-  web -- "예" --> plan["사용자: 실행 계획 확인<br/>대상 · 요청 상한 · 시간 · 제외"]
+  decide -- "run<br/>사용자가 직접 실행 허락" --> kind{"대상 종류"}
+  kind -- "repo<br/>소스 · IaC" --> exec["scan: 스캐너 실행"]
+  kind -- "web" --> plan["사용자: 실행 계획 확인<br/>대상 · 요청 상한 · 시간 · 제외"]
   plan -- "확인 코드" --> exec
-  web -- "제외 자산을 넘길 수 없음" --> refuse["거부: 실행 · 들여오기 안 함"]
+  kind -- "infra<br/>클라우드 설정" --> cloud["허용 리전 · 프로파일 이름만<br/>읽기 전용"]
+  cloud --> exec
+  kind -- "제외 자산 · 리전을 넘길 수 없음" --> refuse["거부: 실행 · 들여오기 안 함"]
   decide -- "operator" --> op["운영자가 실행<br/>ingest로 출력 들여오기"]
   decide -- "forbidden" --> skip["건너뜀"]
   exec --> norm["출력 정규화 → SARIF<br/>제외 자산 뺌"]
   op --> norm
-  norm --> merge["지문 + CWE로 중복 묶음<br/>findings.json"]
+  norm --> merge["지문 + CWE 또는 통제 항목으로 묶음<br/>findings.json"]
   merge --> disp["검출별 판정 기록 · 01 프롬프트<br/>dispositions.json"]
   disp -- "오탐 · 범위 밖 제안" --> user["사용자: 확정 또는 반려"]
   user --> disp
   disp --> bridge["confirmed 코드 결함<br/>handoff.sarif → sast-remediation"]
-  disp --> ev["증적 생성<br/>findings.csv · cover.md"]
+  disp --> ev["증적 생성<br/>findings.csv · cover.md<br/>기준 대조 포함"]
   ev -.-> round["new-round<br/>다음 차수 재점검으로 해소 판단"]
   round -.-> decide
 ```
@@ -66,6 +68,9 @@ python3 tools/assess_toolkit.py scan --direct
 python3 tools/assess_toolkit.py ingest --adapter semgrep --file semgrep.sarif   # 대상이 여럿이면 --target
 ```
 
+   클라우드 계정(infra 대상)은 `prompts/03-cloud-scan.md`를 따른다. 스코프에 리전 목록과
+   자격증명 참조(프로파일 이름, 읽기 전용 확인)를 적으며 비밀값은 적지 않는다.
+
    웹 대상은 `prompts/02-web-scan.md`를 따른다. `scan --direct`가 실행 계획과 확인 코드를
    보여 주고, 사용자가 확인한 코드로 다시 실행해야 돈다.
 
@@ -96,7 +101,7 @@ python3 tools/assess_toolkit.py validate
 | `ingest` | 운영자가 돌린 어댑터 출력을 들여온다(`--adapter`, `--file`, 대상이 여럿이면 `--target`). 게이트 READY 필요, 스코프 상한을 넘는 어댑터는 거부. 정규화·묶음·제외 자산 처리는 `scan`과 같고 같은 어댑터·대상의 결과만 바뀐다. 출력 파일 이름과 SHA-256을 남긴다. 웹 어댑터는 대상 안의 제외 자산을 넘길 방법이 없으면 거부하고, `--coverage`로 방문 URL 파일을 받는다 |
 | `dispositions` | 검출별 판정·확인 단계·확정한 주체 집계(JSON). 레코드 없는 검출은 unreviewed로 센다. 지난 차수가 있으면 해소·재확인 안 됨도 표시 |
 | `bridge` | confirmed 코드 결함을 SARIF(`data/handoff.sarif`)로 내보내고 handedOff 표시. `--dry-run`·`--all` |
-| `evidence` | 증적 워크북 `evidence/findings.csv`와 표지 보고서 `evidence/cover.md`를 데이터에서 생성. 데이터가 바뀌면 validate가 드리프트를 에러로 |
+| `evidence` | 증적 워크북 `evidence/findings.csv`와 표지 보고서 `evidence/cover.md`(스캐너가 통제 항목 결과를 내면 기준별 통과·실패·수동 표 포함)를 데이터에서 생성. 데이터가 바뀌면 validate가 드리프트를 에러로 |
 | `new-round` | 현재 차수의 검출을 `data/rounds/`에 보관하고 새 차수를 연다. 판정은 유지되고, 다음 스캔 뒤 `dispositions`가 직전 차수 대비 해소를 보여 준다 |
 
 ## 테스트

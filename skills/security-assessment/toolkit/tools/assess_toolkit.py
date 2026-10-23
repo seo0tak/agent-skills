@@ -32,17 +32,21 @@ TARGET_TYPES = {"repo", "web", "infra"}
 # 침습도는 순서가 있다: passive < active-nondestructive < intrusive.
 INTRUSIVENESS_RANK = {"passive": 0, "active-nondestructive": 1, "intrusive": 2}
 INTRUSIVENESS = set(INTRUSIVENESS_RANK)
-ADAPTER_CATEGORIES = {"sast", "sca", "secret", "dast", "iac"}
+ADAPTER_CATEGORIES = {"sast", "sca", "secret", "dast", "iac", "cloud"}
 # 카테고리가 어떤 대상 타입에 적용되는지. 어댑터는 자기 카테고리에 맞는 대상에만
-# 실행된다 (SAST를 web 대상에 돌리지 않는다). infra 타입은 아직 매핑되는 카테고리가
-# 없다 — 라이브 인프라 스캐너가 생기면 추가한다. iac는 저장소의 IaC 파일을 보므로 repo.
+# 실행된다 (SAST를 web 대상에 돌리지 않는다). iac는 저장소의 IaC 파일을 보므로 repo,
+# cloud는 운영 중인 클라우드 계정 설정을 읽기 전용 API로 보므로 infra(ADR 0004).
 CATEGORY_TARGET_TYPES = {
     "sast": {"repo"},
     "sca": {"repo"},
     "secret": {"repo"},
     "iac": {"repo"},
     "dast": {"web"},
+    "cloud": {"infra"},
 }
+# 클라우드 대상 표기: <제공자>:<계정>. 제외는 계정 전체(<제공자>:<계정>)나 리전(<제공자>:<계정>:<리전>).
+INFRA_TARGET_RE = re.compile(r"^(aws|gcp|azure):[A-Za-z0-9._-]+$")
+INFRA_EXCLUSION_RE = re.compile(r"^(aws|gcp|azure):[A-Za-z0-9._-]+(:[A-Za-z0-9-]+)?$")
 ADAPTER_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 # 출력 형식 → SARIF 정규화기. 어댑터가 output_format으로 이 중 하나를 가리킨다.
 # "sarif"는 변환 없이 통과. 새 형식의 도구를 붙이려면 정규화기 하나만 추가한다.
@@ -120,7 +124,69 @@ def zap_to_sarif(raw: Any) -> dict[str, Any]:
     return {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "zap"}}, "results": results}]}
 
 
-NORMALIZERS = {"sarif": _identity_sarif, "osv-json": osv_to_sarif, "zap-json": zap_to_sarif}
+def _prowler_controls(item: dict[str, Any]) -> list[str]:
+    """Prowler가 낸 기준 매핑을 'CIS-1.4: 1.4' → 'CIS-1.4 1.4' 형태의 통제 항목 목록으로."""
+    compliance = ((item.get("unmapped") or {}).get("compliance")) or {}
+    controls: list[str] = []
+    if isinstance(compliance, dict):
+        for framework, ids in sorted(compliance.items()):
+            for control in ids if isinstance(ids, list) else [ids]:
+                controls.append(f"{framework} {control}")
+    return controls
+
+
+def prowler_to_sarif(raw: Any) -> dict[str, Any]:
+    """Prowler JSON(OCSF) 출력을 SARIF로 변환한다. 순수 함수.
+
+    실패(FAIL)만 결과가 되고, 통과·수동은 기준별 건수(controlSummary)와 이번 실행이 본
+    점검 범위(checksRun, regionsSeen)로 run.properties에 남는다(ADR 0004).
+    """
+    results: list[dict[str, Any]] = []
+    control_results: list[dict[str, Any]] = []
+    checks: set[str] = set()
+    regions: set[str] = set()
+    accounts: set[str] = set()
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status_code") or "").upper()
+        check = str((item.get("metadata") or {}).get("event_code") or "")
+        cloud = item.get("cloud") or {}
+        account = str((cloud.get("account") or {}).get("uid") or "")
+        resource = (item.get("resources") or [{}])[0] or {}
+        region = str(resource.get("region") or cloud.get("region") or "")
+        checks.add(check)
+        if region:
+            regions.add(region)
+        if account:
+            accounts.add(account)
+        controls = _prowler_controls(item)
+        outcome = {"PASS": "pass", "FAIL": "fail"}.get(status, "manual")
+        cloud_ref = {"account": account, "region": region, "resource": str(resource.get("uid") or "")}
+        for control in controls:
+            control_results.append({"framework": control.split(" ", 1)[0], "outcome": outcome, **cloud_ref})
+        if status != "FAIL":
+            continue
+        results.append({
+            "ruleId": check,
+            "level": "error" if str(item.get("severity") or "").lower() in {"critical", "high"} else "warning",
+            "message": {"text": str((item.get("finding_info") or {}).get("title") or check)},
+            "properties": {
+                "severity": str(item.get("severity") or ""),
+                "controls": controls,
+                "cloud": {"account": account, "region": region, "resource": str(resource.get("uid") or ""), "check": check},
+            },
+            "locations": [{"physicalLocation": {"artifactLocation": {"uri": str(resource.get("uid") or f"{account}:{region}")}}}],
+        })
+    return {"version": "2.1.0", "runs": [{
+        "tool": {"driver": {"name": "prowler"}}, "results": results,
+        "properties": {"controlResults": control_results, "checksRun": sorted(checks),
+                       "regionsSeen": sorted(regions), "accountsSeen": sorted(accounts)},
+    }]}
+
+
+NORMALIZERS = {"sarif": _identity_sarif, "osv-json": osv_to_sarif, "zap-json": zap_to_sarif,
+               "prowler-ocsf": prowler_to_sarif}
 KNOWN_OUTPUT_FORMATS = set(NORMALIZERS)
 
 
@@ -202,6 +268,9 @@ def semantic_fingerprint(scope: dict[str, Any]) -> str:
     targets = sorted(
         (str(t.get("type", "")), str(t.get("value", "")))
         + ((str(t["rateLimit"]),) if t.get("rateLimit") is not None else ())
+        # 클라우드 대상의 리전·자격증명 참조도 의미 필드다(ADR 0004). 없는 대상은 예전 지문 그대로.
+        + ((json.dumps(sorted(str(r) for r in t["regions"]), ensure_ascii=False),) if t.get("regions") is not None else ())
+        + ((json.dumps(t["credential"], ensure_ascii=False, sort_keys=True),) if t.get("credential") is not None else ())
         for t in scope.get("targets", []) if isinstance(t, dict)
     )
     window = scope.get("window") or {}
@@ -238,6 +307,8 @@ def validate_scope(report: Report, scope: Any) -> None:
                 report.error(f"targets[{index}].type must be one of {sorted(TARGET_TYPES)}")
             if not str(target.get("value", "")).strip():
                 report.error(f"targets[{index}].value is empty")
+            if target.get("type") == "infra":
+                validate_infra_target(report, index, target)
             rate = target.get("rateLimit")
             if rate is not None:
                 if target.get("type") != "web":
@@ -288,6 +359,23 @@ def validate_scope(report: Report, scope: Any) -> None:
                 "scope changed since authorization (semantic fields differ); "
                 "approval is void, re-run authorize"
             )
+
+
+def validate_infra_target(report: Report, index: int, target: dict[str, Any]) -> None:
+    """클라우드 대상: <제공자>:<계정>, 리전 목록, 자격증명 참조(이름 + 읽기 전용 확인)."""
+    where = f"targets[{index}]"
+    if not INFRA_TARGET_RE.match(str(target.get("value", ""))):
+        report.error(f"{where}.value must look like aws:<account> (provider:account)")
+    regions = target.get("regions")
+    if not isinstance(regions, list) or not regions or any(not str(r).strip() for r in regions):
+        report.error(f"{where}.regions must be a non-empty list of region names")
+    credential = target.get("credential")
+    if not isinstance(credential, dict) or not str(credential.get("profile", "")).strip():
+        report.error(f"{where}.credential.profile is required (a profile or role name, never a secret)")
+    elif credential.get("readOnlyConfirmed") is not True:
+        report.error(f"{where}.credential.readOnlyConfirmed must be true after the user confirms the role is read-only")
+    elif set(credential) - {"profile", "readOnlyConfirmed", "notes"}:
+        report.error(f"{where}.credential may hold only profile, readOnlyConfirmed and notes; do not store secrets")
 
 
 def load_adapters() -> list[tuple[str, Any]]:
@@ -355,6 +443,17 @@ def validate_web_fields(report: Report, where: str, adapter: dict[str, Any]) -> 
             report.error(f"{where}.coverage.mode must be one of {sorted(COVERAGE_MODES)}")
         elif mode == "url-list" and not str(coverage.get("file", "")).strip():
             report.error(f"{where}.coverage.file is required for url-list")
+    spec = adapter.get("cloud_args")
+    if spec is not None:
+        if not isinstance(spec, dict):
+            report.error(f"{where}.cloud_args must be an object")
+        else:
+            for key, mark in (("profile", "{profile}"), ("regions", "{regions}"), ("exclude_resource", "{resource}")):
+                if key in spec and mark not in str(spec[key]):
+                    report.error(f"{where}.cloud_args.{key} must contain {mark}")
+    if "output_file" in adapter and (not str(adapter["output_file"]).strip() or "/" in str(adapter["output_file"])
+                                     or str(adapter["output_file"]) in {".", ".."}):
+        report.error(f"{where}.output_file must be a plain file name inside the output directory")
     seconds = adapter.get("max_seconds")
     if seconds is not None and (isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0):
         report.error(f"{where}.max_seconds must be a positive integer")
@@ -462,6 +561,91 @@ def web_run_plan(name: str, adapter: dict[str, Any], scope: dict[str, Any], targ
     }
 
 
+# ---- 클라우드 설정 점검 (ADR 0004) ----
+def is_cloud_adapter(adapter: dict[str, Any]) -> bool:
+    return str(adapter.get("category")) == "cloud"
+
+
+def infra_target(scope: dict[str, Any], value: str) -> dict[str, Any]:
+    for entry in scope.get("targets", []):
+        if isinstance(entry, dict) and entry.get("type") == "infra" and str(entry.get("value")) == value:
+            return entry
+    return {}
+
+
+def cloud_allowed_regions(scope: dict[str, Any], target: str) -> list[str] | None:
+    """대상에 선언한 리전에서 제외 리전을 뺀 목록. 계정 전체가 제외면 None."""
+    account = target.split(":", 1)[1] if ":" in target else ""
+    provider = target.split(":", 1)[0]
+    exclusions = [str(x).strip() for x in scope.get("exclusions", [])]
+    if f"{provider}:{account}" in exclusions:
+        return None
+    excluded = {x.split(":")[2] for x in exclusions if INFRA_EXCLUSION_RE.match(x) and x.count(":") == 2
+                and x.split(":")[1] == account}
+    return [str(r) for r in infra_target(scope, target).get("regions") or [] if str(r) not in excluded]
+
+
+def cloud_args(adapter: dict[str, Any], scope: dict[str, Any], target: str,
+               regions: list[str]) -> tuple[list[str] | None, str]:
+    """자격증명 참조 이름과 허용 리전을 스캐너 인자로. 넘길 방법이 없으면 (None, 사유)."""
+    spec = adapter.get("cloud_args") or {}
+    if not spec.get("regions"):
+        return None, "점검할 리전을 스캐너에 넘길 방법(cloud_args.regions)이 없어 범위 밖 리전을 읽을 수 있음"
+    tokens: list[str] = []
+    profile = str((infra_target(scope, target).get("credential") or {}).get("profile") or "")
+    if spec.get("profile"):
+        tokens += _render_tokens(str(spec["profile"]), "{profile}", profile)
+    import shlex
+    for token in shlex.split(str(spec["regions"])):
+        tokens += regions if token == "{regions}" else [token.replace("{regions}", ",".join(regions))]
+    resources = [str(x) for x in scope.get("exclusions", []) if str(x).startswith("arn:")]
+    if resources and spec.get("exclude_resource"):
+        for resource in resources:
+            tokens += _render_tokens(str(spec["exclude_resource"]), "{resource}", resource)
+    return tokens, ""
+
+
+def cloud_direct_blockers(adapter: dict[str, Any]) -> list[str]:
+    if not (adapter.get("cloud_args") or {}).get("profile"):
+        return ["자격증명 참조(프로파일)를 스캐너에 넘길 방법(cloud_args.profile)이 없음"]
+    return []
+
+
+def sarif_run_properties(sarif: Any) -> dict[str, Any]:
+    """정규화된 SARIF의 run.properties를 합친다(통제 항목 건수·점검 범위)."""
+    merged: dict[str, Any] = {"controlResults": [], "checksRun": [], "regionsSeen": [], "accountsSeen": []}
+    for run in (sarif.get("runs") if isinstance(sarif, dict) else None) or []:
+        props = (run or {}).get("properties") or {}
+        merged["controlResults"] += [r for r in props.get("controlResults") or [] if isinstance(r, dict)]
+        for key in ("checksRun", "regionsSeen", "accountsSeen"):
+            merged[key] = sorted(set(merged[key]) | {str(x) for x in props.get(key) or []})
+    return merged
+
+
+def summarize_controls(results: list[dict[str, Any]], exclusions: list[str]) -> dict[str, dict[str, int]]:
+    """통제 항목 결과를 기준별 통과·실패·수동 건수로. 제외 자산의 결과는 세지 않는다(검출과 같은 기준)."""
+    summary: dict[str, dict[str, int]] = {}
+    for result in results:
+        if cloud_excluded(result, exclusions):
+            continue
+        bucket = summary.setdefault(str(result.get("framework")), {"pass": 0, "fail": 0, "manual": 0})
+        outcome = str(result.get("outcome"))
+        bucket[outcome if outcome in bucket else "manual"] += 1
+    return dict(sorted(summary.items()))
+
+
+def cloud_scope_violation(props: dict[str, Any], target: str, regions: list[str]) -> str:
+    """출력이 대상 계정·허용 리전 밖을 읽었는지. 읽었으면 사유, 아니면 빈 문자열."""
+    account = target.split(":", 1)[1] if ":" in target else ""
+    others = [a for a in props.get("accountsSeen") or [] if a != account]
+    if others:
+        return f"대상 계정이 아닌 계정({', '.join(others)})의 결과가 있음"
+    outside = [r for r in props.get("regionsSeen") or [] if r not in set(regions) | {"global"}]
+    if outside:
+        return f"허용하지 않은 리전({', '.join(outside)})의 결과가 있음"
+    return ""
+
+
 def plan_code(plans: list[dict[str, Any]]) -> str:
     """웹 실행 계획의 확인 코드. 계획이 한 글자라도 바뀌면 코드가 바뀐다."""
     encoded = json.dumps(plans, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -509,8 +693,13 @@ USER_ONLY_CLOSING = {"false-positive", "out-of-scope"}
 CWE_RE = re.compile(r"CWE-(\d+)", re.IGNORECASE)
 
 
+# CWE 대신 통제 항목·점검 ID로 묶는 카테고리(ADR 0004). 다른 카테고리의 키는 예전 그대로다.
+GROUPED_BY_CONTROL = {"iac", "cloud"}
+
+
 def finding_key(finding: dict[str, Any]) -> str:
-    return f"{finding.get('fingerprint', '')}:{finding.get('cwe', '')}"
+    """판정 레코드·묶음의 키: '지문:CWE', CWE가 없는 인프라 검출은 '지문:통제 항목'."""
+    return f"{finding.get('fingerprint', '')}:{finding.get('cwe') or finding.get('group') or ''}"
 
 
 def normalize_cwe(values: Any) -> str:
@@ -571,7 +760,7 @@ def fingerprint_for_url(method: str, url: str, params: list[str]) -> str:
     material = f"web|{(method or 'ANY').upper()}|{normalize_web_path(url)}|{','.join(params)}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
-def findings_from_sarif(sarif: Any, fallback_scanner: str) -> list[dict[str, Any]]:
+def findings_from_sarif(sarif: Any, fallback_scanner: str, category: str | None = None) -> list[dict[str, Any]]:
     """SARIF 하나를 정규화된 검출 목록으로. 순수 함수."""
     out: list[dict[str, Any]] = []
     if not isinstance(sarif, dict):
@@ -596,7 +785,13 @@ def findings_from_sarif(sarif: Any, fallback_scanner: str) -> list[dict[str, Any
             logical = logicals[0] if isinstance(logicals[0], dict) else {}
             function = logical.get("fullyQualifiedName") or logical.get("name")
             location: dict[str, Any] = {"file": file, "line": line, "function": function}
-            if is_url(file):
+            props = result.get("properties") or {}
+            cloud = props.get("cloud") if isinstance(props.get("cloud"), dict) else None
+            if cloud:
+                # 클라우드 검출: 지문은 리소스(없으면 계정·리전), 위치에 계정·리전·점검 항목(ADR 0004).
+                location["cloud"] = {k: str(cloud.get(k) or "") for k in ("account", "region", "resource", "check")}
+                fingerprint = fingerprint_for(location["cloud"]["resource"] or file, None, location["cloud"]["check"])
+            elif is_url(file):
                 # 웹 검출: 쿼리 값·증거가 아니라 메서드·정규화 경로·파라미터 이름으로 묶는다.
                 props = result.get("properties") or {}
                 method = str(props.get("method") or "").upper()
@@ -605,9 +800,16 @@ def findings_from_sarif(sarif: Any, fallback_scanner: str) -> list[dict[str, Any
                 fingerprint = fingerprint_for_url(method, file, params)
             else:
                 fingerprint = fingerprint_for(file, function, snippet)
+            cwe = cwe_from_result(result, rule)
+            entry: dict[str, Any] = {"fingerprint": fingerprint, "cwe": cwe}
+            if category in GROUPED_BY_CONTROL and not cwe:
+                # 인프라·컴플라이언스: CWE 대신 스캐너가 낸 통제 항목, 없으면 스캐너 점검 ID로 묶는다.
+                controls = [str(c) for c in props.get("controls") or []]
+                entry["group"] = controls[0] if controls else f"check:{rule_id}"
+                if controls:
+                    entry["controls"] = controls
             out.append({
-                "fingerprint": fingerprint,
-                "cwe": cwe_from_result(result, rule),
+                **entry,
                 "location": location,
                 "message": str((result.get("message") or {}).get("text") or ""),
                 # properties.severity(예: OSV의 CVSS 점수)를 우선, 없으면 SARIF level.
@@ -618,11 +820,11 @@ def findings_from_sarif(sarif: Any, fallback_scanner: str) -> list[dict[str, Any
 
 
 def merge_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """지문+CWE가 같은 검출을 하나로 묶고 출처를 합친다. 순수 함수."""
-    bucket: dict[tuple[str, str], dict[str, Any]] = {}
-    order: list[tuple[str, str]] = []
+    """묶음 키(지문 + CWE 또는 통제 항목)가 같은 검출을 하나로 묶고 출처를 합친다. 순수 함수."""
+    bucket: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
     for finding in findings:
-        key = (finding["fingerprint"], finding["cwe"])
+        key = finding_key(finding)
         if key not in bucket:
             bucket[key] = {**finding, "sources": [dict(s) for s in finding["sources"]]}
             order.append(key)
@@ -775,18 +977,17 @@ def validate_findings_file(report: Report) -> None:
     if not isinstance(findings, list):
         report.error("findings.findings must be a list")
         return
-    seen: set[tuple[str, str]] = set()
+    seen: set[str] = set()
     for index, finding in enumerate(findings):
         if not isinstance(finding, dict):
             report.error(f"findings[{index}] must be an object")
             continue
         fingerprint = str(finding.get("fingerprint", ""))
-        cwe = str(finding.get("cwe", ""))
         if not fingerprint:
             report.error(f"findings[{index}] has no fingerprint")
-        key = (fingerprint, cwe)
+        key = finding_key(finding)
         if key in seen:
-            report.error(f"findings[{index}] duplicates fingerprint+cwe {key}; merge was not applied")
+            report.error(f"findings[{index}] duplicates key {key}; merge was not applied")
         seen.add(key)
         location = finding.get("location")
         if not isinstance(location, dict) or not str(location.get("file", "")).strip():
@@ -797,7 +998,7 @@ def validate_findings_file(report: Report) -> None:
     exclusions = _scope_exclusions()
     for index, finding in enumerate(f for f in findings if isinstance(f, dict)):
         location_file = str((finding.get("location") or {}).get("file") or "")
-        if exclusions and is_excluded(location_file, exclusions):
+        if exclusions and finding_excluded(finding, exclusions):
             report.error(f"findings[{index}] is in an excluded asset ({location_file}); run scan to rebuild")
 
 
@@ -875,8 +1076,25 @@ def _count_lines(counts: dict[str, int]) -> list[str]:
     return [f"| {k} | {counts[k]} |" for k in sorted(counts)] or ["| (없음) | 0 |"]
 
 
+def load_control_summary() -> dict[str, dict[str, int]]:
+    """이번 차수 어댑터별 결과에 남은 기준별 통과·실패·수동 건수를 합친다."""
+    total: dict[str, dict[str, int]] = {}
+    try:
+        results = load_scan_results()
+    except ValueError:
+        return total
+    for data in results.values():
+        for summary in (data.get("controls") or {}).values():
+            for framework, counts in (summary or {}).items():
+                bucket = total.setdefault(framework, {"pass": 0, "fail": 0, "manual": 0})
+                for key in bucket:
+                    bucket[key] += int((counts or {}).get(key) or 0)
+    return dict(sorted(total.items()))
+
+
 def render_cover_md(scope: dict[str, Any], findings: list[dict[str, Any]],
-                    records: dict[str, Any], generated_at: str | None) -> str:
+                    records: dict[str, Any], generated_at: str | None,
+                    controls: dict[str, dict[str, int]] | None = None) -> str:
     """표지 보고서(Markdown). 범위·인가·방법·집계. 숫자는 증적 워크북과 같은 데이터에서
     집계하므로 구조적으로 일치한다. 현재 시각을 넣지 않는다(드리프트 방지)."""
     summary = disposition_summary(findings, records)
@@ -945,6 +1163,17 @@ def render_cover_md(scope: dict[str, Any], findings: list[dict[str, Any]],
         "항목별 근거는 같은 디렉터리의 `findings.csv`(증적 워크북)에 있다.",
         "",
     ]
+    if controls:
+        lines += [
+            "## 5. 기준 대조",
+            "",
+            "스캐너가 낸 통제 항목 결과의 건수다. 통과 항목은 검출로 만들지 않는다.",
+            "",
+            "| 기준 | 통과 | 실패 | 수동 |",
+            "|---|---|---|---|",
+            *[f"| {name} | {c['pass']} | {c['fail']} | {c['manual']} |" for name, c in controls.items()],
+            "",
+        ]
     return "\n".join(lines)
 
 
@@ -967,7 +1196,7 @@ def run_evidence() -> int:
         print(f"ERROR: cannot read data: {error}")
         return 1
     write_text_atomic(EVIDENCE_CSV, render_evidence_csv(findings, records))
-    write_text_atomic(COVER_MD, render_cover_md(scope, findings, records, generated_at))
+    write_text_atomic(COVER_MD, render_cover_md(scope, findings, records, generated_at, load_control_summary()))
     summary = disposition_summary(findings, records)
     print(f"증적 생성: 검출 {summary['total']}건 → evidence/findings.csv, evidence/cover.md")
     return 0
@@ -990,7 +1219,7 @@ def validate_evidence(report: Report) -> None:
         text = COVER_MD.read_text(encoding="utf-8")
         if GENERATED_MARKER not in text:
             report.warn("evidence/cover.md is hand-written; numbers cannot be checked against findings.csv")
-        elif text != render_cover_md(scope, findings, records, generated_at):
+        elif text != render_cover_md(scope, findings, records, generated_at, load_control_summary()):
             report.error("evidence/cover.md is out of date with data; run evidence")
     else:
         report.error("evidence/findings.csv exists but cover.md is missing; run evidence")
@@ -1001,7 +1230,10 @@ def is_code_level(finding: dict[str, Any]) -> bool:
 
     웹(DAST) 검출의 위치는 URL이라 코드 결함이 아니다 — 넘기지 않는다.
     """
-    file = str((finding.get("location") or {}).get("file") or "")
+    location = finding.get("location") or {}
+    if location.get("cloud"):
+        return False  # 클라우드 설정 결함은 고칠 파일이 없다 — 증적에만 남긴다(ADR 0004)
+    file = str(location.get("file") or "")
     return bool(file) and not file.startswith(("http://", "https://"))
 
 
@@ -1253,8 +1485,32 @@ def is_excluded(location_file: str, exclusions: list[str]) -> bool:
     return False
 
 
+def cloud_excluded(cloud: dict[str, Any], exclusions: list[str]) -> bool:
+    """클라우드 검출이 제외된 계정·리전·리소스에 속하는지. 순수 함수.
+
+    제외 표기: <제공자>:<계정>(계정 전체), <제공자>:<계정>:<리전>, 그리고 리소스 ID 접두사(arn:... 등).
+    """
+    account, region, resource = (str(cloud.get(k) or "") for k in ("account", "region", "resource"))
+    for raw in exclusions:
+        excl = str(raw).strip()
+        if INFRA_EXCLUSION_RE.match(excl):
+            parts = excl.split(":")
+            if parts[1] == account and (len(parts) == 2 or parts[2] == region):
+                return True
+        elif resource and excl and not is_url(excl) and resource.startswith(excl) and ":" in excl:
+            return True
+    return False
+
+
+def finding_excluded(finding: dict[str, Any], exclusions: list[str]) -> bool:
+    location = finding.get("location") or {}
+    if location.get("cloud"):
+        return cloud_excluded(location["cloud"], exclusions)
+    return is_excluded(str(location.get("file") or ""), exclusions)
+
+
 def filter_excluded(findings: list[dict[str, Any]], exclusions: list[str]) -> tuple[list[dict[str, Any]], int]:
-    kept = [f for f in findings if not is_excluded(str((f.get("location") or {}).get("file") or ""), exclusions)]
+    kept = [f for f in findings if not finding_excluded(f, exclusions)]
     return kept, len(findings) - len(kept)
 
 
@@ -1283,6 +1539,24 @@ def load_scan_results() -> dict[str, dict[str, Any]]:
 
 def adapters_of(finding: dict[str, Any]) -> set[str]:
     return {str(s.get("adapter")) for s in finding.get("sources") or [] if isinstance(s, dict) and s.get("adapter")}
+
+
+def cloud_rechecked(finding: dict[str, Any], coverage: dict[str, dict[str, Any]]) -> bool:
+    """클라우드 검출을 이번 차수에 다시 봤는지: 같은 어댑터·대상이 그 리전과 점검 항목을 돌렸어야 한다."""
+    cloud = (finding.get("location") or {}).get("cloud") or {}
+    sources = [s for s in finding.get("sources") or [] if isinstance(s, dict) and s.get("adapter")]
+    if not sources:
+        return False
+    for source in sources:
+        seen = (coverage.get(str(source["adapter"])) or {}).get(str(source.get("target") or ""))
+        if not seen or seen.get("mode") != "cloud":
+            return False
+        region = str(cloud.get("region") or "")
+        if region not in {"", "global"} and region not in set(seen.get("regions") or []):
+            return False
+        if str(cloud.get("check") or "") not in set(seen.get("checks") or []):
+            return False
+    return True
 
 
 def web_rechecked(finding: dict[str, Any], coverage: dict[str, dict[str, Any]]) -> bool:
@@ -1317,8 +1591,14 @@ def round_resolution(previous: list[dict[str, Any]], current: list[dict[str, Any
         if key in current_keys:
             continue
         sources = adapters_of(finding)
-        is_web = is_url(str((finding.get("location") or {}).get("file") or ""))
-        if sources and sources <= adapters_run and (not is_web or web_rechecked(finding, coverage or {})):
+        location = finding.get("location") or {}
+        if location.get("cloud"):
+            seen_again = cloud_rechecked(finding, coverage or {})
+        elif is_url(str(location.get("file") or "")):
+            seen_again = web_rechecked(finding, coverage or {})
+        else:
+            seen_again = True
+        if sources and sources <= adapters_run and seen_again:
             resolved.append(key)
         else:
             not_rechecked.append(key)
@@ -1500,6 +1780,13 @@ def run_ingest(adapter_name: str | None, file: str | None, target: str | None,
         print(f"ERROR: {target}은(는) 이 어댑터의 스코프 대상이 아닙니다. 대상: {', '.join(targets) or '(없음)'}")
         return 1
     web = is_web_adapter(adapter)
+    cloud_regions: list[str] = []
+    if is_cloud_adapter(adapter):
+        allowed = cloud_allowed_regions(scope, target)
+        if not allowed:
+            print(f"INGEST: 거부 — {target}의 계정 전체 또는 모든 리전이 제외 자산입니다.")
+            return 1
+        cloud_regions = allowed
     if web:
         exclusions = [str(x) for x in scope.get("exclusions", [])]
         if is_excluded(target, exclusions):
@@ -1527,11 +1814,24 @@ def run_ingest(adapter_name: str | None, file: str | None, target: str | None,
         print(f"ERROR: {error}")
         return 1
     preserve_legacy_findings()
-    items = findings_from_sarif(sarif, adapter_name)
+    items = findings_from_sarif(sarif, adapter_name, str(adapter.get("category")))
+    props = sarif_run_properties(sarif)
+    if is_cloud_adapter(adapter):
+        violation = cloud_scope_violation(props, target, cloud_regions)
+        if violation:
+            print(f"INGEST: 거부 — {violation}. 스캐너가 계정·리전 범위를 지키지 않아 들여오지 않습니다.")
+            return 1
     tag_sources(items, adapter_name, target, "operator")
     now = now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")
     ingested = [e for e in (existing or {}).get("ingested") or [] if isinstance(e, dict) and e.get("target") != target]
     coverage = (existing or {}).get("coverage") or {}
+    if is_cloud_adapter(adapter):
+        coverage = {**coverage, target: {"mode": "cloud", "regions": sorted(set(props["regionsSeen"]) & set(cloud_regions)),
+                                         "checks": props["checksRun"]}}
+    controls = {k: v for k, v in ((existing or {}).get("controls") or {}).items() if k != target}
+    summary = summarize_controls(props["controlResults"], [str(x) for x in scope.get("exclusions", [])])
+    if summary:
+        controls[target] = summary
     if web:
         coverage = {k: v for k, v in coverage.items() if k != target}
         mode = str((adapter.get("coverage") or {}).get("mode") or "none")
@@ -1555,6 +1855,7 @@ def run_ingest(adapter_name: str | None, file: str | None, target: str | None,
         "findings": replace_target_findings(existing, target, items),
         "ingested": ingested,
         **({"coverage": coverage} if coverage else {}),
+        **({"controls": controls} if controls else {}),
     })
     total, excluded = rebuild_findings(scope)
     note = f", 제외 자산 {excluded}건 제외" if excluded else ""
@@ -1625,8 +1926,20 @@ def run_scan(direct: bool, confirm: str | None = None) -> int:
             print(f"- {name}: forbidden — {reason}")
             continue
         web = is_web_adapter(adapter)
+        cloud = is_cloud_adapter(adapter)
         target_args: list[tuple[str, list[str]]] = []
         for target in targets:
+            if cloud:
+                regions = cloud_allowed_regions(scope, target)
+                if regions is None or not regions:
+                    print(f"- {name} @ {target}: 계정 전체 또는 모든 리전이 제외 자산이라 건너뜀")
+                    continue
+                args, why = cloud_args(adapter, scope, target, regions)
+                if args is None:
+                    print(f"- {name} @ {target}: 거부 — {why}. 실행도 들여오기도 하지 않습니다.")
+                    continue
+                target_args.append((target, args))
+                continue
             if not web:
                 target_args.append((target, []))
                 continue
@@ -1643,6 +1956,8 @@ def run_scan(direct: bool, confirm: str | None = None) -> int:
             target_args.append((target, args))
         if web and decision == "run" and web_direct_blockers(adapter):
             decision, reason = "operator", "; ".join(web_direct_blockers(adapter))
+        if cloud and decision == "run" and cloud_direct_blockers(adapter):
+            decision, reason = "operator", "; ".join(cloud_direct_blockers(adapter))
         if decision == "operator":
             print(f"- {name}: operator — {reason}")
             for target, args in target_args:
@@ -1685,11 +2000,13 @@ def run_scan(direct: bool, confirm: str | None = None) -> int:
             except Exception as error:  # noqa: BLE001 — 도구 부재·실행 오류·시간 초과를 안내로
                 print(f"- {name} @ {target}: 실행 실패 ({error}); availability로 설치 확인")
                 continue
-            if not output.exists():
+            # 출력 파일 이름을 스스로 정하는 도구는 어댑터가 output_file로 그 이름을 알려 준다.
+            produced = output.parent / str(adapter["output_file"]) if adapter.get("output_file") else output
+            if not produced.exists():
                 print(f"- {name} @ {target}: 출력 파일 없음 (종료코드 {code})")
                 continue
             try:
-                raw = load_json(output)
+                raw = load_json(produced)
             except json.JSONDecodeError:
                 print(f"- {name} @ {target}: 출력이 JSON이 아님")
                 continue
@@ -1698,7 +2015,18 @@ def run_scan(direct: bool, confirm: str | None = None) -> int:
             except ValueError as error:
                 print(f"- {name} @ {target}: {error}")
                 continue
-            items = findings_from_sarif(sarif, name)
+            items = findings_from_sarif(sarif, name, str(adapter.get("category")))
+            props = sarif_run_properties(sarif)
+            if is_cloud_adapter(adapter):
+                regions = cloud_allowed_regions(scope, target) or []
+                violation = cloud_scope_violation(props, target, regions)
+                if violation:
+                    print(f"- {name} @ {target}: 결과를 버림 — {violation}. 스캐너 설정을 확인하세요.")
+                    continue
+                entry["coverage"][target] = {"mode": "cloud", "regions": regions, "checks": props["checksRun"]}
+            summary = summarize_controls(props["controlResults"], exclusions)
+            if summary:
+                entry.setdefault("controls", {})[target] = summary
             tag_sources(items, name, target, "skill")
             entry["findings"] += items
             entry["targets"].append(target)
@@ -1718,6 +2046,8 @@ def run_scan(direct: bool, confirm: str | None = None) -> int:
         }
         if entry["coverage"]:
             record["coverage"] = entry["coverage"]
+        if entry.get("controls"):
+            record["controls"] = entry["controls"]
         write_json_atomic(scans_dir() / f"{name}.json", record)
         ran.append(name)
     if not ran:
@@ -1752,6 +2082,8 @@ def run_adapters(direct: bool) -> int:
             print(f"- {name}: (선언 오류 — validate로 확인)")
             continue
         decision, reason = execution_decision(adapter, scope, direct)
+        if is_cloud_adapter(adapter) and decision == "run" and cloud_direct_blockers(adapter):
+            decision, reason = "operator", "; ".join(cloud_direct_blockers(adapter))
         if is_web_adapter(adapter) and decision == "run" and web_direct_blockers(adapter):
             decision, reason = "operator", "; ".join(web_direct_blockers(adapter))
         elif is_web_adapter(adapter) and decision == "run":

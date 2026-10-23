@@ -1030,7 +1030,8 @@ class AssessCase(unittest.TestCase):
     def test_rate_limit_is_semantic_only_for_web_and_keeps_old_fingerprints(self):
         scope = copy.deepcopy(EXAMPLE)
         for target in scope["targets"]:
-            target.pop("rateLimit", None)
+            for field in ("rateLimit", "regions", "credential"):
+                target.pop(field, None)
         old_material = {
             "targets": sorted((t["type"], t["value"]) for t in scope["targets"]),
             "exclusions": sorted(scope["exclusions"]), "window": scope["window"],
@@ -1109,7 +1110,9 @@ class AssessCase(unittest.TestCase):
             self.assertEqual(calls, [])
             self.assertIn("초당 7건 이하", out)
             self.assertIn("api.staging.example.test", out)
-            plan_code = re.search(r"확인 코드: (\w+)", out).group(1)
+            match = re.search(r"확인 코드: (\w+)", out)
+            assert match is not None, out
+            plan_code = match.group(1)
             code, out = self._scan_confirm("wrong")
             self.assertEqual(calls, [])
             self.assertIn("계획과 다릅니다", out)
@@ -1193,6 +1196,163 @@ class AssessCase(unittest.TestCase):
     def test_example_web_adapters_validate(self):
         for name in ("nuclei", "zap-baseline"):
             self.assertEqual(self.adapter_errors(name, self.example_adapter(name)), [], name)
+
+    # --- 인프라·클라우드 설정 (ADR 0004) ---
+    ACCOUNT = "aws:123456789012"
+
+    def prowler_sample(self):
+        return json.loads((TOOLS_DIR.parent / "examples/prowler/prowler-sample.json").read_text(encoding="utf-8"))
+
+    def infra_scope(self, exclusions=(), regions=("ap-northeast-2", "us-east-1")):
+        return authorized_scope(intrusiveness="passive", exclusions=list(exclusions), targets=[{
+            "type": "infra", "value": self.ACCOUNT, "regions": list(regions),
+            "credential": {"profile": "security-audit", "readOnlyConfirmed": True}}])
+
+    def test_infra_target_needs_account_regions_and_read_only_credential_reference(self):
+        cases = [
+            ({"value": "123456789012"}, "provider:account"),
+            ({"regions": []}, "regions must be"),
+            ({"credential": {}}, "credential.profile is required"),
+            ({"credential": {"profile": "p", "readOnlyConfirmed": False}}, "readOnlyConfirmed must be true"),
+            ({"credential": {"profile": "p", "readOnlyConfirmed": True, "secretKey": "x"}}, "do not store secrets"),
+        ]
+        for change, message in cases:
+            scope = self.infra_scope()
+            scope["targets"][0].update(change)
+            report = assess.Report()
+            assess.validate_scope(report, scope)
+            self.assertTrue(any(message in e for e in report.errors), message)
+        clean = assess.Report()
+        assess.validate_scope(clean, self.infra_scope())
+        self.assertEqual(clean.errors, [])
+
+    def test_regions_and_credential_are_semantic(self):
+        scope = self.infra_scope()
+        before = assess.semantic_fingerprint(scope)
+        scope["targets"][0]["regions"].append("eu-west-1")
+        self.assertNotEqual(assess.semantic_fingerprint(scope), before)
+        scope = self.infra_scope()
+        scope["targets"][0]["credential"]["profile"] = "admin"
+        self.assertNotEqual(assess.semantic_fingerprint(scope), before)
+
+    def test_prowler_failures_become_findings_and_controls_are_counted(self):
+        sarif = assess.prowler_to_sarif(self.prowler_sample())
+        props = assess.sarif_run_properties(sarif)
+        self.assertEqual(assess.summarize_controls(props["controlResults"], []), {"CIS-2.0": {"pass": 1, "fail": 2, "manual": 1}})
+        self.assertEqual(assess.summarize_controls(props["controlResults"], ["arn:aws:s3:::example-logs"]),
+                         {"CIS-2.0": {"pass": 1, "fail": 1, "manual": 1}})  # 제외 자산은 세지 않는다
+        self.assertEqual(len(props["checksRun"]), 4)
+        self.assertEqual(props["regionsSeen"], ["ap-northeast-2", "global"])
+        findings = assess.merge_findings(assess.findings_from_sarif(sarif, "prowler", "cloud"))
+        self.assertEqual(len(findings), 2)
+        s3 = next(f for f in findings if "s3" in f["location"]["file"])
+        self.assertEqual(s3["group"], "CIS-2.0 2.1.4")
+        self.assertEqual(assess.finding_key(s3), f"{s3['fingerprint']}:CIS-2.0 2.1.4")
+        self.assertEqual(s3["location"]["cloud"]["region"], "ap-northeast-2")
+        self.assertFalse(assess.is_code_level(s3))  # 클라우드 설정은 넘기지 않는다
+
+    def test_iac_findings_without_cwe_group_by_check_and_stay_code_level(self):
+        sarif = {"runs": [{"tool": {"driver": {"name": "checkov"}}, "results": [
+            {"ruleId": "CKV_AWS_20", "message": {"text": "S3 public"},
+             "locations": [{"physicalLocation": {"artifactLocation": {"uri": "infra/s3.tf"},
+                                                 "region": {"startLine": 3, "snippet": {"text": "acl = public-read"}}}}]}]}]}
+        finding = assess.findings_from_sarif(sarif, "checkov", "iac")[0]
+        self.assertEqual(finding["group"], "check:CKV_AWS_20")
+        self.assertTrue(assess.is_code_level(finding))
+        sast = assess.findings_from_sarif(sarif, "semgrep", "sast")[0]
+        self.assertNotIn("group", sast)  # 소스 점검 키는 예전 그대로
+        self.assertEqual(assess.finding_key(sast), f"{sast['fingerprint']}:")
+
+    def test_cloud_regions_exclusions_and_args(self):
+        scope = self.infra_scope(exclusions=["aws:123456789012:us-east-1", "arn:aws:s3:::example-logs"])
+        self.assertEqual(assess.cloud_allowed_regions(scope, self.ACCOUNT), ["ap-northeast-2"])
+        args, _ = assess.cloud_args(self.example_adapter("prowler"), scope, self.ACCOUNT, ["ap-northeast-2"])
+        self.assertEqual(args, ["--profile", "security-audit", "--region", "ap-northeast-2"])
+        self.assertIsNone(assess.cloud_allowed_regions(self.infra_scope(exclusions=[self.ACCOUNT]), self.ACCOUNT))
+        no_regions = dict(self.example_adapter("prowler"), cloud_args={"profile": "--profile {profile}"})
+        self.assertIsNone(assess.cloud_args(no_regions, scope, self.ACCOUNT, ["ap-northeast-2"])[0])
+        cloud = {"account": "123456789012", "region": "ap-northeast-2", "resource": "arn:aws:s3:::example-logs"}
+        self.assertTrue(assess.cloud_excluded(cloud, ["arn:aws:s3:::example-logs"]))
+        self.assertTrue(assess.cloud_excluded(cloud, ["aws:123456789012:ap-northeast-2"]))
+        self.assertFalse(assess.cloud_excluded(cloud, ["aws:123456789012:us-east-1", "aws:999:ap-northeast-2"]))
+
+    def test_cloud_scope_violation_detects_other_accounts_and_regions(self):
+        props = {"accountsSeen": ["123456789012"], "regionsSeen": ["global", "ap-northeast-2"]}
+        self.assertEqual(assess.cloud_scope_violation(props, self.ACCOUNT, ["ap-northeast-2"]), "")
+        self.assertIn("리전", assess.cloud_scope_violation(props, self.ACCOUNT, ["us-east-1"]))
+        self.assertIn("계정", assess.cloud_scope_violation({"accountsSeen": ["999"]}, self.ACCOUNT, []))
+
+    def _cloud_scan_env(self, scope):
+        self.write(scope)
+        adapter_dir, restore = self._scan_env()
+        (adapter_dir / "prowler.json").write_text(json.dumps(self.example_adapter("prowler")), encoding="utf-8")
+        calls = []
+
+        def fake_execute(command_template, target, output_path, timeout=600, extra_args=()):
+            calls.append(list(extra_args))
+            (Path(output_path).parent / "prowler.ocsf.json").write_text(json.dumps(self.prowler_sample()), encoding="utf-8")
+            return 0
+        assess.execute_adapter = fake_execute
+        return calls, restore
+
+    def test_cloud_scan_passes_profile_and_regions_and_records_controls(self):
+        calls, restore = self._cloud_scan_env(self.infra_scope())
+        try:
+            code, out = self._scan(direct=True)
+            self.assertEqual(code, 0, out)
+            self.assertEqual(calls[0], ["--profile", "security-audit", "--region", "ap-northeast-2", "us-east-1"])
+            stored = json.loads((assess.scans_dir() / "prowler.json").read_text(encoding="utf-8"))
+            self.assertEqual(stored["coverage"][self.ACCOUNT]["regions"], ["ap-northeast-2", "us-east-1"])
+            self.assertEqual(stored["controls"][self.ACCOUNT]["CIS-2.0"]["pass"], 1)
+            self.assertEqual(len(self._findings()), 2)
+            orig_cover = assess.COVER_MD
+            self.assertIn("| CIS-2.0 | 1 | 2 | 1 |", assess.render_cover_md({}, self._findings(), {}, None,
+                                                                          assess.load_control_summary()))
+            self.assertIs(assess.COVER_MD, orig_cover)
+        finally:
+            restore()
+
+    def test_cloud_results_outside_allowed_regions_are_discarded(self):
+        calls, restore = self._cloud_scan_env(self.infra_scope(exclusions=["aws:123456789012:ap-northeast-2"]))
+        try:
+            code, out = self._scan(direct=True)
+            self.assertEqual(calls[0], ["--profile", "security-audit", "--region", "us-east-1"])
+            self.assertIn("결과를 버림", out)
+            self.assertFalse((assess.scans_dir() / "prowler.json").exists())
+        finally:
+            restore()
+
+    def test_ingest_refuses_cloud_output_that_read_excluded_regions(self):
+        self.write(self.infra_scope(exclusions=["aws:123456789012:ap-northeast-2"]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            (adapter_dir / "prowler.json").write_text(json.dumps(self.example_adapter("prowler")), encoding="utf-8")
+            out_file = Path(self._tmp.name) / "prowler.json"
+            out_file.write_text(json.dumps(self.prowler_sample()), encoding="utf-8")
+            code, out = self._ingest("prowler", out_file)
+            self.assertEqual(code, 1)
+            self.assertIn("허용하지 않은 리전", out)
+        finally:
+            restore()
+
+    def test_cloud_finding_resolves_only_when_region_and_check_were_rechecked(self):
+        def cloud(fp, region, check):
+            return {"fingerprint": fp, "group": "CIS-2.0 x", "cwe": "",
+                    "location": {"file": "arn:x", "cloud": {"account": "123456789012", "region": region, "check": check}},
+                    "sources": [{"adapter": "prowler", "target": self.ACCOUNT}]}
+        previous = [cloud("a", "ap-northeast-2", "s3_public"), cloud("b", "us-east-1", "s3_public"),
+                    cloud("c", "global", "iam_root_mfa")]
+        seen = {"prowler": {self.ACCOUNT: {"mode": "cloud", "regions": ["ap-northeast-2"], "checks": ["s3_public"]}}}
+        result = assess.round_resolution(previous, [], {"prowler"}, seen)
+        self.assertEqual(result, {"resolved": ["a:CIS-2.0 x"], "notRechecked": ["b:CIS-2.0 x", "c:CIS-2.0 x"]})
+
+    def test_example_infra_adapters_validate(self):
+        for name in ("checkov", "prowler"):
+            self.assertEqual(self.adapter_errors(name, self.example_adapter(name)), [], name)
+        bad = self.valid_adapter(id="c", category="cloud", output_file="../x", cloud_args={"regions": "--region"})
+        errors = self.adapter_errors("c", bad)
+        self.assertTrue(any("output_file must be" in e for e in errors))
+        self.assertTrue(any("cloud_args.regions must contain" in e for e in errors))
 
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):

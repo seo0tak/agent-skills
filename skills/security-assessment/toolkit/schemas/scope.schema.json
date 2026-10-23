@@ -23,7 +23,19 @@
           "type": { "enum": ["repo", "web", "infra"] },
           "value": { "type": "string", "minLength": 1 },
           "notes": { "type": "string", "description": "설명 필드. 지문에 포함되지 않아 변경해도 승인이 무효되지 않는다." },
-          "rateLimit": { "type": "number", "exclusiveMinimum": 0, "description": "web 대상의 초당 요청 상한. 소유자가 동의한 조건이라 의미 필드(바뀌면 인가 무효). 없으면 보수적 기본값." }
+          "rateLimit": { "type": "number", "exclusiveMinimum": 0, "description": "web 대상의 초당 요청 상한. 소유자가 동의한 조건이라 의미 필드(바뀌면 인가 무효). 없으면 보수적 기본값." },
+          "regions": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "infra 대상에서 점검할 리전. 의미 필드." },
+          "credential": {
+            "type": "object",
+            "required": ["profile", "readOnlyConfirmed"],
+            "description": "infra 대상의 자격증명 참조. 비밀값은 저장하지 않는다. 스킬은 권한이 읽기 전용인지 검증하지 못한다. 의미 필드.",
+            "properties": {
+              "profile": { "type": "string", "minLength": 1, "description": "이 환경에서 쓸 프로파일·역할 이름." },
+              "readOnlyConfirmed": { "const": true, "description": "사용자가 그 역할이 읽기 전용이라고 확인했다." },
+              "notes": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": true
       }

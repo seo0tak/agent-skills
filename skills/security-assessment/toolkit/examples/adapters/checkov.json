@@ -1,0 +1,10 @@
+{
+  "id": "checkov",
+  "category": "iac",
+  "intrusiveness": "passive",
+  "availability": "checkov --version",
+  "command": "checkov -d {target} -o sarif --output-file-path {output_dir} --quiet",
+  "output_format": "sarif",
+  "output_file": "results_sarif.sarif",
+  "description": "저장소 IaC(Terraform·CloudFormation·Kubernetes 등) 정적 점검. 파일 위치가 있어 confirmed 결함은 sast-remediation으로 넘긴다. CWE가 없는 검출은 Checkov 점검 ID로 묶는다."
+}

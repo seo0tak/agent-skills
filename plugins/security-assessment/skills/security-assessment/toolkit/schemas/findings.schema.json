@@ -23,6 +23,14 @@
               "file": { "type": "string", "minLength": 1 },
               "line": { "type": ["integer", "null"] },
               "function": { "type": ["string", "null"] },
+              "cloud": {
+                "type": "object",
+                "description": "클라우드 설정 검출의 계정·리전·리소스·점검 항목. 이 검출은 sast-remediation으로 넘기지 않는다.",
+                "properties": {
+                  "account": { "type": "string" }, "region": { "type": "string" },
+                  "resource": { "type": "string" }, "check": { "type": "string" }
+                }
+              },
               "web": {
                 "type": "object",
                 "description": "웹 검출의 지문 재료: 메서드, 정규화한 '호스트/경로'(숫자·식별자 세그먼트는 자리표시자), 파라미터 이름.",
@@ -34,6 +42,8 @@
               }
             }
           },
+          "group": { "type": "string", "description": "iac·cloud 검출에 CWE가 없을 때의 묶음 키: 스캐너가 낸 통제 항목 또는 'check:<점검 ID>'." },
+          "controls": { "type": "array", "items": { "type": "string" }, "description": "스캐너가 낸 기준 통제 항목(예: 'CIS-2.0 1.5')." },
           "message": { "type": "string" },
           "severity": { "type": "string" },
           "sources": {

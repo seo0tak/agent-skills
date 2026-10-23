@@ -5,7 +5,9 @@
   "approvalFingerprint": "PLACEHOLDER",
   "targets": [
     { "type": "repo", "value": "./", "notes": "이 저장소(예시)" },
-    { "type": "web", "value": "https://staging.example.test", "rateLimit": 10, "notes": "스테이징만, 초당 10건 이하" }
+    { "type": "web", "value": "https://staging.example.test", "rateLimit": 10, "notes": "스테이징만, 초당 10건 이하" },
+    { "type": "infra", "value": "aws:123456789012", "regions": ["ap-northeast-2", "us-east-1"],
+      "credential": { "profile": "security-audit", "readOnlyConfirmed": true }, "notes": "읽기 전용 감사 역할" }
   ],
   "exclusions": ["https://staging.example.test/admin", "prod.example.test"],
   "window": { "start": "2026-10-22", "end": "2026-10-29" },

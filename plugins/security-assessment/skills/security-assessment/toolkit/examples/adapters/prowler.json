@@ -1,0 +1,15 @@
+{
+  "id": "prowler",
+  "category": "cloud",
+  "intrusiveness": "passive",
+  "availability": "prowler --version",
+  "command": "prowler aws --output-formats json-ocsf --output-directory {output_dir} --output-filename prowler",
+  "output_format": "prowler-ocsf",
+  "output_file": "prowler.ocsf.json",
+  "cloud_args": {
+    "profile": "--profile {profile}",
+    "regions": "--region {regions}"
+  },
+  "max_seconds": 3600,
+  "description": "AWS 계정 설정 점검(읽기 전용 API). 스코프의 프로파일 이름과 허용 리전만 넘긴다. 실패 항목이 검출이 되고, 기준별 통과·실패·수동 건수는 표지 보고서에 들어간다. 출력 파일 이름은 Prowler 버전에 따라 다를 수 있어 output_file을 맞춘다."
+}

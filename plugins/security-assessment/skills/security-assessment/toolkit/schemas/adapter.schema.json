@@ -33,6 +33,17 @@
         "file": { "type": "string", "description": "url-list일 때 출력 디렉터리 안의 방문 URL 파일 이름(한 줄에 하나)." }
       }
     },
+    "cloud_args": {
+      "type": "object",
+      "description": "cloud 어댑터가 자격증명 참조와 허용 리전을 스캐너에 넘기는 인자 템플릿(ADR 0004). 리전을 넘길 방법이 없으면 실행·들여오기를 거부한다.",
+      "properties": {
+        "profile": { "type": "string", "description": "{profile} 포함. 없으면 직접 실행하지 않는다." },
+        "regions": { "type": "string", "description": "{regions} 포함. 토큰이 {regions} 하나면 리전마다 인자 하나로 펼친다." },
+        "exclude_resource": { "type": "string", "description": "{resource} 포함. 제외 리소스 하나를 넘긴다(없으면 결과에서만 뺀다)." }
+      },
+      "additionalProperties": false
+    },
+    "output_file": { "type": "string", "description": "도구가 출력 파일 이름을 스스로 정할 때 출력 디렉터리 안의 그 파일 이름." },
     "max_seconds": { "type": "integer", "minimum": 1, "description": "한 번 실행의 시간 상한(초). 점검 기간 끝까지 남은 시간이 더 짧으면 그쪽을 쓴다. 기본 600." }
   },
   "additionalProperties": true
