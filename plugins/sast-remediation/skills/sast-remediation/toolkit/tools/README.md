@@ -38,8 +38,10 @@ query의 표준 출력은 JSON입니다. 오류·경고를 JSON에 섞지 않습
 관련 파일이 여럿이면 `--path`를 반복합니다.
 
 ```text
-python3 tools/sast_state.py checkpoint --id <ID> --phase before-edit --path <파일> --note "<현재 판단>" --next-action "<다음 작업>"
-python3 tools/sast_state.py checkpoint --id <ID> --phase after-edit --path <파일> --note "<수정 후 판단>" --next-action "<검증 계획>"
+python3 tools/sast_state.py checkpoint --id <ID> --phase before-edit \
+  --path <파일> --note "<현재 판단>" --next-action "<다음 작업>"
+python3 tools/sast_state.py checkpoint --id <ID> --phase after-edit \
+  --path <파일> --note "<수정 후 판단>" --next-action "<검증 계획>"
 python3 tools/sast_state.py snapshot --id <ID> --path <파일>
 ```
 
@@ -80,8 +82,10 @@ fresh·미완료 체크포인트 없음까지 본 준비 조건입니다. 어느
 python3 tools/sast_activity.py status
 python3 tools/sast_activity.py query --id <ID>
 python3 tools/sast_activity.py reconcile
-python3 tools/sast_activity.py start --action remediation --id <ID> --actor agent --summary "승인된 수정 시작"
-python3 tools/sast_activity.py finish --attempt-id <반환된 attemptId> --outcome succeeded --summary "수정 적용과 결과 기록; 검증은 별도"
+python3 tools/sast_activity.py start --action remediation --id <ID> \
+  --actor agent --summary "승인된 수정 시작"
+python3 tools/sast_activity.py finish --attempt-id <반환된 attemptId> \
+  --outcome succeeded --summary "수정 적용과 결과 기록; 검증은 별도"
 ```
 
 status/query는 읽기 전용입니다. 종료 기록이 없는 시도는 실제 작업과 파일을

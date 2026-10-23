@@ -68,11 +68,19 @@
 다음 명령은 각 입력 파일을 준비한 뒤 실행하는 순서 예시다.
 
 ```bash
-python3 scripts/improvement_tracker.py --store /path/to/project/improvements capture --id empty-input --data capture.json
-python3 scripts/improvement_tracker.py --store /path/to/project/improvements transition --id empty-input --to proposed --data proposal.json --expected-revision 1
-python3 scripts/improvement_tracker.py --store /path/to/project/improvements checkpoint --id empty-input --data checkpoint.json --expected-revision 2
-python3 scripts/improvement_tracker.py --store /path/to/project/improvements validate --id empty-input
-python3 scripts/improvement_tracker.py --store /path/to/project/improvements summary --id empty-input
+python3 scripts/improvement_tracker.py \
+  --store /path/to/project/improvements capture --id empty-input \
+  --data capture.json
+python3 scripts/improvement_tracker.py \
+  --store /path/to/project/improvements transition --id empty-input \
+  --to proposed --data proposal.json --expected-revision 1
+python3 scripts/improvement_tracker.py \
+  --store /path/to/project/improvements checkpoint --id empty-input \
+  --data checkpoint.json --expected-revision 2
+python3 scripts/improvement_tracker.py \
+  --store /path/to/project/improvements validate --id empty-input
+python3 scripts/improvement_tracker.py \
+  --store /path/to/project/improvements summary --id empty-input
 ```
 
 `transition --to`는 `proposed`, `evaluated`, `approved`, `applied`, `verified`,

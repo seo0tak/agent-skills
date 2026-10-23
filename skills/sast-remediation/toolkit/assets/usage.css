@@ -101,6 +101,9 @@ pre {
   font-family: Consolas, "D2Coding", monospace;
   font-size: 13px;
   line-height: 1.5;
+  /* 요청문 예시는 문장이라 좁은 화면에서 옆으로 밀리지 않게 접는다. 명령은 \ 줄 이음으로 미리 나눈다. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 pre code { background: none; border: 0; padding: 0; color: inherit; font-size: inherit; }
 main img {

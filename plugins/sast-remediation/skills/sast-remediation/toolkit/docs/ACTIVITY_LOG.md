@@ -62,22 +62,27 @@
 [![작업 이력 기록 순서](diagrams/activity-sequence.svg)](diagrams/activity-sequence.svg?raw=true)
 
 ```text
-python3 tools/sast_activity.py start --action remediation --id <ID> --actor agent --summary "승인된 항목의 소스 조치 시작"
+python3 tools/sast_activity.py start --action remediation --id <ID> \
+  --actor agent --summary "승인된 항목의 소스 조치 시작"
 ```
 
 시작 기록이 성공한 뒤 기존 03 절차의 체크포인트 → 수정 → 체크포인트를 수행합니다.
 현재 파일·결과를 확인한 후 해당 수정 작업의 실제 결과를 기록합니다.
 
 ```text
-python3 tools/sast_activity.py finish --attempt-id <반환된 attemptId> --outcome succeeded --summary "승인된 수정 적용 및 결과 기록; 검증은 별도"
+python3 tools/sast_activity.py finish --attempt-id <반환된 attemptId> \
+  --outcome succeeded --summary "승인된 수정 적용 및 결과 기록; 검증은 별도"
 ```
 
 외부 검증도 별도 시도로 시작합니다. snapshot은 기존 검증 연결 절차에 따라 저장하고,
 검증 명령을 실제 실행한 뒤 결과 JSON과 로그에 각각 실제 수준을 남깁니다.
 
 ```text
-python3 tools/sast_activity.py start --action verification --id <ID> --actor agent --summary "변경 영향 범위 검증 시작"
-python3 tools/sast_activity.py finish --attempt-id <검증 attemptId> --outcome failed --summary "관련 테스트 실패; 오류 근거와 재시도 조건은 항목 결과에 기록"
+python3 tools/sast_activity.py start --action verification --id <ID> \
+  --actor agent --summary "변경 영향 범위 검증 시작"
+python3 tools/sast_activity.py finish --attempt-id <검증 attemptId> \
+  --outcome failed \
+  --summary "관련 테스트 실패; 오류 근거와 재시도 조건은 항목 결과에 기록"
 ```
 
 위 실패 종료는 예시이며 실제 통과했으면 `succeeded`, 입력·권한 등의 조건으로
@@ -111,7 +116,8 @@ python3 tools/sast_activity.py query --id <ID>
 내용과 남은 한계를 적고, 원인을 모르면 모른다고 적습니다.
 
 ```text
-python3 tools/sast_activity.py note --action review --id <ID> --actor agent --summary "현재 소스 대조 결과와 남은 확인 사항" --important
+python3 tools/sast_activity.py note --action review --id <ID> --actor agent \
+  --summary "현재 소스 대조 결과와 남은 확인 사항" --important
 ```
 
 초기화된 프로젝트 또는 명시적으로 작업 기록을 시작한 툴킷에서 변경 명령의

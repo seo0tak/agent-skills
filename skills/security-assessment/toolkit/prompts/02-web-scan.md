@@ -29,7 +29,8 @@
    코드가 현재 계획과 다르면 실행되지 않습니다. 실행 중 오류·시간 초과는 그대로 보고합니다.
 
 5. 운영자가 돌린 출력은 들여옵니다. 방문 URL 목록이 있으면 함께 넘깁니다.
-   python3 tools/assess_toolkit.py ingest --adapter <이름> --file <출력> --target <대상> --coverage <방문 URL 파일>
+   python3 tools/assess_toolkit.py ingest --adapter <이름> --file <출력> \
+     --target <대상> --coverage <방문 URL 파일>
 
 6. 수집이 끝나면 prompts/01-triage.md로 판정합니다. 웹 검출은 코드 결함이 아니라
    sast-remediation으로 넘기지 않고 증적에 남습니다.

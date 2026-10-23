@@ -1,13 +1,13 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.17.1 / skill-architect v0.5.2 / security-assessment v0.11.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.2 / skill-architect v0.5.3 / security-assessment v0.11.1)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-10-23 security-assessment 0.10.0 M3 · 다이어그램 체계)
+## 최신 작업 기준 (2026-10-23 security-assessment 0.11.0 M4 · 패널 개편 · 시인성 재점검)
 
-배포 버전: sast-remediation **v1.17.1**, skill-architect **v0.5.2**, security-assessment **v0.11.0**.
-최신 커밋 `318a4d6`(M3 구현), 전부 push 완료. 작업 트리 깨끗함.
+배포 버전: sast-remediation **v1.17.2**, skill-architect **v0.5.3**, security-assessment **v0.11.1**.
+최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료.
 
 ### security-assessment
 
@@ -120,6 +120,13 @@
   항목) 해소, 클라우드 검출은 is_code_level 거짓(넘기지 않음), 어댑터 `output_file`. 프롬프트
   `03-cloud-scan.md`, 예시 checkov·prowler·prowler 표본. assess 103건, 가짜 Prowler로 CLI 왕복 확인.
   **실제 Prowler·Checkov 출력으로는 아직 검증하지 않았다**(표본 형식 기준, 출력 파일 이름도 버전에 따라 다름).
+- **시인성 재점검(sast 1.17.2 · security-assessment 0.11.1 · skill-architect 0.5.3, 문서·스타일만)**:
+  Mermaid가 라벨을 자동으로 접으며 단어 중간에서 끊던 곳("넘길 수 없\n음", "sast-\nremediation", "적용\n→ 검증" 등)을
+  명시적 `<br/>`로 고쳤다. 확인은 렌더 후 라벨별 줄 수가 `<br/>` 수+1을 넘는지 세는 검사로 했고(옛 판에서
+  세 곳을 잡아 검사가 유효함을 확인), 고친 뒤 0건. 코드 블록 안 100칸 넘는 명령 19줄을 옵션 경계에서 `\` 줄
+  이음으로 나눴다(GitHub·USAGE.html에서 옆 스크롤 방지, 붙여 넣어 그대로 실행됨). USAGE.html은 좁은 화면에서
+  요청문 예시가 접히도록 `pre`에 `pre-wrap`. USAGE.html·대시보드 1280·400px 가로 넘침 0. 앞으로 Mermaid를
+  고치면 같은 줄 수 검사를 돌린다.
 - 다음: M5(방법론 체크리스트). 인증 웹 스캔·네트워크 스캔은 별도 설계.
 - **진행률 패널을 플러그인에 포함(sast-remediation 1.17.0)**: `plugins/sast-remediation/hooks/register.tsx`
   (+ `hooks/hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`, plugin.json `types`). Claude Code 전용

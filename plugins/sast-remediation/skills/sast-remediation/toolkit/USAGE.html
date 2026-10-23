@@ -108,6 +108,9 @@ pre {
   font-family: Consolas, "D2Coding", monospace;
   font-size: 13px;
   line-height: 1.5;
+  /* 요청문 예시는 문장이라 좁은 화면에서 옆으로 밀리지 않게 접는다. 명령은 \ 줄 이음으로 미리 나눈다. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 pre code { background: none; border: 0; padding: 0; color: inherit; font-size: inherit; }
 main img {
@@ -254,7 +257,8 @@ td code { white-space: nowrap; }
 <p>“미확인”은 0건이나 문제가 없다는 뜻이 아닙니다. 소스에 매핑한 항목의 <code>fingerprint</code>는 차수 간 대조용 지문이며, 그 자체가 오탐·수정 완료의 증거는 아닙니다.</p>
 <h3>이번 차수의 처리 범위를 설정합니다</h3>
 <p>전체 항목을 등록하고 건수를 대조한 뒤 상세 분석·조치할 최소 위험도를 <code>data/project-profile.json</code>에 기록합니다. 범위가 없으면 전체로 자동 실행하지 않습니다. 예를 들어 “높음 이상”은 다음과 같이 설정합니다.</p>
-<pre><code>python3 tools/sast_toolkit.py scope --min-risk high --set-by user --reason &quot;이번 차수는 높음 이상 처리&quot;
+<pre><code>python3 tools/sast_toolkit.py scope --min-risk high --set-by user \
+  --reason &quot;이번 차수는 높음 이상 처리&quot;
 python3 tools/sast_toolkit.py scope</code></pre>
 <p><code>critical/very-high/high</code>는 대상, 더 낮은 5단계와 <code>info</code>는 범위 밖, <code>unknown</code>·등급 누락은 별도 미확인입니다. 전체 입력·기존 상태는 모두 보존합니다. 정본, 다른 임계값, 재개와 집계 계약은 <code>docs/PROCESSING_SCOPE.md</code>를 참고하세요.</p>
 <h3>오탐 판단과 조치 필요성은 따로 확인합니다</h3>

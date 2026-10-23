@@ -61,7 +61,8 @@ enum, 증적 열은 바꾸지 않습니다. 범위는 기존 항목 상태를 �
 
 ```text
 python3 tools/sast_toolkit.py scope
-python3 tools/sast_toolkit.py scope --min-risk high --set-by user --reason "이번 차수는 높음 이상 처리"
+python3 tools/sast_toolkit.py scope --min-risk high --set-by user \
+  --reason "이번 차수는 높음 이상 처리"
 python3 tools/sast_toolkit.py query --scope in-scope
 python3 tools/sast_toolkit.py query --scope in-scope --group WG-001
 python3 tools/sast_toolkit.py query --scope out-of-scope

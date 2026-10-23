@@ -69,7 +69,8 @@ AI는 먼저 입력 개수·실제 파일 형식·소스 존재를 검사하고,
 않습니다. 예를 들어 “높음 이상”은 다음과 같이 설정합니다.
 
 ```text
-python3 tools/sast_toolkit.py scope --min-risk high --set-by user --reason "이번 차수는 높음 이상 처리"
+python3 tools/sast_toolkit.py scope --min-risk high --set-by user \
+  --reason "이번 차수는 높음 이상 처리"
 python3 tools/sast_toolkit.py scope
 ```
 

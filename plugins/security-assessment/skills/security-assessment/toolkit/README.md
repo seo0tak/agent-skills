@@ -25,18 +25,18 @@ flowchart TD
   plan -- "확인 코드" --> exec
   kind -- "infra<br/>클라우드 설정" --> cloud["허용 리전 · 프로파일 이름만<br/>읽기 전용"]
   cloud --> exec
-  kind -- "제외 자산 · 리전을 넘길 수 없음" --> refuse["거부: 실행 · 들여오기 안 함"]
+  kind -- "제외 자산 · 리전을<br/>넘길 수 없음" --> refuse["거부: 실행 · 들여오기 안 함"]
   decide -- "operator" --> op["운영자가 실행<br/>ingest로 출력 들여오기"]
   decide -- "forbidden" --> skip["건너뜀"]
   exec --> norm["출력 정규화 → SARIF<br/>제외 자산 뺌"]
   op --> norm
-  norm --> merge["지문 + CWE 또는 통제 항목으로 묶음<br/>findings.json"]
+  norm --> merge["지문 + CWE 또는<br/>통제 항목으로 묶음<br/>findings.json"]
   merge --> disp["검출별 판정 기록 · 01 프롬프트<br/>dispositions.json"]
   disp -- "오탐 · 범위 밖 제안" --> user["사용자: 확정 또는 반려"]
   user --> disp
-  disp --> bridge["confirmed 코드 결함<br/>handoff.sarif → sast-remediation"]
+  disp --> bridge["confirmed 코드 결함<br/>handoff.sarif<br/>→ sast-remediation"]
   disp --> ev["증적 생성<br/>findings.csv · cover.md<br/>기준 대조 포함"]
-  ev -.-> round["new-round<br/>다음 차수 재점검으로 해소 판단"]
+  ev -.-> round["new-round<br/>다음 차수 재점검으로<br/>해소 판단"]
   round -.-> decide
 ```
 
@@ -65,7 +65,8 @@ python3 tools/assess_toolkit.py scan --direct
    실행해 넘긴 출력 파일을 들여온다.
 
 ```bash
-python3 tools/assess_toolkit.py ingest --adapter semgrep --file semgrep.sarif   # 대상이 여럿이면 --target
+# 대상이 여럿이면 --target <대상>을 붙인다
+python3 tools/assess_toolkit.py ingest --adapter semgrep --file semgrep.sarif
 ```
 
    클라우드 계정(infra 대상)은 `prompts/03-cloud-scan.md`를 따른다. 스코프에 리전 목록과
