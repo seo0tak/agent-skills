@@ -41,6 +41,7 @@ declare module 'claude-code' {
       tokens: TokenTotals
       active: boolean
       tab: PaneTab
+      listOffset: number
     }
   }
 }

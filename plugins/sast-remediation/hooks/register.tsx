@@ -21,6 +21,10 @@ const tokens = atom({ plugin: 'sast-remediation', key: 'tokens' } as const,
 // 이 세션에서 패널을 쓰는지: 툴킷이 있거나 스킬이 실행됐을 때만 참. 그 전에는 화면에 아무것도 내지 않는다.
 const active = atom({ plugin: 'sast-remediation', key: 'active' } as const, false)
 const tab = atom({ plugin: 'sast-remediation', key: 'tab' } as const, 'checkers' as PaneTab)
+// 체커 목록의 첫 줄 번호. 머리·요약·탭·바닥 줄은 고정하고 목록만 휠·방향키로 움직인다(ui.scroll).
+const listOffset = atom({ plugin: 'sast-remediation', key: 'listOffset' } as const, 0)
+// 마지막으로 그린 체커 목록 창: 보이는 줄 수와 전체 체커 수. 스크롤 훅이 이 범위 안에서만 움직인다.
+let listWindow = { room: 0, count: 0 }
 
 // 작업 단계: 표시 순서·이름·색. 색은 의미에만 쓴다(완료 초록, 진행 파랑, 수정 완료 주황, 보류 보라).
 const STAGES: { key: string; label: string; icon: string; hex: string; theme: string }[] = [
@@ -331,6 +335,16 @@ export const register: Register = on => {
     return done
   })
 
+  // 체커 탭에서 목록이 넘치면 휠·방향키·Page·Home·End를 목록 창으로 받는다. 그 밖에는 엔진이 패널을 스크롤한다.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const overflow = listWindow.count - listWindow.room
+    if ((await read($, tab)) !== 'checkers' || overflow <= 0) return next(e)
+    const by = Math.abs(e.by) >= e.contentRows ? Math.sign(e.by) * listWindow.count
+      : Math.abs(e.by) >= e.bodyRows ? Math.sign(e.by) * listWindow.room : e.by
+    await update($, listOffset, off => Math.max(0, Math.min(overflow, off + by)))
+    return {}
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
@@ -342,6 +356,7 @@ export const register: Register = on => {
     const u = await read($, usage)
     const t = await read($, tokens)
     const current = await read($, tab)
+    const offset = await read($, listOffset)
     const now = await $.clock.now()
     const columns = e.props?.bodyColumns ?? 40
     // 반응형: 막대·체커 이름·목록 길이를 본문 폭(bodyColumns)과 높이(bodyRows)에 맞춘다. 크기가 바뀌면 다시 그려진다.
@@ -459,14 +474,19 @@ export const register: Register = on => {
     // ---- 체커: 남은 건수 신호등 + 진행 막대 ----
     const checkersTab = (() => {
       if (p.kind !== 'ok') return <Text dimColor>{ICON.empty} 검출이 등록되면 체커별 진행이 보입니다.</Text>
-      const room = Svg ? Math.max(3, Math.floor((rows - 14) / 2)) : Math.max(3, rows - 12)
-      const shown = p.checkers.slice(0, room)
-      const rest = p.checkers.slice(room)
+      const fits = Svg ? Math.max(3, Math.floor((rows - 14) / 2)) : Math.max(3, rows - 12)
+      // 넘치면 한 줄을 위치 안내에 쓴다
+      const room = p.checkers.length > fits ? Math.max(3, fits - 1) : fits
+      listWindow = { room, count: p.checkers.length }
+      const start = Math.max(0, Math.min(offset, p.checkers.length - room))
+      const shown = p.checkers.slice(start, start + room)
       if (shown.length === 0) {
         return <Text dimColor wrap="wrap">{ICON.empty} 체커별 집계를 읽지 못했습니다. /sast-progress로 다시 읽거나 툴킷을 1.15.0 이상으로 올려 주세요.</Text>
       }
-      const more = rest.length > 0 && (
-        <Text dimColor>외 {rest.length}개 체커{sep}남음 {rest.reduce((sum, c) => sum + c.remaining, 0)}</Text>
+      const more = p.checkers.length > room && (
+        <Text dimColor wrap="truncate">
+          {start + 1}-{start + shown.length} / {p.checkers.length}개 체커{sep}휠이나 방향키로 스크롤{start > 0 ? `${sep}Home 맨 위` : ''}
+        </Text>
       )
       if (Svg) {
         return (

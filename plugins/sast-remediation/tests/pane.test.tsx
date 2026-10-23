@@ -38,16 +38,24 @@ const COUNTED = JSON.stringify({
   SQL_INJECTION: { total: 3, verified: 1, deferred: 0, remaining: 2 },
 })
 
-type Seen = { opened: number; status: string[]; argv0: string[] }
+// 체커 10개(남은 건수 10, 9, …, 1 순)
+const MANY = JSON.stringify({
+  ...JSON.parse(ALL),
+  byChecker: Object.fromEntries(Array.from({ length: 10 }, (_, i) =>
+    [`CHECKER_${String(i + 1).padStart(2, '0')}`, { total: 10 - i, verified: 0, deferred: 0, remaining: 10 - i }])),
+})
+
+type Seen = { opened: number; status: string[]; argv0: string[]; engineScrolls?: number }
 
 // 엔진을 대신하는 훅. hasToolkit이 거짓이면 프로젝트에 툴킷 복사본이 없는 상태, minRisk가 null이면 처리 범위 미설정.
 const STORE_ALIAS = 'Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.'
 
-function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null, windows = false, oldToolkit = false, noCheckers = false) {
+function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null, windows = false, oldToolkit = false, noCheckers = false, many = false) {
   on('command.register', () => ({ value: { command: 'sast-progress' } }))
   on('ui.open', () => { seen.opened += 1; return { value: { isPlaced: true } } })
   on('ui.status', (_: unknown, e: { text?: string }) => { seen.status.push(String(e.text)); return { value: {} } })
   on('ui.toast', () => ({ value: {} }))
+  on('ui.scroll', () => { seen.engineScrolls = (seen.engineScrolls ?? 0) + 1; return { value: {} } }) // 엔진이 패널 전체를 움직임
   on('clock.now', () => ({ value: 1_700_000_000_000 }))
   on('session.usage', () => ({
     value: {
@@ -67,6 +75,7 @@ function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null
     if (e.argv.includes('-c')) return { value: { exitCode: 0, stdout: oldToolkit ? COUNTED : '{}', stderr: '' } }
     const summary = e.argv.includes('in-scope') ? IN_SCOPE : ALL
     const older = oldToolkit || noCheckers
+    if (many && !e.argv.includes('in-scope')) return { value: { exitCode: 0, stdout: MANY, stderr: '' } }
     return { value: { exitCode: 0, stdout: older ? JSON.stringify({ ...JSON.parse(summary), byChecker: undefined }) : summary, stderr: '' } }
   })
   on('skill.prompt', (_: unknown, e: { text: string }) => ({ text: e.text }))
@@ -222,4 +231,36 @@ test('the checker rows follow the pane width', async ($, on) => {
   expect(row).toMatch(/남음 7$/)
   expect(row).not.toMatch(/5\/12/)
   await narrow.unmount()
+})
+
+test('a long checker list scrolls under a pinned header', async ($, on) => {
+  const seen: Seen = { opened: 0, status: [], argv0: [] }
+  engine(on, seen, true, 'high', false, false, false, true)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  // 높이 18줄: 체커 6줄 자리 중 한 줄은 위치 안내라 5개씩 보인다
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, scroll: { offset: 0, bodyRows: 18 } } })
+  const position = async () => (await ui.find({ type: 'Text', text: /개 체커, 휠이나 방향키로 스크롤/ }))?.text ?? ''
+  expect(await position()).toMatch(/^1-5 \/ 10개 체커/)
+  expect(await ui.find({ type: 'Text', text: /CHECKER_06/ })).toBeUndefined()
+
+  const scroll = (by: number) => $.ui.scroll({ component: 'Pane', requestId: 'sast-progress', offset: 0, by,
+    bodyRows: 18, contentRows: 18, origin: { kind: 'person' } } as any)
+  await scroll(1) // 휠 한 칸
+  await ui.redraw()
+  expect(await position()).toMatch(/^2-6 \/ 10개 체커.*Home 맨 위/)
+  expect((await ui.find({ type: 'Text', text: /CHECKER_06/ }))?.text).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /CHECKER_01/ })).toBeUndefined()
+
+  await scroll(30) // 끝을 넘으면 마지막에 멈춘다(End)
+  await ui.redraw()
+  expect(await position()).toMatch(/^6-10 \/ 10개 체커/)
+  await scroll(-18) // Home
+  await ui.redraw()
+  expect(await position()).toMatch(/^1-5 \/ 10개 체커/)
+
+  expect(seen.engineScrolls ?? 0).toBe(0) // 체커 탭의 스크롤은 목록이 받는다
+  await ui.press({ key: 'tab-tokens' }) // 다른 탭에서는 엔진이 패널 전체를 스크롤한다
+  await scroll(1)
+  expect(seen.engineScrolls).toBe(1)
+  await ui.unmount()
 })
