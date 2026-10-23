@@ -63,6 +63,8 @@ const THEME_HEX: Record<string, string> = {
   merged: '#8b6fd6', claude: '#d97757', permission: '#7c8cf8', promptBorder: '#8a8f99', remember: '#5b9bd5', planMode: '#48968c',
   autoAccept: '#a66bd6', bashBorder: '#e05d8a', ide: '#4f8fd9',
 }
+// 컨텍스트 구성의 쓰는 항목 색(차례로). 회색은 남은 칸 전용이라 쓰지 않는다.
+const CONTEXT_THEMES = ['claude', 'permission', 'success', 'warning', 'merged', 'ide', 'autoAccept', 'error', 'planMode', 'remember']
 const BREAKDOWN_GAP_MS = 15_000
 let lastBreakdown = 0
 
@@ -622,42 +624,59 @@ export const register: Register = on => {
       const incoming = t.input + t.cacheRead + t.cacheWrite
       const hit = incoming > 0 ? Math.round((t.cacheRead / incoming) * 100) : undefined
       const ctxTheme = (ctx ?? 0) >= 85 ? 'error' : (ctx ?? 0) >= 70 ? 'warning' : 'suggestion'
-      const gauge = Svg
-        ? <Svg source={barSvg([{ value: ctx ?? 0, hex: contextColor(ctx) }], 100, 10, [70, 85])}
-            alt={`컨텍스트 ${ctx === undefined ? '알 수 없음' : `${Math.round(ctx)}%`}, 주의 70%, 위험 85%`} height={10} />
-        : pctBar(ctx ?? 0, contextColor(ctx), ctxTheme, '컨텍스트')
-      // 컨텍스트 구성: 쓰는 항목은 /context 색, 남은 칸은 비우고, 압축 예비는 회색. 아래에 항목별 토큰.
+      // 컨텍스트 막대 하나: 쓰는 항목을 저마다 색으로 칠하고, 남은 칸은 회색 바탕, 압축 예비는 맨 끝 점무늬.
+      // 구성을 못 읽으면 쓴 비율만 칠한다. 엔진이 주는 /context 색은 회색이 겹쳐(시스템 프롬프트·도구·남은 칸)
+      // 쓰는 항목에는 패널 고유 색을 차례로 준다.
+      const rows = u.breakdown ?? []
+      const used = rows.filter(c => c.kind === 'used')
+      const free = rows.filter(c => c.kind === 'free')
+      const buffer = rows.filter(c => c.kind === 'buffer')
+      const ordered = [...used, ...free, ...buffer]
+      const all = ordered.reduce((sum, c) => sum + c.tokens, 0)
+      const theme = (c: { kind: string }, index: number) =>
+        c.kind === 'used' ? CONTEXT_THEMES[index % CONTEXT_THEMES.length] ?? 'claude' : 'inactive'
+      const label = (c: { name: string; kind: string }) =>
+        c.kind === 'free' ? '남은 칸' : c.kind === 'buffer' ? '압축 예비' : CONTEXT_LABEL[c.name] ?? c.name
+      const share = (tokens: number) => {
+        const pct = all > 0 ? (tokens / all) * 100 : 0
+        return pct > 0 && pct < 1 ? '<1%' : `${Math.round(pct)}%`
+      }
+      const gauge = (() => {
+        if (ordered.length === 0 || all === 0) {
+          return Svg
+            ? <Svg source={barSvg([{ value: ctx ?? 0, hex: contextColor(ctx) }], 100, 10, [70, 85])}
+                alt={`컨텍스트 ${ctx === undefined ? '알 수 없음' : `${Math.round(ctx)}%`}, 주의 70%, 위험 85%`} height={10} />
+            : pctBar(ctx ?? 0, contextColor(ctx), ctxTheme, '컨텍스트')
+        }
+        if (Svg) {
+          return <Svg source={barSvg(ordered.map((c, index) => ({ value: c.tokens,
+            hex: c.kind === 'used' ? THEME_HEX[theme(c, index)] ?? BLUE : c.kind === 'buffer' ? '#6b7080' : 'transparent' })), all, 10, [70, 85])}
+            alt={`컨텍스트 구성: ${ordered.map(c => `${label(c)} ${compact(c.tokens)}`).join(', ')}`} height={10} />
+        }
+        // 쓰는 항목은 아무리 작아도 한 칸, 남은 칸이 나머지를 채운다.
+        const cells = ordered.map(c => c.kind === 'free' ? 0 : Math.max(1, Math.round((c.tokens / all) * barWidth)))
+        const freeIndex = ordered.findIndex(c => c.kind === 'free')
+        const rest = Math.max(0, barWidth - cells.reduce((sum, n) => sum + n, 0))
+        if (freeIndex >= 0) cells[freeIndex] = rest
+        return (
+          <Text>
+            {ordered.map((c, index) => cells[index]! > 0
+              ? <Text key={`ctx-${index}`} backgroundColor={theme(c, index)} dimColor={c.kind === 'buffer'}>
+                  {(c.kind === 'buffer' ? ':' : ' ').repeat(cells[index]!)}
+                </Text>
+              : '')}
+          </Text>
+        )
+      })()
       const composition = (() => {
-        const rows = u.breakdown ?? []
-        if (rows.length === 0) return null
-        const all = rows.reduce((sum, c) => sum + c.tokens, 0)
-        const paint = (c: { color: string; kind: string }) => c.kind === 'free' ? '' : c.kind === 'buffer' ? 'inactive' : c.color
-        const label = (c: { name: string; kind: string }) =>
-          c.kind === 'free' ? '남은 칸' : c.kind === 'buffer' ? '압축 예비' : CONTEXT_LABEL[c.name] ?? c.name
-        const graphic = Svg
-          ? <Svg source={barSvg(rows.map(c => ({ value: c.tokens, hex: c.kind === 'free' ? 'transparent' : THEME_HEX[paint(c)] ?? '#8a8f99' })), all, 8)}
-              alt={`컨텍스트 구성: ${rows.map(c => `${label(c)} ${compact(c.tokens)}`).join(', ')}`} height={8} />
-          : (() => {
-            let used = 0
-            return (
-              <Text>
-                {rows.map((c, index) => {
-                  const cells = index === rows.length - 1 ? barWidth - used : Math.min(barWidth - used, Math.round((c.tokens / all) * barWidth))
-                  used += cells
-                  return cells > 0 ? <Text key={`ctx-${index}`} backgroundColor={paint(c) || undefined}>{' '.repeat(cells)}</Text> : ''
-                })}
-              </Text>
-            )
-          })()
-        const nameWidth = Math.max(...rows.map(c => cellWidth(label(c))))
+        if (ordered.length === 0 || all === 0) return null
+        const nameWidth = Math.max(...ordered.map(c => cellWidth(label(c))))
         return (
           <Box flexDirection="column">
-            <Text bold>{ICON.context} 컨텍스트 구성</Text>
-            {graphic}
-            {rows.map((c, index) => (
+            {ordered.map((c, index) => (
               <Text key={`ctx-row-${index}`} wrap="truncate">
-                <Text backgroundColor={paint(c) || undefined}>{c.kind === 'free' ? '--' : '  '}</Text> {label(c)}{' '.repeat(nameWidth - cellWidth(label(c)))}
-                {'  '}<Text dimColor={c.kind !== 'used'}>{compact(c.tokens).padStart(7)}  {String(Math.round((c.tokens / all) * 100)).padStart(3)}%</Text>
+                <Text backgroundColor={theme(c, index)} dimColor={c.kind === 'buffer'}>{c.kind === 'buffer' ? '::' : '  '}</Text> {label(c)}{' '.repeat(nameWidth - cellWidth(label(c)))}
+                {'  '}<Text dimColor={c.kind !== 'used'}>{compact(c.tokens).padStart(7)}  {share(c.tokens).padStart(4)}</Text>
               </Text>
             ))}
           </Box>
@@ -670,8 +689,8 @@ export const register: Register = on => {
           <Box flexDirection="column">
             <Text><Text bold>{ICON.context} 컨텍스트 <Text color={ctxTheme}>{ctx === undefined ? '-' : `${Math.round(ctx)}%`}</Text></Text>  <Text dimColor>{compact(u.contextTokens)} / {compact(u.contextWindow)}</Text></Text>
             {gauge}
+            {composition}
           </Box>
-          {composition}
           <Box flexDirection="column">
             {labelValue(`${ICON.cost} 이번 세션 비용`, u.costUsd === undefined ? '-' : `$${u.costUsd.toFixed(2)}`, false, 'cost')}
             {t.requests === 0
@@ -737,35 +756,37 @@ export const register: Register = on => {
               {amountRows(conclusions)}
             </Box>
           )}
-          <Text bold>{ICON.all} 위험도별</Text>
-          {Svg
-            ? (
-              <Box flexDirection="column">
-                {levels.map(level => labelValue(`${where(level) === '범위 안' ? ICON.scope : '  '} ${RISK_LABEL[level] ?? level}`,
-                  `${p.risk[level]}건${sep}${where(level)}`, where(level) !== '범위 안', `risk-${level}`))}
-              </Box>
-            )
-            : (() => {
-              // 위험도별 건수 막대: 범위 안은 띠 색, 밖은 회색. 이름은 화면 폭(한글 두 칸)으로 맞춘다.
-              const max = Math.max(...levels.map(level => p.risk[level] ?? 0))
-              const labelWidth = Math.max(...levels.map(level => cellWidth(RISK_LABEL[level] ?? level)))
-              const riskBar = narrow ? 0 : Math.max(6, Math.min(30, columns - labelWidth - 26))
-              return (
+          <Box flexDirection="column">
+            <Text bold>{ICON.all} 위험도별</Text>
+            {Svg
+              ? (
                 <Box flexDirection="column">
-                  {levels.map(level => {
-                    const label = RISK_LABEL[level] ?? level
-                    const inside = where(level) === '범위 안'
-                    return (
-                      <Text key={`risk-${level}`} wrap="truncate">
-                        {inside ? ICON.scope : '  '} {label}{' '.repeat(labelWidth - cellWidth(label))}
-                        {riskBar > 0 ? <Text> {volumeBar(0, p.risk[level] ?? 0, max, riskBar, inside ? 'suggestion' : 'inactive')}</Text> : ''}
-                        {'  '}<Text bold={inside} dimColor={!inside}>{p.risk[level]}건{sep}{where(level)}</Text>
-                      </Text>
-                    )
-                  })}
+                  {levels.map(level => labelValue(`${where(level) === '범위 안' ? ICON.scope : '  '} ${RISK_LABEL[level] ?? level}`,
+                    `${p.risk[level]}건${sep}${where(level)}`, where(level) !== '범위 안', `risk-${level}`))}
                 </Box>
               )
-            })()}
+              : (() => {
+                // 위험도별 건수 막대: 범위 안은 띠 색, 밖은 회색. 이름은 화면 폭(한글 두 칸)으로 맞춘다.
+                const max = Math.max(...levels.map(level => p.risk[level] ?? 0))
+                const labelWidth = Math.max(...levels.map(level => cellWidth(RISK_LABEL[level] ?? level)))
+                const riskBar = narrow ? 0 : Math.max(6, Math.min(30, columns - labelWidth - 26))
+                return (
+                  <Box flexDirection="column">
+                    {levels.map(level => {
+                      const label = RISK_LABEL[level] ?? level
+                      const inside = where(level) === '범위 안'
+                      return (
+                        <Text key={`risk-${level}`} wrap="truncate">
+                          {inside ? ICON.scope : '  '} {label}{' '.repeat(labelWidth - cellWidth(label))}
+                          {riskBar > 0 ? <Text> {volumeBar(0, p.risk[level] ?? 0, max, riskBar, inside ? 'suggestion' : 'inactive')}</Text> : ''}
+                          {'  '}<Text bold={inside} dimColor={!inside}>{p.risk[level]}건{sep}{where(level)}</Text>
+                        </Text>
+                      )
+                    })}
+                  </Box>
+                )
+              })()}
+          </Box>
           <Text dimColor wrap="wrap">범위 밖과 미확인 항목도 입력과 기록은 그대로 보존됩니다. 범위 안 완료를 전체 완료로 보지 않습니다.</Text>
         </Box>
       )

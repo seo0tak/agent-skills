@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.20.0 / skill-architect v0.5.3 / security-assessment v0.12.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.20.1 / skill-architect v0.5.3 / security-assessment v0.12.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23)
 
-배포 버전: sast-remediation **v1.20.0**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
+배포 버전: sast-remediation **v1.20.1**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
 최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`0ec8701`).
 
 ### 남은 일
@@ -18,7 +18,7 @@
     인가한 대상·계정에서만 한다.
 - sast-remediation 진행률 패널:
   - 1.18.1은 사용자 Windows 화면에서 확인됨(체커 탭 집계 스크립트, 머리 띠, 지금 탭 알약). 1.18.2 반응형은 사용자
-    화면에서 정상. 1.19.0 체커 스크롤은 사용자 화면에서 정상. 1.20.0(컨텍스트 구성, 범위 안 단계·결론)은
+    화면에서 정상. 1.19.0 체커 스크롤은 사용자 화면에서 정상. 1.20.0 범위 탭은 사용자 화면에서 정상. 1.20.1(컨텍스트 막대 통합)은
     실제 화면 확인이 아직이다 — 특히 Windows Terminal에서 휠이 목록으로 들어가는지, 한글 열 제목·위험도 이름 정렬.
   - 설치본으로 불러오는 확인과 Codex 설치본이 `hooks/`를 무시하는지는 아직이다 — 설치 시험은 실제
     마켓플레이스 이름(0tak)으로 하지 말 것(메모리 규칙).
@@ -55,7 +55,7 @@
 - 툴킷 원본 상태에서 `validate`는 빈 템플릿 `scope.json` 때문에 에러 7건이 정상이다.
 - 업그레이드 주의는 `toolkit/docs/VERSIONING.md`(0.9.0 증적 열 추가, 0.11.0 iac 묶음 키 변경 등).
 
-### sast-remediation 진행률 패널 (v1.20.0, Claude Code 전용)
+### sast-remediation 진행률 패널 (v1.20.1, Claude Code 전용)
 
 - 위치: `plugins/sast-remediation/hooks/register.tsx`(+ `hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`).
   `skills/` 정본이 아니라 플러그인 쪽이 원본(agents/와 같은 위치). mod API는 Claude Code 미리 보기 기능.
@@ -89,6 +89,9 @@
     CONTEXT_LABEL로 한글, 색은 엔진 테마 키 그대로, 그래픽은 THEME_HEX). `session.measure`가 usage를 덮을 때
     breakdown을 보존한다. 범위 탭은 `stageView(p.scope)`와 결론 분포(`Counts.byConclusion` ← summary.by.conclusion,
     CONCLUSIONS 순서·색)를 `amountRows`로 그린다. 위험도별은 그 아래.
+  - 1.20.1(사용자 화면 검토 "구성 밑 막대가 뭘 뜻하나"): 구성 막대가 남은 칸을 비워 두고 시스템 항목이 회색이라
+    짧은 의미 없는 막대로 보였고 게이지와 겹쳤다. 게이지 자리에 막대 하나(쓰는 항목 CONTEXT_THEMES 색·최소 한 칸,
+    남은 칸 inactive 바탕, 압축 예비 끝 `:` 점무늬) + 바로 아래 항목 목록(`<1%`). 구성을 못 읽으면 예전 게이지.
   - 데스크톱·VS Code·모바일은 같은 배치에 링·막대를 Svg로. 상태 줄 `SAST 15/22 범위, 29/48 전체 | ctx 41% | $18.42`.
 - 터미널 규칙(1.17.4에서 배운 것): 화면 종류는 `e.surface`로 가른다(`$.ui.resolve`가 터미널에도 Svg를 빈 조각으로
   채움). 폭이 모호한 문자(·, ●, █, │, 상자 테두리, ⚠ ⏸ ★, FE0F가 필요한 이모지)와 borderStyle을 쓰지 않는다 —
@@ -99,7 +102,7 @@
   (`query` 전체 행은 검출 수천 건에서 4 MiB 출력 한도를 넘어 잘렸다, 1.18.1). 파이썬은 `python3` → `python` →
   `py -3` 순(Windows Store 바로가기 대응).
 - 이력: 1.17.0 패널 → 1.17.1 요약 카드+탭(A안) → 1.17.3 Windows 파이썬 → 1.17.4 터미널 잘림 → 1.17.5 체커 대안 →
-  1.18.0 E안 → 1.18.1 큰 프로젝트 체커·띠·탭 대비 → 1.18.2 반응형 → 1.19.0 체커 목록 스크롤·건수 막대 → 1.20.0 컨텍스트 구성·범위 안 단계·결론. 자세한 건 `toolkit/docs/VERSIONING.md`.
+  1.18.0 E안 → 1.18.1 큰 프로젝트 체커·띠·탭 대비 → 1.18.2 반응형 → 1.19.0 체커 목록 스크롤·건수 막대 → 1.20.0 컨텍스트 구성·범위 안 단계·결론 → 1.20.1 컨텍스트 막대 통합. 자세한 건 `toolkit/docs/VERSIONING.md`.
 - 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(10건),
   타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로 plugin-authoring 타입 + hooks + types를 묶어 tsc).
 

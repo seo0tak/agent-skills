@@ -126,8 +126,8 @@ test('the tabs switch to tokens and scope', async ($, on) => {
   await ui.press({ key: 'tab-tokens' })
   expect((await ui.find({ type: 'Text', text: /🧠 컨텍스트 41%/ }))?.text).toContain('412.3k / 1.00M')
   expect((await ui.find({ type: 'Text', text: /이번 세션 비용/ }))?.text).toContain('$18.42')
-  expect((await ui.find({ type: 'Text', text: /컨텍스트 구성/ }))?.text).toBeTruthy()
   expect((await ui.find({ type: 'Text', text: /대화 +387\.8k +39%/ }))?.text).toBeTruthy() // 이름은 한글로
+  expect((await ui.find({ type: 'Text', text: /시스템 프롬프트 +3\.1k +<1%/ }))?.text).toBeTruthy() // 1% 미만은 <1%
   expect((await ui.find({ type: 'Text', text: /압축 예비/ }))?.text).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /MCP 도구/ })).toBeUndefined() // 지연 로드 도구는 뺀다
 
