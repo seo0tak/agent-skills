@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.17.0 / skill-architect v0.5.2 / security-assessment v0.11.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.17.1 / skill-architect v0.5.2 / security-assessment v0.11.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23 security-assessment 0.10.0 M3 · 다이어그램 체계)
 
-배포 버전: sast-remediation **v1.17.0**, skill-architect **v0.5.2**, security-assessment **v0.11.0**.
+배포 버전: sast-remediation **v1.17.1**, skill-architect **v0.5.2**, security-assessment **v0.11.0**.
 최신 커밋 `318a4d6`(M3 구현), 전부 push 완료. 작업 트리 깨끗함.
 
 ### security-assessment
@@ -131,6 +131,14 @@
   불러오는 확인과 Codex 설치본이 hooks/를 무시하는지는 아직 보지 않았다** — 설치 시험은 실제
   마켓플레이스 이름으로 하지 말 것(메모리 규칙). mod API는 Claude Code 미리 보기 기능이라 버전에 따라
   바뀔 수 있다.
+- **패널 화면 개편(1.17.1, 설계안 A)**: 사례 조사(공식 문서, ruvnet 가이드, claudemods 목록) 후 시안 셋을 비교해
+  사용자가 A(요약 카드 + 탭)를 골랐다. 요약 카드: 처리 범위 안 완료율 링·완료/대상·전체 완료, 남음·보류·
+  작업 중 칩, 작업 단계 쌓은 막대, 갱신 시각(2분 넘으면 오래됨). 탭(버튼 hotkey 1·2·3, `tab` 상태): 체커,
+  토큰(컨텍스트 게이지 70·85 기준선, 비용, 입력·출력, 캐시 적중, 한도와 초기화 시각), 범위(최소 위험도,
+  위험도별 범위 안·밖·미확인). Svg가 있는 화면은 그래픽, 터미널은 블록 문자. 처리 범위는
+  `data/project-profile.json`의 `processingScope.minRisk`와 `query --summary --scope in-scope`. 읽기 실패 시
+  이전 값 유지 + 토스트. 테스트 4건(두 화면, 탭 전환, 범위 없음, 툴킷 없음). 실제 Claude Code 화면으로는
+  아직 보지 않았다(툴킷이 있는 프로젝트에서 확인 필요). 설계안: claude.ai 아티팩트 "SAST 진행률 패널 설계안".
 - 배포 버전은 sast-remediation **v1.15.0**, skill-architect **v0.4.3**이다.
   1.15.0은 대시보드 "분포 및 추천 작업 보기" 안에 "체커별 진행" 패널과
   `query --summary`의 `byChecker` 집계를 더했다. 완료=workflowStatus `verified`만,

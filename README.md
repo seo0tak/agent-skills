@@ -15,7 +15,7 @@
 
 | 스킬 | 유형 | 버전 |
 |---|---|---|
-| **sast-remediation** | 보안 | 1.17.0 |
+| **sast-remediation** | 보안 | 1.17.1 |
 | **security-assessment** | 보안 | 0.11.0 |
 | **skill-architect** | 메타(스킬 설계 기준) | 0.5.2 |
 

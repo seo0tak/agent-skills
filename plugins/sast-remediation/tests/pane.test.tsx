@@ -5,7 +5,7 @@ const PANE = {
   component: 'Pane',
   requestId: 'sast-progress',
   props: {
-    title: 'SAST 진행률 · 토큰',
+    title: 'SAST 진행률',
     isFocused: false,
     bodyColumns: 60,
     placement: 'dock',
@@ -14,55 +14,97 @@ const PANE = {
   },
 } as const
 
-const SUMMARY = JSON.stringify({
-  total: 4,
-  by: { workflowStatus: { verified: 1, deferred: 1, analyzed: 2 } },
+const ALL = JSON.stringify({
+  total: 48,
+  by: {
+    workflowStatus: { todo: 3, analyzed: 7, 'change-complete': 6, verified: 29, deferred: 3 },
+    risk: { high: 22, medium: 18, low: 6, unknown: 2 },
+  },
   byChecker: {
-    SQLI: { total: 3, verified: 1, deferred: 0, remaining: 2, workflowStatus: {} },
-    XSS: { total: 1, verified: 0, deferred: 1, remaining: 1, workflowStatus: {} },
+    SQL_INJECTION: { total: 12, verified: 5, deferred: 1, remaining: 7 },
+    XSS_REFLECTED: { total: 10, verified: 6, deferred: 0, remaining: 4 },
   },
 })
+const IN_SCOPE = JSON.stringify({
+  total: 22,
+  by: { workflowStatus: { analyzed: 3, 'change-complete': 2, verified: 15, deferred: 1, 'in-progress': 1 } },
+  byChecker: {},
+})
 
-// 엔진을 대신하는 훅. hasToolkit이 거짓이면 프로젝트에 툴킷 복사본이 없는 상태다.
-function engine(on: any, hasToolkit: boolean, seen: { opened: number; status: string[] }) {
+type Seen = { opened: number; status: string[] }
+
+// 엔진을 대신하는 훅. hasToolkit이 거짓이면 프로젝트에 툴킷 복사본이 없는 상태, minRisk가 null이면 처리 범위 미설정.
+function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null) {
   on('command.register', () => ({ value: { command: 'sast-progress' } }))
   on('ui.open', () => { seen.opened += 1; return { value: { isPlaced: true } } })
   on('ui.status', (_: unknown, e: { text?: string }) => { seen.status.push(String(e.text)); return { value: {} } })
+  on('ui.toast', () => ({ value: {} }))
   on('clock.now', () => ({ value: 1_700_000_000_000 }))
   on('session.usage', () => ({
     value: {
       startedAt: 0,
-      context: { tokens: 50_000, window: 200_000, percent: 25 },
-      rateLimits: [{ kind: 'five_hour', percentUsed: 12 }],
-      cost: { usd: 1.5 },
+      context: { tokens: 412_300, window: 1_000_000, percent: 41 },
+      rateLimits: [{ kind: 'five_hour', percentUsed: 37 }],
+      cost: { usd: 18.42 },
     },
   }))
   on('fs.exists', () => ({ value: hasToolkit }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: SUMMARY, stderr: '' } }))
+  on('fs.read', () => ({ value: JSON.stringify({ processingScope: minRisk ? { minRisk } : undefined }) }))
+  on('process.run', (_: unknown, e: { argv: string[] }) =>
+    ({ value: { exitCode: 0, stdout: e.argv.includes('in-scope') ? IN_SCOPE : ALL, stderr: '' } }))
   on('skill.prompt', (_: unknown, e: { text: string }) => ({ text: e.text }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
 }
 
-test('a project with the toolkit opens the pane and shows progress and tokens', async ($, on) => {
-  const seen = { opened: 0, status: [] as string[] }
-  engine(on, true, seen)
+test('the summary card leads with the in-scope completion and both surfaces draw it', async ($, on) => {
+  const seen: Seen = { opened: 0, status: [] }
+  engine(on, seen, true, 'high')
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect(seen.opened).toBe(1)
-  expect(seen.status.at(-1)).toBe('SAST 25% (1/4) · ctx 25% · $1.50')
+  expect(seen.status.at(-1)).toBe('SAST 15/22 범위 · 29/48 전체 │ ctx 41% │ $18.42')
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /완료\(verified\) 1 \/ 전체 4/ }))?.text).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /SQLI/ }))?.text).toContain('1/3')
-    expect((await ui.find({ type: 'Text', text: /컨텍스트 25%/ }))?.text).toContain('50.0k / 200.0k')
-    expect((await ui.find({ type: 'Text', text: /^비용 / }))?.text).toBe('비용 $1.50')
+    expect((await ui.find({ type: 'Text', text: /^15 \/ 22/ }))?.text).toContain('68%')
+    expect((await ui.find({ type: 'Text', text: /처리 범위\(위험도 높음 이상\)/ }))?.text).toContain('전체 29 / 48')
+    expect((await ui.find({ type: 'Text', text: /^보류 1$/ }))?.text).toBe('보류 1')
+    expect((await ui.find({ type: 'Text', text: /^SQL_INJECTION$/ }))?.text).toBe('SQL_INJECTION')
+    expect((await ui.find({ type: 'Text', text: /남음 7 · 5\/12/ }))?.text).toBeTruthy()
     await ui.unmount()
   }
 })
 
+test('the tabs switch to tokens and scope', async ($, on) => {
+  const seen: Seen = { opened: 0, status: [] }
+  engine(on, seen, true, 'high')
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+
+  await ui.press({ key: 'tab-tokens' })
+  expect((await ui.find({ type: 'Text', text: /^컨텍스트 41%/ }))?.text).toContain('412.3k / 1.00M')
+  expect((await ui.find({ type: 'Text', text: /^\$18\.42$/ }))?.text).toBe('$18.42')
+
+  await ui.press({ key: 'tab-scope' })
+  expect((await ui.find({ type: 'Text', text: /^범위 안 22/ }))?.text).toBe('범위 안 22 · 그 밖 26')
+  expect((await ui.find({ type: 'Text', text: /^2건 · 미확인$/ }))?.text).toBeTruthy()
+  await ui.unmount()
+})
+
+test('without a processing scope the card counts everything', async ($, on) => {
+  const seen: Seen = { opened: 0, status: [] }
+  engine(on, seen, true, null)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(seen.status.at(-1)).toBe('SAST 29/48 │ ctx 41% │ $18.42')
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /^29 \/ 48/ }))?.text).toContain('60%')
+  await ui.press({ key: 'tab-scope' })
+  expect((await ui.find({ type: 'Text', text: /처리 범위가 아직 정해지지 않았습니다/ }))?.text).toBeTruthy()
+  await ui.unmount()
+})
+
 test('without the toolkit nothing shows until the skill runs', async ($, on) => {
-  const seen = { opened: 0, status: [] as string[] }
-  engine(on, false, seen)
+  const seen: Seen = { opened: 0, status: [] }
+  engine(on, seen, false, null)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect(seen.opened).toBe(0)
   expect(seen.status).toEqual([])
@@ -72,7 +114,7 @@ test('without the toolkit nothing shows until the skill runs', async ($, on) => 
 
   await $.skill.prompt({ skill: 'sast-remediation:sast-remediation', text: '' })
   expect(seen.opened).toBe(1)
-  expect(seen.status.at(-1)).toBe('SAST 준비 전 · ctx 25% · $1.50')
+  expect(seen.status.at(-1)).toBe('SAST 준비 전 │ ctx 41% │ $18.42')
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /sast-remediation-toolkit/ }))?.text).toBeTruthy()
   await ui.unmount()
