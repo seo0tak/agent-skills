@@ -251,6 +251,11 @@ function barSvg(parts: { value: number; hex: string }[], total: number, height =
 const TERM_SEP = ', '
 const GRAPHIC_SEP = ' · '
 
+// 터미널 칸 수: 한글 음절은 두 칸, 그 밖(ASCII)은 한 칸
+function cellWidth(text: string) {
+  return [...text].reduce((sum, ch) => sum + (/[\uac00-\ud7a3]/.test(ch) ? 2 : 1), 0)
+}
+
 function cellsOf(pct: number, width: number) {
   const filled = Math.round((Math.min(100, Math.max(0, pct)) / 100) * width)
   return { filled, empty: Math.max(0, width - filled) }
@@ -380,6 +385,17 @@ export const register: Register = on => {
       })
       return <Text>{segments}{used < barWidth ? <Text backgroundColor="inactive">{' '.repeat(barWidth - used)}</Text> : ''}</Text>
     }
+    // 양 막대: 길이가 건수(가장 큰 값 대비), 그 안의 초록이 검증 완료. 나머지 칸은 비워 둔다(회색 덩어리 방지).
+    const volumeBar = (done: number, total: number, max: number, width: number, theme = 'suggestion') => {
+      const length = max > 0 && total > 0 ? Math.max(1, Math.round((total / max) * width)) : 0
+      const green = total > 0 ? Math.round((done / total) * length) : 0
+      return (
+        <Text>
+          <Text backgroundColor="success">{' '.repeat(green)}</Text><Text backgroundColor={theme}>{' '.repeat(length - green)}</Text>
+          {' '.repeat(Math.max(0, width - length))}
+        </Text>
+      )
+    }
     const cellBar = (pct: number, theme: string, width: number) => {
       const c = cellsOf(pct, width)
       return <Text><Text backgroundColor={theme}>{' '.repeat(c.filled)}</Text><Text backgroundColor="inactive">{' '.repeat(c.empty)}</Text></Text>
@@ -474,7 +490,7 @@ export const register: Register = on => {
     // ---- 체커: 남은 건수 신호등 + 진행 막대 ----
     const checkersTab = (() => {
       if (p.kind !== 'ok') return <Text dimColor>{ICON.empty} 검출이 등록되면 체커별 진행이 보입니다.</Text>
-      const fits = Svg ? Math.max(3, Math.floor((rows - 14) / 2)) : Math.max(3, rows - 12)
+      const fits = Svg ? Math.max(3, Math.floor((rows - 14) / 2)) : Math.max(3, rows - 13)
       // 넘치면 한 줄을 위치 안내에 쓴다
       const room = p.checkers.length > fits ? Math.max(3, fits - 1) : fits
       listWindow = { room, count: p.checkers.length }
@@ -505,11 +521,16 @@ export const register: Register = on => {
       const nameWidth = Math.min(longest, narrow ? 14 : wide ? 44 : 26, Math.max(8, columns - 3 - tailWidth - 2))
       const miniWidth = narrow ? 0 : Math.min(40, columns - 3 - nameWidth - 1 - tailWidth - 1)
       const name = (code: string) => code.length > nameWidth ? `${code.slice(0, nameWidth - 1)}~` : code.padEnd(nameWidth)
+      const maxTotal = Math.max(...p.checkers.map(c => c.total))
+      const barHint = ['건수(초록 = 검증 완료)', '건수'].find(hint => cellWidth(hint) <= miniWidth) ?? ''
       return (
         <Box flexDirection="column">
+          <Text dimColor wrap="truncate">
+            {'   '}{'체커'}{' '.repeat(nameWidth - cellWidth('체커'))}{miniWidth >= 6 ? ` ${barHint}${' '.repeat(miniWidth - cellWidth(barHint))}` : ''}{'  '}남음
+          </Text>
           {shown.map(c => (
             <Text key={c.code} wrap="truncate">
-              {signal(c.remaining)} {name(c.code)}{miniWidth >= 6 ? <Text> {cellBar(percent(c.verified, c.total), 'success', miniWidth)}</Text> : ''}
+              {signal(c.remaining)} {name(c.code)}{miniWidth >= 6 ? <Text> {volumeBar(c.verified, c.total, maxTotal, miniWidth)}</Text> : ''}
               {'  '}<Text color={heat(c.remaining)} bold>남음 {String(c.remaining).padStart(remWidth)}</Text>
               {!narrow && <Text dimColor>  {`${c.verified}/${c.total}`.padStart(fracWidth)}</Text>}
             </Text>
@@ -538,9 +559,13 @@ export const register: Register = on => {
           </Box>
           <Box flexDirection="column">
             {labelValue(`${ICON.cost} 이번 세션 비용`, u.costUsd === undefined ? '-' : `$${u.costUsd.toFixed(2)}`, false, 'cost')}
-            {labelValue(`${ICON.io} 입력, 출력`, `${compact(t.input)}, ${compact(t.output)}`, false, 'io')}
-            {labelValue(`${ICON.cache} 캐시 적중`, hit === undefined ? '-' : `${hit}% (읽기 ${compact(t.cacheRead)})`, false, 'cache')}
-            {labelValue(`${ICON.requests} 모델 요청`, `${t.requests}회`, false, 'requests')}
+            {t.requests === 0
+              ? <Text dimColor wrap="wrap">{ICON.requests} 패널이 켜진 뒤 이 세션의 모델 요청이 아직 없습니다. 다음 응답부터 입력, 출력, 캐시를 셉니다.</Text>
+              : <>
+                {labelValue(`${ICON.io} 입력, 출력`, `${compact(t.input)}, ${compact(t.output)}`, false, 'io')}
+                {labelValue(`${ICON.cache} 캐시 적중`, hit === undefined ? '-' : `${hit}% (읽기 ${compact(t.cacheRead)})`, false, 'cache')}
+                {labelValue(`${ICON.requests} 모델 요청`, `${t.requests}회`, false, 'requests')}
+              </>}
           </Box>
           {u.rateLimits.length > 0 && (
             <Box flexDirection="column" gap={1}>
@@ -571,11 +596,38 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column" gap={1}>
           <Text>{ICON.scope} 기준: 위험도 <Text bold>{RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk}</Text> 이상</Text>
-          <Text tabular>{ICON.all} 범위 안 {p.scope.total}{sep}그 밖 {outside}</Text>
           <Box flexDirection="column">
-            {levels.map(level => labelValue(`${where(level) === '범위 안' ? ICON.scope : '  '} ${RISK_LABEL[level] ?? level}`,
-              `${p.risk[level]}건${sep}${where(level)}`, where(level) !== '범위 안', `risk-${level}`))}
+            <Text tabular>{ICON.all} 범위 안 {p.scope.total}{sep}그 밖 {outside}</Text>
+            {pctBar(percent(p.scope.total, p.all.total), BLUE, 'suggestion', `범위 안 ${percent(p.scope.total, p.all.total)}%`)}
           </Box>
+          {Svg
+            ? (
+              <Box flexDirection="column">
+                {levels.map(level => labelValue(`${where(level) === '범위 안' ? ICON.scope : '  '} ${RISK_LABEL[level] ?? level}`,
+                  `${p.risk[level]}건${sep}${where(level)}`, where(level) !== '범위 안', `risk-${level}`))}
+              </Box>
+            )
+            : (() => {
+              // 위험도별 건수 막대: 범위 안은 띠 색, 밖은 회색. 이름은 화면 폭(한글 두 칸)으로 맞춘다.
+              const max = Math.max(...levels.map(level => p.risk[level] ?? 0))
+              const labelWidth = Math.max(...levels.map(level => cellWidth(RISK_LABEL[level] ?? level)))
+              const riskBar = narrow ? 0 : Math.max(6, Math.min(30, columns - labelWidth - 26))
+              return (
+                <Box flexDirection="column">
+                  {levels.map(level => {
+                    const label = RISK_LABEL[level] ?? level
+                    const inside = where(level) === '범위 안'
+                    return (
+                      <Text key={`risk-${level}`} wrap="truncate">
+                        {inside ? ICON.scope : '  '} {label}{' '.repeat(labelWidth - cellWidth(label))}
+                        {riskBar > 0 ? <Text> {volumeBar(0, p.risk[level] ?? 0, max, riskBar, inside ? 'suggestion' : 'inactive')}</Text> : ''}
+                        {'  '}<Text bold={inside} dimColor={!inside}>{p.risk[level]}건{sep}{where(level)}</Text>
+                      </Text>
+                    )
+                  })}
+                </Box>
+              )
+            })()}
           <Text dimColor wrap="wrap">범위 밖과 미확인 항목도 입력과 기록은 그대로 보존됩니다. 범위 안 완료를 전체 완료로 보지 않습니다.</Text>
         </Box>
       )

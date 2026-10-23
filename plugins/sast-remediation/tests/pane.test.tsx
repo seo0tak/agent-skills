@@ -237,14 +237,14 @@ test('a long checker list scrolls under a pinned header', async ($, on) => {
   const seen: Seen = { opened: 0, status: [], argv0: [] }
   engine(on, seen, true, 'high', false, false, false, true)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  // 높이 18줄: 체커 6줄 자리 중 한 줄은 위치 안내라 5개씩 보인다
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, scroll: { offset: 0, bodyRows: 18 } } })
+  // 높이 19줄: 열 제목 한 줄을 뺀 체커 6줄 자리 중 한 줄은 위치 안내라 5개씩 보인다
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, scroll: { offset: 0, bodyRows: 19 } } })
   const position = async () => (await ui.find({ type: 'Text', text: /개 체커, 휠이나 방향키로 스크롤/ }))?.text ?? ''
   expect(await position()).toMatch(/^1-5 \/ 10개 체커/)
   expect(await ui.find({ type: 'Text', text: /CHECKER_06/ })).toBeUndefined()
 
   const scroll = (by: number) => $.ui.scroll({ component: 'Pane', requestId: 'sast-progress', offset: 0, by,
-    bodyRows: 18, contentRows: 18, origin: { kind: 'person' } } as any)
+    bodyRows: 19, contentRows: 19, origin: { kind: 'person' } } as any)
   await scroll(1) // 휠 한 칸
   await ui.redraw()
   expect(await position()).toMatch(/^2-6 \/ 10개 체커.*Home 맨 위/)
@@ -254,7 +254,7 @@ test('a long checker list scrolls under a pinned header', async ($, on) => {
   await scroll(30) // 끝을 넘으면 마지막에 멈춘다(End)
   await ui.redraw()
   expect(await position()).toMatch(/^6-10 \/ 10개 체커/)
-  await scroll(-18) // Home
+  await scroll(-19) // Home
   await ui.redraw()
   expect(await position()).toMatch(/^1-5 \/ 10개 체커/)
 
