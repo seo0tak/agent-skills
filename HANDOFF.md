@@ -127,7 +127,13 @@
   이음으로 나눴다(GitHub·USAGE.html에서 옆 스크롤 방지, 붙여 넣어 그대로 실행됨). USAGE.html은 좁은 화면에서
   요청문 예시가 접히도록 `pre`에 `pre-wrap`. USAGE.html·대시보드 1280·400px 가로 넘침 0. 앞으로 Mermaid를
   고치면 같은 줄 수 검사를 돌린다.
-- 다음: M5(방법론 체크리스트). 인증 웹 스캔·네트워크 스캔은 별도 설계.
+- **M5 착수 전 설계 점검 완료(ADR 0005, 모두 권장안)**: 체크리스트는 점검 기록 장부(시험 절차·실행 단계를
+  담지 않음, 스킬의 "안 하는 것"과 같은 선). 항목은 기준 파일(ID·제목·표준 링크·필요 침습도·대상 종류)에서
+  사용자가 고름, 예시는 일부 항목만. 상태 out-of-scope·not-checked·checked·issue-found·not-applicable,
+  확정은 사용자(decidedBy)와 근거. 어댑터 항목 매핑 + 커버리지로 "스캔으로 점검됨" 제안만. 필요 침습도가
+  스코프 상한을 넘거나 대상이 없으면 범위 밖. 표지에 기준별 진행, 워크북에 항목 근거. CONTEXT.md에
+  Checklist item.
+- 다음: M5 구현. 인증 웹 스캔·네트워크 스캔은 별도 설계.
 - **진행률 패널을 플러그인에 포함(sast-remediation 1.17.0)**: `plugins/sast-remediation/hooks/register.tsx`
   (+ `hooks/hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`, plugin.json `types`). Claude Code 전용
   mod, `skills/` 정본이 아니라 플러그인 쪽(agents/와 같은 위치)이 원본. 열리는 조건: 프로젝트에
