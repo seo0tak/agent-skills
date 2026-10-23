@@ -4,44 +4,65 @@
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-10-23 security-assessment 0.12.0 M5 · 패널 개편 · 시인성 재점검)
+## 최신 작업 기준 (2026-10-23)
 
 배포 버전: sast-remediation **v1.17.3**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
-최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료.
+최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`ef6b721`).
 
-### security-assessment
+### 남은 일
 
-- 보안 취약점을 직접 *검사*하는 인가 기반 오케스트레이터. 설계 정본: 저장소 루트
-  `CONTEXT.md`, `docs/adr/0001`(확인/조치 경계)·`0002`(침습도 세 겹), 계획·설계
-  `docs/superpowers/plans|specs/2026-10-14-security-assessment*`. M0~M1 설계는 grill-with-docs로 확정.
-- 완료한 조각: M0 인가 게이트(0.1.0) → M1a 어댑터 선언+침습도 세 겹 판정(0.2.0) →
-  M1b 어댑터 실행+SARIF 수집+지문/CWE 묶음(0.3.0) → 카테고리→대상 매핑(0.3.1) →
-  M1c JSON→SARIF 정규화기(OSV, 0.4.0) → M2a 판정 레코드(0.5.0) → M2b SARIF 다리(0.6.0)
-  → M2c 증적 CSV+표지 MD(0.7.0) → 기준 점검 결함 1~4 수정(0.8.0, `0c9efaf`) → 점검 개선 5
-  (0.9.0, `35b0326`).
-- 핵심 성질: 인가 게이트는 선언 범위 밖 실수를 막고 인가 주장을 기록하지만 동의 진위는
-  검증 못 함(악의적 사용자 못 막음, SKILL.md 명시). 어댑터는 침습도 세 겹으로 실행 판정
-  (ADR 0002), 카테고리에 맞는 대상에만. 수집·묶음·정규화는 순수 함수라 도구 없이 테스트
-  (assess 78건), 실제 스캔·들여오기·다리·증적은 저장소 밖 임시 사본에서 확인.
-- 데이터 흐름: `data/scope.json`(인가) → `scan`(직접 실행) 또는 `ingest`(운영자 출력) →
-  `data/scans/<어댑터>.json`(어댑터별 결과) → `data/findings.json`(합침, 지문+CWE 묶음, 제외 자산
-  뺌) → `data/dispositions.json`(판정·확인 단계·주체, 키 `fingerprint:cwe`) → `bridge` →
-  `data/handoff.sarif`(confirmed 코드 결함만) / `evidence` → `evidence/findings.csv`+`cover.md`
-  (생성물, 드리프트는 validate 에러). `new-round`가 지난 차수를 `data/rounds/round-NNN.json`으로
-  닫고, 해소는 같은 어댑터가 다시 돌았을 때만 인정한다.
-- 판정 주체 `decidedBy`(user|ai), 사용자 결정 "닫는 판정만 사용자": false-positive·out-of-scope를
-  reviewed로 확정하는 것은 user만(ai면 validate 에러, AI는 in-review로 제안), confirmed·suspected·
-  needs-review는 AI도 확정 가능, reviewed인데 주체 없으면 경고. 증적 CSV `decidedBy` 열, 표지·
-  `dispositions`에 확정한 주체별 건수(`reviewedBy`). 판정 절차는 `prompts/01-triage.md`.
-- `ingest --adapter --file [--target]`: 게이트 READY 필요, forbidden 어댑터 거부, 같은 어댑터·대상
-  결과만 교체, 파일 이름·SHA-256 기록, 출처에 `target`·`collectedBy`(skill|operator). `scan`의
-  operator 안내가 들여오기 명령까지 출력한다.
-- skill-architect 기준 점검(0.7.1 대상, 11개 범주 중 적용 1 / 부분 10)의 결함 1~4와 개선 5를 모두
-  반영했다. 1~4: scan이 기존 검출을 지움(어댑터별 저장), 제외 자산 미적용, 차수 없음으로 해소가
-  validate 에러, SKILL.md 경로 모순.
-- 증적은 표준 라이브러리 원칙상 xlsx가 아닌 CSV·Markdown(사용자 선택).
+- security-assessment 계획(M0~M5)은 끝났다. 남은 것:
+  - 인증이 필요한 웹 스캔, 네트워크·호스트 스캔: 자격증명·트래픽·침습성 규칙을 따로 설계해야 한다.
+  - 실제 스캐너 출력 검증: nuclei·ZAP·Prowler·Checkov의 예시 출력은 형식에 맞춘 표본이다. 출력 구조와
+    파일 이름(`output_file`)을 실제 버전으로 확인해야 한다. 실제 대상에 요청을 보내는 확인은 사용자가
+    인가한 대상·계정에서만 한다.
+- sast-remediation 진행률 패널: 실제 Claude Code 화면(툴킷이 있는 프로젝트, Windows 포함)으로 아직 보지
+  않았다. 설치본으로 불러오는 확인과 Codex 설치본이 `hooks/`를 무시하는지도 아직이다 — 설치 시험은
+  실제 마켓플레이스 이름(0tak)으로 하지 말 것(메모리 규칙).
+
+### security-assessment (v0.12.0, M0~M5 완료)
+
+- 인가 기반 오케스트레이터. 기성 스캐너를 조율하고 검출을 묶어 판정·증적을 만들며, 공격 코드·페이로드·
+  시험 절차를 만들지 않는다. 인가 게이트는 선언 범위 밖 실수를 막고 인가 주장을 기록하지만 동의 진위는
+  검증하지 못한다(SKILL.md 명시). 설계 정본: `CONTEXT.md`, `docs/adr/0001~0005`, 계획
+  `docs/superpowers/plans/2026-10-14-security-assessment.md`.
+- 단계: M0 게이트(0.1.0) → M1 어댑터·수집·묶음·정규화(0.2~0.4) → M2 판정·SARIF 다리·증적(0.5~0.7) →
+  기준 점검 결함 1~4(0.8.0) → 개선 5: 판정 주체·판정 프롬프트·`ingest`(0.9.0) → M3 웹(0.10.0) →
+  M4 IaC·클라우드(0.11.0) → M5 방법론 체크리스트(0.12.0). 각 단계 앞에 설계 점검을 하고 결정은 모두
+  사용자가 고른 권장안이다.
+- 데이터 흐름: `data/scope.json`(인가) → `scan`(직접) 또는 `ingest`(운영자 출력) → `data/scans/<어댑터>.json`
+  → `data/findings.json`(묶음, 제외 자산 뺌) → `data/dispositions.json`(판정·확인 단계·주체) → `bridge` →
+  `data/handoff.sarif`(confirmed 코드 결함만) / `evidence` → `evidence/findings.csv`·`cover.md`·
+  `checklist.csv`(생성물, 드리프트는 validate 에러). `new-round`가 차수를 닫고, 해소는 같은 어댑터 재실행
+  (웹·클라우드는 커버리지까지)으로만 인정한다.
+- 판정 주체(ADR 없음, 0.9.0): false-positive·out-of-scope를 reviewed로 확정하는 것은 user만.
+- M3 웹(ADR 0003): 어댑터 `scope_control`·`rate_limit`·`coverage`·`max_seconds`, 스코프 웹 대상 `rateLimit`,
+  `scan --direct`는 계획과 확인 코드만 내고 `--confirm <코드>`일 때 실행, 넘길 수 없는 제외 자산이 걸린 대상은
+  실행·들여오기 거부, URL 지문(메서드·정규화 경로·파라미터 이름), ZAP 정규화기, 컨테이너 출력 자리표시.
+- M4 인프라(ADR 0004): infra 대상 `aws:<계정>` + `regions` + `credential`(프로파일 이름·읽기 전용 확인, 비밀값
+  거부), `cloud` 카테고리와 `cloud_args`, 출력이 다른 계정·허용 밖 리전을 읽었으면 버리거나 거부, Prowler
+  정규화기, iac·cloud는 CWE가 없으면 통제 항목·점검 ID로 묶음, 기준별 통과·실패·수동(제외 자산 뺌) →
+  표지 「기준 대조」, 클라우드 설정 결함은 넘기지 않음.
+- M5 체크리스트(ADR 0005): 점검 기록 장부. 기준 파일 `checklists/<이름>.json`(시험 단계 필드 거부),
+  `data/checklist.json` 상태·근거, 범위 밖은 계산, 확정은 user + reason(issue-found는 evidence), 어댑터
+  `checklist_items`로 스캔 제안만, 표지 표와 `evidence/checklist.csv`.
+- 프롬프트: `00-authorize`, `01-triage`, `02-web-scan`, `03-cloud-scan`, `04-checklist`.
 - 툴킷 원본 상태에서 `validate`는 빈 템플릿 `scope.json` 때문에 에러 7건이 정상이다.
-- 0.8.0 이하 프로젝트 복사본은 업그레이드 뒤 `evidence`를 다시 실행해야 한다(CSV 열 추가).
+- 업그레이드 주의는 `toolkit/docs/VERSIONING.md`(0.9.0 증적 열 추가, 0.11.0 iac 묶음 키 변경 등).
+
+### sast-remediation 진행률 패널 (v1.17.x, Claude Code 전용)
+
+- 위치: `plugins/sast-remediation/hooks/register.tsx`(+ `hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`).
+  `skills/` 정본이 아니라 플러그인 쪽이 원본(agents/와 같은 위치). mod API는 Claude Code 미리 보기 기능.
+- 열리는 조건: 프로젝트에 `sast-remediation-toolkit/`이 있으면 세션 시작 시, 없으면 이 스킬이 실행될 때
+  (`skill.prompt`). 그 전에는 패널·상태 줄 모두 없음. `/sast-progress`로 즉시 열기·새로 고침.
+- 화면(설계안 A, 사례 조사 후 사용자 선택): 요약 카드(처리 범위 안 완료율 링·완료/대상·전체, 남음·보류·작업
+  중 칩, 작업 단계 막대, 갱신 시각과 오래됨) + 탭 1 체커 · 2 토큰 · 3 범위. Svg가 있는 화면은 그래픽,
+  터미널은 블록 문자. 상태 줄 `SAST 15/22 범위 · 29/48 전체 │ ctx 41% │ $18.42`.
+- 데이터: `query --summary`(처리 범위가 있으면 `--scope in-scope`도)를 읽기만 한다. 파이썬은 `python3` →
+  `python` → `py -3` 순으로 찾는다(Windows Store 바로가기 대응, 1.17.3).
+- 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(5건),
+  타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로).
 
 ### 문서와 다이어그램 체계
 
@@ -78,94 +99,12 @@
 - PlantUML 메시지의 `--a ... --b`는 취소선이 된다. 옵션은 `~--`로 이스케이프한다.
 - 마지막 점검(`3a80baa` push 후): 마크다운 93개 파일의 링크·이미지 48개 깨짐 없음, Mermaid 3개
   렌더 오류 없음, GitHub에서 그림 6개 로드 확인(넓은 화면 시인성은 로컬 1000px 렌더로 확인).
+- 시인성 재점검(1.17.2·0.11.1·0.5.3): Mermaid 자동 줄바꿈이 단어 중간을 끊던 라벨을 `<br/>`로 나눴다.
+  검사는 렌더 후 라벨별 줄 수가 `<br/>` 수+1을 넘는지 센다. 코드 블록 안 100칸 넘는 명령은 `\` 줄 이음으로
+  나눴고, USAGE.html `pre`는 좁은 화면에서 접힌다. 규칙은 CLAUDE.md 문서 규칙에 있다.
 
-### 다음
+## 이전 작업 기준 (2026-10-14 체커별 진행)
 
-- **M3 착수 전 설계 점검 완료(ADR 0003)**. 발견: 제외 자산이 결과 필터뿐이라 웹 스캐너 요청은
-  막지 못함, 크롤러가 대상 밖으로 나감, URL 검출 지문 불안정, 기간·속도 상한 없음, 재점검 해소
-  신뢰도, 정규화기(ZAP JSON), 컨테이너 출력 경로. 사용자 결정(모두 권장안): 어댑터 범위 제어
-  선언이 있을 때만 실행(없으면 제외 자산이 걸린 대상에서 실행·들여오기 거부, 결과 필터는 유지),
-  웹 직접 실행은 실행 직전 확인 + 기간 내 시간 상한, 비인증만(인증은 운영자 + ingest), URL 지문은
-  메서드·호스트·정규화 경로·파라미터 이름. CONTEXT.md에 Scope control 용어.
-- M3 남은 결정 3개도 확정(모두 권장안, ADR 0003에 추가): 요청 상한은 스코프 웹 대상의 초당 상한
-  (의미 필드, 미기재 시 보수적 기본값)·어댑터가 스캐너 옵션으로 넘기는 방법 선언(없으면 직접 실행
-  안 함), 웹 해소는 같은 어댑터·대상 재실행 + 스캐너 커버리지(방문 URL)에 정규화 경로가 있을 때만
-  (없으면 재확인 안 됨), 컨테이너는 명령 템플릿 `{output_dir}`·`{output_name}` 자리표시. CONTEXT.md에
-  Coverage 용어.
-- **M3 구현 완료(0.10.0)**: 웹 어댑터 선언 `scope_control`(stays_on_target·exclude_host·exclude_url)·
-  `rate_limit`·`coverage`(none|fixed-probes|url-list)·`max_seconds`, 스코프 웹 대상 `rateLimit`(있을 때만
-  인가 지문에 들어가 기존 승인 유지), `scan --direct`는 웹 실행 계획·확인 코드만 출력하고
-  `--confirm <코드>`가 맞을 때만 실행(계획 JSON 해시), 시간 상한 = min(max_seconds, 기간 끝까지),
-  넘길 수 없는 제외 자산이 걸린 대상은 실행·`ingest` 모두 거부, URL 지문(메서드·정규화 경로·파라미터
-  이름, `location.web`), 커버리지 기반 웹 해소, `ingest --coverage`, ZAP JSON 정규화기, `{output_dir}`·
-  `{output_name}`, 프롬프트 `02-web-scan.md`, 예시 어댑터 nuclei(컨테이너)·zap-baseline. assess 92건.
-  가짜 스캐너로 CLI 왕복 확인(계획 → 코드 → 실행 → 검출·지문·validate). **실제 nuclei·ZAP 출력 구조로는
-  아직 검증하지 않았다** — 예시 SARIF/JSON은 형식에 맞춘 표본이다. 실제 대상에 요청을 보내는 확인은
-  사용자가 인가한 대상에서만.
-- **M4 착수 전 설계 점검 완료(ADR 0004, 모두 권장안)**: 범위는 IaC + 클라우드 설정(읽기 전용),
-  네트워크·호스트 스캔 제외. 대상 `aws:<계정>` + 리전 + 자격증명 참조(프로파일·역할 이름과 읽기 전용
-  확인만, 비밀값 저장 안 함, 스킬은 권한 검증 불가 명시). 계정·리전 제외는 스캐너(못 넘기면 거부),
-  리소스 제외는 결과 필터. 지문 = 리소스 식별자, 묶음 = 스캐너 출력의 통제 항목(CIS 등, 매핑표 없음,
-  없으면 점검 ID). 기준별 통과·실패·수동 건수를 실행 기록·표지에(통과는 검출로 만들지 않음). 클라우드
-  해소 = 같은 계정·리전·점검 항목 재확인. confirmed IaC는 넘기고 클라우드 설정 결함은 증적에만.
-  CONTEXT.md에 Control·Credential reference. 저장소 IaC 점검(Checkov SARIF → repo)은 지금도 동작한다.
-- **M4 구현 완료(0.11.0)**: infra 대상 검증(`aws:<계정>`, regions, credential{profile, readOnlyConfirmed:true,
-  비밀값 필드 거부}) 및 인가 지문 포함(있을 때만), `cloud` 카테고리 → infra, 어댑터 `cloud_args`
-  (profile·regions(`{regions}` 토큰은 여러 인자로)·exclude_resource), 리전 인자 없으면 거부, 프로파일 인자
-  없으면 operator, 허용 리전 = 선언 − 제외 리전(`aws:<계정>:<리전>`), 계정 제외(`aws:<계정>`)면 건너뜀,
-  출력에 다른 계정·허용 밖 리전이 있으면 scan은 버리고 ingest는 거부(`cloud_scope_violation`). Prowler
-  정규화기(`prowler-ocsf`, FAIL만 결과, 통제 결과·점검 범위는 run.properties), 통제 건수는 제외 자산을
-  뺀 뒤 집계(`summarize_controls`) → scans `controls` → 표지 「5. 기준 대조」. 묶음 키는 iac·cloud에서 CWE가
-  없을 때만 `group`(통제 항목 또는 `check:<ID>`) — 소스·웹 키는 그대로. 클라우드 커버리지(리전·점검
-  항목) 해소, 클라우드 검출은 is_code_level 거짓(넘기지 않음), 어댑터 `output_file`. 프롬프트
-  `03-cloud-scan.md`, 예시 checkov·prowler·prowler 표본. assess 103건, 가짜 Prowler로 CLI 왕복 확인.
-  **실제 Prowler·Checkov 출력으로는 아직 검증하지 않았다**(표본 형식 기준, 출력 파일 이름도 버전에 따라 다름).
-- **시인성 재점검(sast 1.17.2 · security-assessment 0.11.1 · skill-architect 0.5.3, 문서·스타일만)**:
-  Mermaid가 라벨을 자동으로 접으며 단어 중간에서 끊던 곳("넘길 수 없\n음", "sast-\nremediation", "적용\n→ 검증" 등)을
-  명시적 `<br/>`로 고쳤다. 확인은 렌더 후 라벨별 줄 수가 `<br/>` 수+1을 넘는지 세는 검사로 했고(옛 판에서
-  세 곳을 잡아 검사가 유효함을 확인), 고친 뒤 0건. 코드 블록 안 100칸 넘는 명령 19줄을 옵션 경계에서 `\` 줄
-  이음으로 나눴다(GitHub·USAGE.html에서 옆 스크롤 방지, 붙여 넣어 그대로 실행됨). USAGE.html은 좁은 화면에서
-  요청문 예시가 접히도록 `pre`에 `pre-wrap`. USAGE.html·대시보드 1280·400px 가로 넘침 0. 앞으로 Mermaid를
-  고치면 같은 줄 수 검사를 돌린다.
-- **M5 착수 전 설계 점검 완료(ADR 0005, 모두 권장안)**: 체크리스트는 점검 기록 장부(시험 절차·실행 단계를
-  담지 않음, 스킬의 "안 하는 것"과 같은 선). 항목은 기준 파일(ID·제목·표준 링크·필요 침습도·대상 종류)에서
-  사용자가 고름, 예시는 일부 항목만. 상태 out-of-scope·not-checked·checked·issue-found·not-applicable,
-  확정은 사용자(decidedBy)와 근거. 어댑터 항목 매핑 + 커버리지로 "스캔으로 점검됨" 제안만. 필요 침습도가
-  스코프 상한을 넘거나 대상이 없으면 범위 밖. 표지에 기준별 진행, 워크북에 항목 근거. CONTEXT.md에
-  Checklist item.
-- **패널 Windows 수정(sast 1.17.3)**: 사용자가 Windows에서 패널을 띄웠더니 "Python was not found…App execution
-  aliases"로 진행률을 못 읽었다. `python3`가 Store 바로가기(종료 9009)였기 때문. 패널이 `python3` → `python` →
-  `py -3` 순으로 찾고 찾은 것을 기억한다(실행 불가·9009·Windows 문구만 다음 후보로, 툴킷 자체 오류는 그대로
-  표시). 테스트 5건(Windows 대체 경로 포함). 두 스킬 SKILL.md에 "`python3`가 없으면 `py -3`·`python`" 한 줄
-  (security-assessment 0.11.2). 툴킷 문서의 다른 명령 예시는 여전히 `python3` 표기.
-- **M5 구현 완료(0.12.0)**: 방법론 체크리스트 = 점검 기록 장부. 기준 파일 `checklists/<이름>.json`(항목 ID·제목·
-  링크·필요 침습도·대상 종류, `steps`·`procedure`·`payload(s)` 필드는 validate 에러), 기록 `data/checklist.json`
-  (상태 not-checked·checked·issue-found·not-applicable, 범위 밖은 계산), 확정 상태는 decidedBy user + reason,
-  issue-found는 evidence 필수, 범위 밖 항목에 결과를 적으면 에러. 어댑터 `checklist_items` 매핑 + 이번 차수 실행
-  결과 → `suggestedBy` 제안만. `checklist` 명령(JSON), 표지 「방법론 체크리스트」 표, `evidence/checklist.csv`와
-  드리프트 검사. 예시 기준 파일 `examples/checklists/wstg-sample.json`(WSTG 일부 항목, ID·제목·링크만, 링크는
-  WSTG 프로젝트 페이지), `examples/checklist.json`, zap-baseline에 CONF-07·SESS-02 매핑. 프롬프트
-  `04-checklist.md`, 스키마 2개, 업그레이드 시 `checklists/` 보존. assess 108건, CLI 왕복 확인.
-- 다음: 계획한 M0~M5는 끝. 남은 것은 인증 웹 스캔·네트워크 스캔(별도 설계), 실제 스캐너(nuclei·ZAP·
-  Prowler·Checkov) 출력으로의 검증, 패널 실제 화면 확인.
-- **진행률 패널을 플러그인에 포함(sast-remediation 1.17.0)**: `plugins/sast-remediation/hooks/register.tsx`
-  (+ `hooks/hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`, plugin.json `types`). Claude Code 전용
-  mod, `skills/` 정본이 아니라 플러그인 쪽(agents/와 같은 위치)이 원본. 열리는 조건: 프로젝트에
-  `sast-remediation-toolkit/`이 있으면 세션 시작 시, 없으면 `skill.prompt` 이벤트로 이 스킬이 실행될 때
-  (`/(^|:)sast-remediation$/`). 그 전에는 패널·상태 줄 모두 없음(`active` 상태). `/sast-progress`로 수동
-  열기·새로 고침. 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test
-  plugins/sast-remediation`(2건), tsc. 세션 개인 mod 사본은 지웠다(중복 표시 방지). **실제 설치본으로
-  불러오는 확인과 Codex 설치본이 hooks/를 무시하는지는 아직 보지 않았다** — 설치 시험은 실제
-  마켓플레이스 이름으로 하지 말 것(메모리 규칙). mod API는 Claude Code 미리 보기 기능이라 버전에 따라
-  바뀔 수 있다.
-- **패널 화면 개편(1.17.1, 설계안 A)**: 사례 조사(공식 문서, ruvnet 가이드, claudemods 목록) 후 시안 셋을 비교해
-  사용자가 A(요약 카드 + 탭)를 골랐다. 요약 카드: 처리 범위 안 완료율 링·완료/대상·전체 완료, 남음·보류·
-  작업 중 칩, 작업 단계 쌓은 막대, 갱신 시각(2분 넘으면 오래됨). 탭(버튼 hotkey 1·2·3, `tab` 상태): 체커,
-  토큰(컨텍스트 게이지 70·85 기준선, 비용, 입력·출력, 캐시 적중, 한도와 초기화 시각), 범위(최소 위험도,
-  위험도별 범위 안·밖·미확인). Svg가 있는 화면은 그래픽, 터미널은 블록 문자. 처리 범위는
-  `data/project-profile.json`의 `processingScope.minRisk`와 `query --summary --scope in-scope`. 읽기 실패 시
-  이전 값 유지 + 토스트. 테스트 4건(두 화면, 탭 전환, 범위 없음, 툴킷 없음). 실제 Claude Code 화면으로는
-  아직 보지 않았다(툴킷이 있는 프로젝트에서 확인 필요). 설계안: claude.ai 아티팩트 "SAST 진행률 패널 설계안".
 - 배포 버전은 sast-remediation **v1.15.0**, skill-architect **v0.4.3**이다.
   1.15.0은 대시보드 "분포 및 추천 작업 보기" 안에 "체커별 진행" 패널과
   `query --summary`의 `byChecker` 집계를 더했다. 완료=workflowStatus `verified`만,
