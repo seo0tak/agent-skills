@@ -23,6 +23,7 @@ const ALL = JSON.stringify({
   byChecker: {
     SQL_INJECTION: { total: 12, verified: 5, deferred: 1, remaining: 7 },
     XSS_REFLECTED: { total: 10, verified: 6, deferred: 0, remaining: 4 },
+    'FORBIDDEN.LOCAL_STORAGE_ACCESS': { total: 3, verified: 0, deferred: 0, remaining: 3 },
   },
 })
 const IN_SCOPE = JSON.stringify({
@@ -200,4 +201,25 @@ test('an empty checker list says so instead of drawing nothing', async ($, on) =
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: /체커별 집계를 읽지 못했습니다/ }))?.text).toBeTruthy()
   await ui.unmount()
+})
+
+test('the checker rows follow the pane width', async ($, on) => {
+  const seen: Seen = { opened: 0, status: [], argv0: [] }
+  engine(on, seen, true, 'high')
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const at = (bodyColumns: number) => $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns } })
+
+  const wide = await at(120) // 넓으면 긴 체커 이름을 자르지 않고, 검증/전체도 보인다
+  expect((await wide.find({ type: 'Text', text: /FORBIDDEN\.LOCAL_STORAGE_ACCESS .*남음 3 +0\/3/ }))?.text).toBeTruthy()
+  await wide.unmount()
+
+  const mid = await at(60) // 중간 폭은 이름을 ~로 줄인다
+  expect((await mid.find({ type: 'Text', text: /FORBIDDEN\.LOCAL_STORAGE_A~/ }))?.text).toBeTruthy()
+  await mid.unmount()
+
+  const narrow = await at(40) // 좁으면 막대와 검증/전체를 뺀다
+  const row = (await narrow.find({ type: 'Text', text: /SQL_INJECTION/ }))?.text ?? ''
+  expect(row).toMatch(/남음 7$/)
+  expect(row).not.toMatch(/5\/12/)
+  await narrow.unmount()
 })

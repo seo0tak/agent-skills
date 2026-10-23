@@ -344,7 +344,11 @@ export const register: Register = on => {
     const current = await read($, tab)
     const now = await $.clock.now()
     const columns = e.props?.bodyColumns ?? 40
-    const barWidth = Math.max(10, Math.min(58, columns - 2))
+    // 반응형: 막대·체커 이름·목록 길이를 본문 폭(bodyColumns)과 높이(bodyRows)에 맞춘다. 크기가 바뀌면 다시 그려진다.
+    // 좁음(< 50칸)은 검증/전체와 체커 막대를 빼고, 넓음(>= 90칸)은 체커 이름을 길게 둔다.
+    const narrow = columns < 50
+    const wide = columns >= 90
+    const barWidth = Math.max(10, columns - 2)
     const rows = e.props?.scroll?.bodyRows ?? 24
 
     const setTab = (next: PaneTab) => () => update($, tab, () => next)
@@ -455,7 +459,7 @@ export const register: Register = on => {
     // ---- 체커: 남은 건수 신호등 + 진행 막대 ----
     const checkersTab = (() => {
       if (p.kind !== 'ok') return <Text dimColor>{ICON.empty} 검출이 등록되면 체커별 진행이 보입니다.</Text>
-      const room = Svg ? Math.max(3, Math.min(8, Math.floor((rows - 14) / 2))) : Math.max(3, Math.min(12, rows - 12))
+      const room = Svg ? Math.max(3, Math.floor((rows - 14) / 2)) : Math.max(3, rows - 12)
       const shown = p.checkers.slice(0, room)
       const rest = p.checkers.slice(room)
       if (shown.length === 0) {
@@ -473,15 +477,21 @@ export const register: Register = on => {
           </Box>
         )
       }
-      const nameWidth = Math.min(22, Math.max(8, ...shown.map(c => c.code.length)))
-      const miniWidth = Math.max(6, Math.min(20, columns - nameWidth - 22))
+      // 한 줄 = 신호(2) + 1 + 이름 + 1 + 막대 + 꼬리(남음 N, 검증/전체). 숫자는 오른쪽 맞춤으로 열을 세운다.
+      const remWidth = Math.max(...shown.map(c => String(c.remaining).length))
+      const fracWidth = Math.max(...shown.map(c => `${c.verified}/${c.total}`.length))
+      const tailWidth = 2 + 4 + 1 + remWidth + (narrow ? 0 : 2 + fracWidth)
+      const longest = Math.max(...shown.map(c => c.code.length))
+      const nameWidth = Math.min(longest, narrow ? 14 : wide ? 44 : 26, Math.max(8, columns - 3 - tailWidth - 2))
+      const miniWidth = narrow ? 0 : Math.min(40, columns - 3 - nameWidth - 1 - tailWidth - 1)
       const name = (code: string) => code.length > nameWidth ? `${code.slice(0, nameWidth - 1)}~` : code.padEnd(nameWidth)
       return (
         <Box flexDirection="column">
           {shown.map(c => (
             <Text key={c.code} wrap="truncate">
-              {signal(c.remaining)} {name(c.code)} {cellBar(percent(c.verified, c.total), 'success', miniWidth)}
-              {'  '}<Text color={heat(c.remaining)} bold>남음 {c.remaining}</Text>  <Text dimColor>{c.verified}/{c.total}</Text>
+              {signal(c.remaining)} {name(c.code)}{miniWidth >= 6 ? <Text> {cellBar(percent(c.verified, c.total), 'success', miniWidth)}</Text> : ''}
+              {'  '}<Text color={heat(c.remaining)} bold>남음 {String(c.remaining).padStart(remWidth)}</Text>
+              {!narrow && <Text dimColor>  {`${c.verified}/${c.total}`.padStart(fracWidth)}</Text>}
             </Text>
           ))}
           {more}

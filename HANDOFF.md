@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.18.1 / skill-architect v0.5.3 / security-assessment v0.12.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.18.2 / skill-architect v0.5.3 / security-assessment v0.12.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23)
 
-배포 버전: sast-remediation **v1.18.1**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
+배포 버전: sast-remediation **v1.18.2**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
 최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`6dda77c`).
 
 ### 남은 일
@@ -17,9 +17,8 @@
     파일 이름(`output_file`)을 실제 버전으로 확인해야 한다. 실제 대상에 요청을 보내는 확인은 사용자가
     인가한 대상·계정에서만 한다.
 - sast-remediation 진행률 패널:
-  - 1.18.1을 사용자 Windows 화면에서 다시 확인해야 한다. 특히 체커 탭(집계 스크립트 `python -c`가 Windows·
-    `py -3`에서 여러 줄 인자로 도는지 — 실패하면 "체커별 집계를 읽지 못했습니다" 문구가 뜬다), 머리 띠 잘림,
-    지금 탭 알약의 대비.
+  - 1.18.1은 사용자 Windows 화면에서 확인됨(체커 탭 집계 스크립트, 머리 띠, 지금 탭 알약). 1.18.2 반응형은
+    패널을 넓히고 좁혀 보는 화면 확인이 아직이다.
   - 설치본으로 불러오는 확인과 Codex 설치본이 `hooks/`를 무시하는지는 아직이다 — 설치 시험은 실제
     마켓플레이스 이름(0tak)으로 하지 말 것(메모리 규칙).
   - 체커 집계 스크립트는 턴마다 findings.json 전체를 읽는다. 검출이 수만 건이면 느려질 수 있어 필요하면
@@ -55,7 +54,7 @@
 - 툴킷 원본 상태에서 `validate`는 빈 템플릿 `scope.json` 때문에 에러 7건이 정상이다.
 - 업그레이드 주의는 `toolkit/docs/VERSIONING.md`(0.9.0 증적 열 추가, 0.11.0 iac 묶음 키 변경 등).
 
-### sast-remediation 진행률 패널 (v1.18.1, Claude Code 전용)
+### sast-remediation 진행률 패널 (v1.18.2, Claude Code 전용)
 
 - 위치: `plugins/sast-remediation/hooks/register.tsx`(+ `hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`).
   `skills/` 정본이 아니라 플러그인 쪽이 원본(agents/와 같은 위치). mod API는 Claude Code 미리 보기 기능.
@@ -72,6 +71,9 @@
   - 체커: 한 줄씩 `🔴 CODE  [칸 막대]  남음 N  검증/전체`, 신호등 🔴 5건 이상 · 🟠 3~4 · 🟡 1~2 · 🟢 0. 비면 안내 문구.
   - 토큰·범위 탭은 줄마다 아이콘(🧠 💰 📨 📚 🔁 ⌛ 📅 🎯), 범위 밖 위험도 줄은 들여쓰기만.
   - 바닥 줄: `🧠 ctx 7%   💰 $0.74   🕒 17:42 갱신`(2분 넘으면 오래됨).
+  - 반응형(1.18.2): `bodyColumns`·`bodyRows`로 그리고, 크기가 바뀌면 엔진이 다시 그린다. 단계 막대는 폭 전체,
+    체커 목록은 높이 - 12줄. 체커 줄은 50칸 미만이면 막대·검증/전체 없음, 보통은 이름 26칸, 90칸 이상이면 44칸,
+    막대는 남는 폭(최대 40). 숫자 열은 오른쪽 맞춤. 사용자 Windows 화면에서 1.18.1 체커 탭이 정상으로 나온 것 확인.
   - 데스크톱·VS Code·모바일은 같은 배치에 링·막대를 Svg로. 상태 줄 `SAST 15/22 범위, 29/48 전체 | ctx 41% | $18.42`.
 - 터미널 규칙(1.17.4에서 배운 것): 화면 종류는 `e.surface`로 가른다(`$.ui.resolve`가 터미널에도 Svg를 빈 조각으로
   채움). 폭이 모호한 문자(·, ●, █, │, 상자 테두리, ⚠ ⏸ ★, FE0F가 필요한 이모지)와 borderStyle을 쓰지 않는다 —
@@ -82,8 +84,8 @@
   (`query` 전체 행은 검출 수천 건에서 4 MiB 출력 한도를 넘어 잘렸다, 1.18.1). 파이썬은 `python3` → `python` →
   `py -3` 순(Windows Store 바로가기 대응).
 - 이력: 1.17.0 패널 → 1.17.1 요약 카드+탭(A안) → 1.17.3 Windows 파이썬 → 1.17.4 터미널 잘림 → 1.17.5 체커 대안 →
-  1.18.0 E안 → 1.18.1 큰 프로젝트 체커·띠·탭 대비. 자세한 건 `toolkit/docs/VERSIONING.md`.
-- 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(8건),
+  1.18.0 E안 → 1.18.1 큰 프로젝트 체커·띠·탭 대비 → 1.18.2 반응형. 자세한 건 `toolkit/docs/VERSIONING.md`.
+- 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(9건),
   타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로 plugin-authoring 타입 + hooks + types를 묶어 tsc).
 
 ### 문서와 다이어그램 체계
