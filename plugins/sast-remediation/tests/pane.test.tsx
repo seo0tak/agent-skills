@@ -31,12 +31,20 @@ const IN_SCOPE = JSON.stringify({
   byChecker: {},
 })
 
+// 1.15.0 이전 툴킷: summary에 byChecker가 없고, query 행으로 센다.
+const ROWS = JSON.stringify([
+  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'verified' } },
+  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'todo' } },
+  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'analyzed' } },
+  { checker: { code: 'XSS' }, progress: { workflowStatus: 'verified' } },
+])
+
 type Seen = { opened: number; status: string[]; argv0: string[] }
 
 // 엔진을 대신하는 훅. hasToolkit이 거짓이면 프로젝트에 툴킷 복사본이 없는 상태, minRisk가 null이면 처리 범위 미설정.
 const STORE_ALIAS = 'Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.'
 
-function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null, windows = false) {
+function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null, windows = false, oldToolkit = false) {
   on('command.register', () => ({ value: { command: 'sast-progress' } }))
   on('ui.open', () => { seen.opened += 1; return { value: { isPlaced: true } } })
   on('ui.status', (_: unknown, e: { text?: string }) => { seen.status.push(String(e.text)); return { value: {} } })
@@ -57,7 +65,9 @@ function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null
     // Windows: python3는 Store 바로가기라 9009로 끝나고, py -3이 실제 파이썬이다.
     if (windows && e.argv[0] === 'python3') return { value: { exitCode: 9009, stdout: '', stderr: STORE_ALIAS } }
     if (windows && e.argv[0] === 'python') throw new Error('spawn python ENOENT')
-    return { value: { exitCode: 0, stdout: e.argv.includes('in-scope') ? IN_SCOPE : ALL, stderr: '' } }
+    if (oldToolkit && !e.argv.includes('--summary')) return { value: { exitCode: 0, stdout: ROWS, stderr: '' } }
+    const summary = e.argv.includes('in-scope') ? IN_SCOPE : ALL
+    return { value: { exitCode: 0, stdout: oldToolkit ? JSON.stringify({ ...JSON.parse(summary), byChecker: undefined }) : summary, stderr: '' } }
   })
   on('skill.prompt', (_: unknown, e: { text: string }) => ({ text: e.text }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
@@ -166,5 +176,15 @@ test('the terminal drawing uses no ambiguous-width characters and no borders', a
     expect(JSON.stringify(tree)).not.toContain('"borderStyle"')
   }
   expect(seen.status.at(-1)?.match(AMBIGUOUS)).toBeFalsy()
+  await ui.unmount()
+})
+
+test('with an older toolkit the checker tab counts from query rows', async ($, on) => {
+  const seen: Seen = { opened: 0, status: [], argv0: [] }
+  engine(on, seen, true, 'high', false, true)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /남음 2, 1\/3/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /남음 0, 1\/1/ }))?.text).toBeTruthy()
   await ui.unmount()
 })

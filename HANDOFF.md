@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.4 / skill-architect v0.5.3 / security-assessment v0.12.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.5 / skill-architect v0.5.3 / security-assessment v0.12.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23)
 
-배포 버전: sast-remediation **v1.17.4**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
+배포 버전: sast-remediation **v1.17.5**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
 최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`ef6b721`).
 
 ### 남은 일
@@ -66,7 +66,10 @@
   `│`·둥근 테두리 같은 폭이 모호한 문자를 한글 글꼴 터미널이 두 칸으로 그렸다. 이제 `e.surface`로 가르고,
   터미널은 색칠한 빈칸 막대(backgroundColor)·ASCII 구분자(`, `)·왼쪽 정렬·테두리 없음, 지금 탭은 `[이름]`.
   상태 줄 구분자 `|`. 테스트에 "터미널 트리에 폭 모호 문자·borderStyle 없음" 검사 추가(6건).
-- 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(6건),
+- 체커 탭 빈 화면(1.17.5): 프로젝트 툴킷 복사본이 1.15.0 이전이면 `query --summary`에 `byChecker`가 없다.
+  패널이 그때 `query` 행을 직접 세어 채운다(`checkersFromRows`). 테스트 7건.
+- 다음: 패널 2차 시안(B 띠 머리+색 견본 / C 큰 숫자 / D 표+줄무늬, 설계안 아티팩트) 중 사용자 선택 대기.
+- 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(7건),
   타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로).
 
 ### 문서와 다이어그램 체계

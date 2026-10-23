@@ -95,6 +95,21 @@ export function parseSummary(stdout: string, checkedAt: number, scoped: string |
   return { kind: 'ok', all: counts(summary), scope, risk: summary.by?.risk ?? {}, checkers, checkedAt }
 }
 
+// byChecker가 없는 옛 툴킷(1.15.0 이전)용: query 행에서 체커별 진행을 직접 센다(대시보드와 같은 정의).
+export function checkersFromRows(stdout: string) {
+  const rows = JSON.parse(stdout) as { checker?: { code?: string }; progress?: { workflowStatus?: string } }[]
+  const by = new Map<string, { code: string; total: number; verified: number; remaining: number }>()
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const code = row.checker?.code || 'unknown'
+    const entry = by.get(code) ?? { code, total: 0, verified: 0, remaining: 0 }
+    entry.total += 1
+    if (row.progress?.workflowStatus === 'verified') entry.verified += 1
+    entry.remaining = entry.total - entry.verified
+    by.set(code, entry)
+  }
+  return [...by.values()].sort((a, b) => b.remaining - a.remaining || b.total - a.total || a.code.localeCompare(b.code))
+}
+
 async function minRiskOf($: EngineInterface): Promise<string | null> {
   try {
     const profile = JSON.parse(await $.fs.read(`${TOOLKIT}/data/project-profile.json`)) as
@@ -127,6 +142,10 @@ async function refreshProgress($: EngineInterface, force = false) {
         scoped = inScope.exitCode === 0 ? inScope.stdout : null
       }
       view = parseSummary(run.stdout, now, scoped, minRisk)
+      if (view.kind === 'ok' && view.checkers.length === 0 && view.all.total > 0) {
+        const rows = await runToolkit($, ['query'])
+        if (rows.exitCode === 0 && !rows.isStdoutTruncated) view = { ...view, checkers: checkersFromRows(rows.stdout) }
+      }
     } catch (error) {
       const previous = await read($, progress)
       // 읽기에 실패해도 이전 값은 지우지 않는다. 화면에는 실패를 덧붙인다.
