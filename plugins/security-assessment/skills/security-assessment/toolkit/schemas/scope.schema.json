@@ -22,7 +22,8 @@
         "properties": {
           "type": { "enum": ["repo", "web", "infra"] },
           "value": { "type": "string", "minLength": 1 },
-          "notes": { "type": "string", "description": "설명 필드. 지문에 포함되지 않아 변경해도 승인이 무효되지 않는다." }
+          "notes": { "type": "string", "description": "설명 필드. 지문에 포함되지 않아 변경해도 승인이 무효되지 않는다." },
+          "rateLimit": { "type": "number", "exclusiveMinimum": 0, "description": "web 대상의 초당 요청 상한. 소유자가 동의한 조건이라 의미 필드(바뀌면 인가 무효). 없으면 보수적 기본값." }
         },
         "additionalProperties": true
       }

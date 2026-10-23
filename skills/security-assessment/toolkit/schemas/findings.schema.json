@@ -22,7 +22,16 @@
             "properties": {
               "file": { "type": "string", "minLength": 1 },
               "line": { "type": ["integer", "null"] },
-              "function": { "type": ["string", "null"] }
+              "function": { "type": ["string", "null"] },
+              "web": {
+                "type": "object",
+                "description": "웹 검출의 지문 재료: 메서드, 정규화한 '호스트/경로'(숫자·식별자 세그먼트는 자리표시자), 파라미터 이름.",
+                "properties": {
+                  "method": { "type": "string" },
+                  "path": { "type": "string" },
+                  "params": { "type": "array", "items": { "type": "string" } }
+                }
+              }
             }
           },
           "message": { "type": "string" },

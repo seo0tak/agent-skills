@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.16.0 / skill-architect v0.5.2 / security-assessment v0.9.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.16.0 / skill-architect v0.5.2 / security-assessment v0.10.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-22 security-assessment 0.9.0 · 다이어그램 체계)
 
-배포 버전: sast-remediation **v1.16.0**, skill-architect **v0.5.2**, security-assessment **v0.9.0**.
+배포 버전: sast-remediation **v1.16.0**, skill-architect **v0.5.2**, security-assessment **v0.10.0**.
 최신 커밋 `3a80baa`, 전부 push 완료. 작업 트리 깨끗함.
 
 ### security-assessment
@@ -91,7 +91,18 @@
   (의미 필드, 미기재 시 보수적 기본값)·어댑터가 스캐너 옵션으로 넘기는 방법 선언(없으면 직접 실행
   안 함), 웹 해소는 같은 어댑터·대상 재실행 + 스캐너 커버리지(방문 URL)에 정규화 경로가 있을 때만
   (없으면 재확인 안 됨), 컨테이너는 명령 템플릿 `{output_dir}`·`{output_name}` 자리표시. CONTEXT.md에
-  Coverage 용어. **다음: M3 구현**, 이어서 M4~M5(인프라 스캐너, 방법론 체크리스트).
+  Coverage 용어.
+- **M3 구현 완료(0.10.0)**: 웹 어댑터 선언 `scope_control`(stays_on_target·exclude_host·exclude_url)·
+  `rate_limit`·`coverage`(none|fixed-probes|url-list)·`max_seconds`, 스코프 웹 대상 `rateLimit`(있을 때만
+  인가 지문에 들어가 기존 승인 유지), `scan --direct`는 웹 실행 계획·확인 코드만 출력하고
+  `--confirm <코드>`가 맞을 때만 실행(계획 JSON 해시), 시간 상한 = min(max_seconds, 기간 끝까지),
+  넘길 수 없는 제외 자산이 걸린 대상은 실행·`ingest` 모두 거부, URL 지문(메서드·정규화 경로·파라미터
+  이름, `location.web`), 커버리지 기반 웹 해소, `ingest --coverage`, ZAP JSON 정규화기, `{output_dir}`·
+  `{output_name}`, 프롬프트 `02-web-scan.md`, 예시 어댑터 nuclei(컨테이너)·zap-baseline. assess 92건.
+  가짜 스캐너로 CLI 왕복 확인(계획 → 코드 → 실행 → 검출·지문·validate). **실제 nuclei·ZAP 출력 구조로는
+  아직 검증하지 않았다** — 예시 SARIF/JSON은 형식에 맞춘 표본이다. 실제 대상에 요청을 보내는 확인은
+  사용자가 인가한 대상에서만.
+- 다음: M4(인프라 스캐너)·M5(방법론 체크리스트). 인증 웹 스캔은 별도 설계.
 - 패널 mod(`~/.claude/dev-mods/<세션>/sast-progress/`)는 작성·검증·테스트 완료, 켤지 묻는 질문을
   다시 띄워 둔 상태. 저장소 밖 개인 mod라 배포물에 들어 있지 않다.
 
@@ -348,7 +359,7 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
   (claude·codex 매니페스트·README 표) — 커밋 전 둘 다 통과
 - 설치 경로 검증은 사용자가 설치 테스트를 승인한 별도 작업에서 수행한다.
   기존 설치를 일괄 제거하거나 캐시를 삭제하지 않는다.
-- security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(78건).
+- security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(92건).
   CLI 왕복은 저장소 밖 임시 사본에서(저장소 안에서 scan·evidence를 돌리지 않는다).
 - mermaid를 고치면 브라우저에서 렌더링해 파싱 오류 0을 확인한다(문법 오류가 조용히 남는다).
 - 구조도(D2)·시퀀스(PlantUML)는 `docs/diagrams/` 원본을 고치고 `python3 scripts/render_diagrams.py`로

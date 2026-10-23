@@ -87,7 +87,40 @@ def osv_to_sarif(raw: Any) -> dict[str, Any]:
     return {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "osv"}}, "results": results}]}
 
 
-NORMALIZERS = {"sarif": _identity_sarif, "osv-json": osv_to_sarif}
+ZAP_LEVELS = {"3": "error", "2": "warning", "1": "note", "0": "note"}
+
+
+def zap_to_sarif(raw: Any) -> dict[str, Any]:
+    """ZAP JSON 보고서(-J)를 SARIF로 변환한다. 순수 함수.
+
+    경고(alert)의 인스턴스 하나가 결과 하나다. 위치는 요청 URL, 메서드·파라미터는
+    properties에 두어 URL 지문(메서드·정규화 경로·파라미터 이름)에 쓰인다.
+    """
+    results: list[dict[str, Any]] = []
+    sites = raw.get("site") if isinstance(raw, dict) else None
+    for site in sites if isinstance(sites, list) else []:
+        for alert in (site or {}).get("alerts") or []:
+            alert = alert or {}
+            cwe_id = str(alert.get("cweid") or "").strip()
+            cwe = [f"CWE-{cwe_id}"] if cwe_id.isdigit() and int(cwe_id) > 0 else []
+            for instance in alert.get("instances") or []:
+                instance = instance or {}
+                results.append({
+                    "ruleId": str(alert.get("pluginid") or ""),
+                    "level": ZAP_LEVELS.get(str(alert.get("riskcode")), "note"),
+                    "message": {"text": str(alert.get("name") or alert.get("alert") or "")},
+                    "properties": {
+                        "cwe": cwe,
+                        "severity": str(alert.get("riskdesc") or ""),
+                        "method": str(instance.get("method") or ""),
+                        "param": str(instance.get("param") or ""),
+                    },
+                    "locations": [{"physicalLocation": {"artifactLocation": {"uri": str(instance.get("uri") or "")}}}],
+                })
+    return {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "zap"}}, "results": results}]}
+
+
+NORMALIZERS = {"sarif": _identity_sarif, "osv-json": osv_to_sarif, "zap-json": zap_to_sarif}
 KNOWN_OUTPUT_FORMATS = set(NORMALIZERS)
 
 
@@ -165,8 +198,11 @@ def parse_day(value: str) -> datetime | None:
 
 def semantic_fingerprint(scope: dict[str, Any]) -> str:
     """승인 무효 판정의 기준. 의미 필드만 넣고 notes·상태·지문 자체는 뺀다."""
+    # 웹 대상의 요청 상한은 소유자가 동의한 조건이라 의미 필드다. 없는 대상은 예전 지문 그대로.
     targets = sorted(
-        ((str(t.get("type", "")), str(t.get("value", ""))) for t in scope.get("targets", []) if isinstance(t, dict)),
+        (str(t.get("type", "")), str(t.get("value", "")))
+        + ((str(t["rateLimit"]),) if t.get("rateLimit") is not None else ())
+        for t in scope.get("targets", []) if isinstance(t, dict)
     )
     window = scope.get("window") or {}
     consent = scope.get("consent") or {}
@@ -202,6 +238,12 @@ def validate_scope(report: Report, scope: Any) -> None:
                 report.error(f"targets[{index}].type must be one of {sorted(TARGET_TYPES)}")
             if not str(target.get("value", "")).strip():
                 report.error(f"targets[{index}].value is empty")
+            rate = target.get("rateLimit")
+            if rate is not None:
+                if target.get("type") != "web":
+                    report.error(f"targets[{index}].rateLimit applies to web targets only")
+                elif isinstance(rate, bool) or not isinstance(rate, (int, float)) or rate <= 0:
+                    report.error(f"targets[{index}].rateLimit must be a positive number (requests per second)")
 
     exclusions = scope.get("exclusions")
     if not isinstance(exclusions, list) or any(not str(x).strip() for x in exclusions):
@@ -289,6 +331,33 @@ def validate_adapter(report: Report, name: str, adapter: Any) -> None:
             f"{where}.output_format {output_format!r} has no normalizer yet; "
             f"known formats: {sorted(KNOWN_OUTPUT_FORMATS)}"
         )
+    validate_web_fields(report, where, adapter)
+
+
+def validate_web_fields(report: Report, where: str, adapter: dict[str, Any]) -> None:
+    """웹 어댑터 선언(범위 제어·요청 상한·커버리지·시간 상한)의 형식을 검사한다."""
+    control = adapter.get("scope_control")
+    if control is not None:
+        if not isinstance(control, dict):
+            report.error(f"{where}.scope_control must be an object")
+        else:
+            if "stays_on_target" in control and not isinstance(control["stays_on_target"], bool):
+                report.error(f"{where}.scope_control.stays_on_target must be true or false")
+            for key, mark in (("exclude_host", "{host}"), ("exclude_url", "{url}")):
+                if key in control and mark not in str(control[key]):
+                    report.error(f"{where}.scope_control.{key} must contain {mark}")
+    if "rate_limit" in adapter and "{rate}" not in str(adapter["rate_limit"]):
+        report.error(f"{where}.rate_limit must contain {{rate}}")
+    coverage = adapter.get("coverage")
+    if coverage is not None:
+        mode = coverage.get("mode") if isinstance(coverage, dict) else None
+        if mode not in COVERAGE_MODES:
+            report.error(f"{where}.coverage.mode must be one of {sorted(COVERAGE_MODES)}")
+        elif mode == "url-list" and not str(coverage.get("file", "")).strip():
+            report.error(f"{where}.coverage.file is required for url-list")
+    seconds = adapter.get("max_seconds")
+    if seconds is not None and (isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0):
+        report.error(f"{where}.max_seconds must be a positive integer")
 
 
 def targets_for_adapter(adapter: dict[str, Any], scope: dict[str, Any]) -> list[str]:
@@ -299,6 +368,104 @@ def targets_for_adapter(adapter: dict[str, Any], scope: dict[str, Any]) -> list[
         for t in scope.get("targets", [])
         if isinstance(t, dict) and t.get("value") and str(t.get("type")) in accepted
     ]
+
+
+# ---- 웹 스캔 (ADR 0003) ----
+WEB_CATEGORIES = {"dast"}
+COVERAGE_MODES = {"none", "fixed-probes", "url-list"}
+# 스코프에 상한이 없을 때의 보수적 기본값(초당 요청).
+DEFAULT_WEB_RPS = 5
+DEFAULT_MAX_SECONDS = 600
+
+
+def is_web_adapter(adapter: dict[str, Any]) -> bool:
+    return str(adapter.get("category")) in WEB_CATEGORIES
+
+
+def web_rate_limit(scope: dict[str, Any], target: str) -> float:
+    for entry in scope.get("targets", []):
+        if isinstance(entry, dict) and str(entry.get("value")) == target and entry.get("rateLimit") is not None:
+            return float(entry["rateLimit"])
+    return float(DEFAULT_WEB_RPS)
+
+
+def exclusions_for_target(target: str, exclusions: list[str]) -> dict[str, list[str]]:
+    """웹 대상 안에 걸리는 제외 자산. 순수 함수.
+
+    hosts: 대상 호스트의 하위 도메인 제외, urls: 대상 호스트 안의 URL 제외.
+    다른 호스트의 제외나 파일 경로 제외는 이 대상과 무관하다.
+    """
+    from urllib.parse import urlsplit
+    host = (urlsplit(target).hostname or "").lower()
+    hosts: list[str] = []
+    urls: list[str] = []
+    for raw in exclusions:
+        excl = str(raw).strip()
+        if is_url(excl):
+            if (urlsplit(excl).hostname or "").lower() == host:
+                urls.append(excl)
+        elif "/" not in excl and "." in excl:
+            excl_host = excl.lower()
+            if excl_host.endswith("." + host):
+                hosts.append(excl_host)
+    return {"hosts": sorted(hosts), "urls": sorted(urls)}
+
+
+def _render_tokens(template: str, mark: str, value: str) -> list[str]:
+    """템플릿을 먼저 토큰으로 나눈 뒤 값을 넣는다(값이 인자를 늘리거나 셸로 해석되지 않게)."""
+    import shlex
+    return [token.replace(mark, value) for token in shlex.split(template)]
+
+
+def web_scope_args(adapter: dict[str, Any], relevant: dict[str, list[str]]) -> tuple[list[str] | None, str]:
+    """대상 안의 제외 자산을 스캐너 인자로. 넘길 방법이 없으면 (None, 사유)."""
+    control = adapter.get("scope_control") or {}
+    tokens: list[str] = []
+    for kind, key, mark in (("hosts", "exclude_host", "{host}"), ("urls", "exclude_url", "{url}")):
+        for value in relevant[kind]:
+            template = control.get(key)
+            if not template:
+                return None, f"대상 안의 제외 자산({value})을 스캐너에 넘길 방법({key})이 선언되지 않음"
+            tokens += _render_tokens(str(template), mark, value)
+    return tokens, ""
+
+
+def web_direct_blockers(adapter: dict[str, Any]) -> list[str]:
+    """웹 어댑터를 스킬이 직접 실행하지 못하는 사유(제외 자산과 무관한 것)."""
+    reasons = []
+    if not (adapter.get("scope_control") or {}).get("stays_on_target"):
+        reasons.append("대상 밖으로 나가지 않는다는 선언(scope_control.stays_on_target)이 없음")
+    if not adapter.get("rate_limit"):
+        reasons.append("요청 상한을 스캐너에 넘길 방법(rate_limit)이 없음")
+    return reasons
+
+
+def web_time_limit(adapter: dict[str, Any], scope: dict[str, Any], now: datetime) -> int:
+    """실행 시간 상한(초): 어댑터 상한과 점검 기간 끝까지 남은 시간 중 작은 쪽."""
+    limit = int(adapter.get("max_seconds") or DEFAULT_MAX_SECONDS)
+    end = parse_day(str((scope.get("window") or {}).get("end", "")))
+    if end is not None:
+        end_of = end.replace(hour=23, minute=59, second=59) if end.hour == end.minute == 0 else end
+        limit = min(limit, int((end_of - now).total_seconds()))
+    return limit
+
+
+def web_run_plan(name: str, adapter: dict[str, Any], scope: dict[str, Any], target: str,
+                 extra_args: list[str]) -> dict[str, Any]:
+    rate = web_rate_limit(scope, target)
+    return {
+        "adapter": name, "target": target, "ratePerSecond": rate,
+        "exclusions": exclusions_for_target(target, [str(x) for x in scope.get("exclusions", [])]),
+        "command": str(adapter.get("command", "")), "extraArgs": extra_args,
+        "maxSeconds": int(adapter.get("max_seconds") or DEFAULT_MAX_SECONDS),
+        "windowEnd": str((scope.get("window") or {}).get("end", "")),
+    }
+
+
+def plan_code(plans: list[dict[str, Any]]) -> str:
+    """웹 실행 계획의 확인 코드. 계획이 한 글자라도 바뀌면 코드가 바뀐다."""
+    encoded = json.dumps(plans, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:12]
 
 
 def execution_decision(
@@ -376,6 +543,34 @@ def fingerprint_for(file: str, function: str | None, snippet: str) -> str:
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
+_ID_SEGMENT = re.compile(r"^(\d+|[0-9a-fA-F]{16,}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[A-Za-z0-9_-]{24,})$")
+
+
+def normalize_web_path(url: str) -> str:
+    """URL을 '호스트/경로'로 정규화한다. 숫자·식별자 세그먼트는 자리표시자, 쿼리·조각은 뺀다."""
+    from urllib.parse import urlsplit
+    parts = urlsplit(url)
+    segments = []
+    for segment in parts.path.split("/"):
+        if not segment:
+            continue
+        segments.append("{n}" if segment.isdigit() else "{id}" if _ID_SEGMENT.match(segment) else segment)
+    return "/".join([(parts.hostname or "").lower(), *segments])
+
+
+def web_params(url: str, extra: str = "") -> list[str]:
+    from urllib.parse import parse_qsl, urlsplit
+    names = {name for name, _ in parse_qsl(urlsplit(url).query, keep_blank_values=True)}
+    if extra.strip():
+        names.add(extra.strip())
+    return sorted(names)
+
+
+def fingerprint_for_url(method: str, url: str, params: list[str]) -> str:
+    """웹 검출 지문: 메서드·정규화 경로·파라미터 이름. 쿼리 값·토큰·증거 문자열은 넣지 않는다(ADR 0003)."""
+    material = f"web|{(method or 'ANY').upper()}|{normalize_web_path(url)}|{','.join(params)}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
 def findings_from_sarif(sarif: Any, fallback_scanner: str) -> list[dict[str, Any]]:
     """SARIF 하나를 정규화된 검출 목록으로. 순수 함수."""
     out: list[dict[str, Any]] = []
@@ -400,10 +595,20 @@ def findings_from_sarif(sarif: Any, fallback_scanner: str) -> list[dict[str, Any
             logicals = loc.get("logicalLocations") or [{}]
             logical = logicals[0] if isinstance(logicals[0], dict) else {}
             function = logical.get("fullyQualifiedName") or logical.get("name")
+            location: dict[str, Any] = {"file": file, "line": line, "function": function}
+            if is_url(file):
+                # 웹 검출: 쿼리 값·증거가 아니라 메서드·정규화 경로·파라미터 이름으로 묶는다.
+                props = result.get("properties") or {}
+                method = str(props.get("method") or "").upper()
+                params = web_params(file, str(props.get("param") or ""))
+                location["web"] = {"method": method, "path": normalize_web_path(file), "params": params}
+                fingerprint = fingerprint_for_url(method, file, params)
+            else:
+                fingerprint = fingerprint_for(file, function, snippet)
             out.append({
-                "fingerprint": fingerprint_for(file, function, snippet),
+                "fingerprint": fingerprint,
                 "cwe": cwe_from_result(result, rule),
-                "location": {"file": file, "line": line, "function": function},
+                "location": location,
                 "message": str((result.get("message") or {}).get("text") or ""),
                 # properties.severity(예: OSV의 CVSS 점수)를 우선, 없으면 SARIF level.
                 "severity": str((result.get("properties") or {}).get("severity") or result.get("level") or ""),
@@ -431,18 +636,32 @@ def merge_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [bucket[key] for key in order]
 
 
-def execute_adapter(command_template: str, target: str, output_path: Path, timeout: int = 600) -> int:
-    """어댑터 명령을 shell 없이 실행한다. 자리표시자는 argv 토큰으로 치환(주입 방지).
+def render_command(command_template: str, target: str, output_path: Path,
+                   extra_args: list[str] | tuple[str, ...] = ()) -> list[str]:
+    """명령 템플릿을 argv로. 자리표시자는 토큰으로 나눈 뒤 치환한다(주입 방지).
 
-    테스트는 실제 스캐너 대신 이 함수를 교체해 픽스처를 쓴다(도구 미실행).
+    {output}은 출력 파일 전체 경로, {output_dir}·{output_name}은 컨테이너 마운트용으로
+    디렉터리와 파일 이름을 따로 준다. extra_args(범위 제어·요청 상한)는 끝에 붙는다.
     """
     import shlex
-    import subprocess
 
     argv: list[str] = []
     for token in shlex.split(command_template):
-        token = token.replace("{target}", target).replace("{output}", str(output_path))
+        token = (token.replace("{target}", target).replace("{output_dir}", str(output_path.parent))
+                 .replace("{output_name}", output_path.name).replace("{output}", str(output_path)))
         argv.append(token)
+    return argv + list(extra_args)
+
+
+def execute_adapter(command_template: str, target: str, output_path: Path, timeout: int = 600,
+                    extra_args: list[str] | tuple[str, ...] = ()) -> int:
+    """어댑터 명령을 shell 없이 실행한다.
+
+    테스트는 실제 스캐너 대신 이 함수를 교체해 픽스처를 쓴다(도구 미실행).
+    """
+    import subprocess
+
+    argv = render_command(command_template, target, output_path, extra_args)
     completed = subprocess.run(argv, shell=False, timeout=timeout, capture_output=True, text=True)
     return completed.returncode
 
@@ -969,7 +1188,8 @@ def run_dispositions() -> int:
         return 1
     if previous is not None:
         adapters_run = {name for name in scan_results if name != LEGACY_SCAN}
-        resolution = round_resolution(previous.get("findings", []), findings, adapters_run)
+        coverage = {name: data.get("coverage") or {} for name, data in scan_results.items()}
+        resolution = round_resolution(previous.get("findings", []), findings, adapters_run, coverage)
         summary["sincePreviousRound"] = {
             "round": previous.get("round"),
             "resolved": resolution["resolved"],
@@ -1065,12 +1285,29 @@ def adapters_of(finding: dict[str, Any]) -> set[str]:
     return {str(s.get("adapter")) for s in finding.get("sources") or [] if isinstance(s, dict) and s.get("adapter")}
 
 
+def web_rechecked(finding: dict[str, Any], coverage: dict[str, dict[str, Any]]) -> bool:
+    """웹 검출을 이번 차수에 실제로 다시 봤는지. 출처의 어댑터·대상마다 커버리지가 그 경로를 덮어야 한다."""
+    path = str(((finding.get("location") or {}).get("web") or {}).get("path") or "")
+    sources = [s for s in finding.get("sources") or [] if isinstance(s, dict) and s.get("adapter")]
+    if not path or not sources:
+        return False
+    for source in sources:
+        seen = (coverage.get(str(source["adapter"])) or {}).get(str(source.get("target") or ""))
+        if not seen or seen.get("mode") == "none":
+            return False
+        if seen.get("mode") == "url-list" and path not in set(seen.get("paths") or []):
+            return False
+    return True
+
+
 def round_resolution(previous: list[dict[str, Any]], current: list[dict[str, Any]],
-                     adapters_run: set[str]) -> dict[str, list[str]]:
+                     adapters_run: set[str],
+                     coverage: dict[str, dict[str, dict[str, Any]]] | None = None) -> dict[str, list[str]]:
     """직전 차수 대비 사라진 검출을 분류한다. 순수 함수.
 
     사라진 검출은 그 검출을 찾았던 어댑터가 이번 차수에 모두 다시 돌았을 때만 해소로 본다.
-    다시 돌지 않았으면 사라진 것이 아니라 확인하지 않은 것이다.
+    다시 돌지 않았으면 사라진 것이 아니라 확인하지 않은 것이다. 웹 검출은 크롤링 범위가
+    실행마다 달라 커버리지가 그 경로를 덮었을 때만 해소다(ADR 0003).
     """
     current_keys = {finding_key(f) for f in current}
     resolved: list[str] = []
@@ -1080,7 +1317,8 @@ def round_resolution(previous: list[dict[str, Any]], current: list[dict[str, Any
         if key in current_keys:
             continue
         sources = adapters_of(finding)
-        if sources and sources <= adapters_run:
+        is_web = is_url(str((finding.get("location") or {}).get("file") or ""))
+        if sources and sources <= adapters_run and (not is_web or web_rechecked(finding, coverage or {})):
             resolved.append(key)
         else:
             not_rechecked.append(key)
@@ -1216,7 +1454,8 @@ def replace_target_findings(existing: dict[str, Any] | None, target: str,
     return kept + list(new_items)
 
 
-def run_ingest(adapter_name: str | None, file: str | None, target: str | None) -> int:
+def run_ingest(adapter_name: str | None, file: str | None, target: str | None,
+               coverage_file: str | None = None) -> int:
     """운영자가 돌린 어댑터 출력을 들여온다. scan과 같은 정규화·저장·합침을 거친다.
 
     게이트 READY가 전제다. 스코프 상한을 넘는(forbidden) 어댑터의 출력은 받지 않는다.
@@ -1260,6 +1499,16 @@ def run_ingest(adapter_name: str | None, file: str | None, target: str | None) -
     elif target not in targets:
         print(f"ERROR: {target}은(는) 이 어댑터의 스코프 대상이 아닙니다. 대상: {', '.join(targets) or '(없음)'}")
         return 1
+    web = is_web_adapter(adapter)
+    if web:
+        exclusions = [str(x) for x in scope.get("exclusions", [])]
+        if is_excluded(target, exclusions):
+            print(f"INGEST: 거부 — {target}은(는) 제외 자산입니다.")
+            return 1
+        _args, why = web_scope_args(adapter, exclusions_for_target(target, exclusions))
+        if _args is None:
+            print(f"INGEST: 거부 — {why}. 스캐너가 제외 자산을 지켰는지 알 수 없어 들여오지 않습니다.")
+            return 1
     path = Path(file)
     try:
         raw_bytes = path.read_bytes()
@@ -1282,6 +1531,21 @@ def run_ingest(adapter_name: str | None, file: str | None, target: str | None) -
     tag_sources(items, adapter_name, target, "operator")
     now = now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")
     ingested = [e for e in (existing or {}).get("ingested") or [] if isinstance(e, dict) and e.get("target") != target]
+    coverage = (existing or {}).get("coverage") or {}
+    if web:
+        coverage = {k: v for k, v in coverage.items() if k != target}
+        mode = str((adapter.get("coverage") or {}).get("mode") or "none")
+        if mode == "fixed-probes":
+            coverage[target] = {"mode": mode}
+        elif mode == "url-list" and coverage_file:
+            try:
+                lines = Path(coverage_file).read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError as error:
+                print(f"ERROR: 커버리지 파일을 읽을 수 없습니다: {coverage_file} ({error})")
+                return 1
+            coverage[target] = {"mode": mode, "paths": sorted({normalize_web_path(u.strip()) for u in lines if u.strip()})}
+        else:
+            coverage[target] = {"mode": "none"}
     ingested.append({"target": target, "file": path.name,
                      "sha256": hashlib.sha256(raw_bytes).hexdigest(), "ingestedAt": now})
     scans_dir().mkdir(parents=True, exist_ok=True)
@@ -1290,6 +1554,7 @@ def run_ingest(adapter_name: str | None, file: str | None, target: str | None) -
         "targets": sorted({*[str(t) for t in (existing or {}).get("targets") or []], target}),
         "findings": replace_target_findings(existing, target, items),
         "ingested": ingested,
+        **({"coverage": coverage} if coverage else {}),
     })
     total, excluded = rebuild_findings(scope)
     note = f", 제외 자산 {excluded}건 제외" if excluded else ""
@@ -1297,11 +1562,26 @@ def run_ingest(adapter_name: str | None, file: str | None, target: str | None) -
     return 0
 
 
-def run_scan(direct: bool) -> int:
+def collect_coverage(adapter: dict[str, Any], output_dir: Path) -> dict[str, Any]:
+    """웹 실행의 커버리지. fixed-probes는 같은 탐침을 매번 대상 전체에, url-list는 방문 URL 파일."""
+    coverage = adapter.get("coverage") or {}
+    mode = str(coverage.get("mode") or "none")
+    if mode == "fixed-probes":
+        return {"mode": mode}
+    if mode == "url-list":
+        path = output_dir / str(coverage.get("file", ""))
+        if path.is_file():
+            urls = [line.strip() for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+            return {"mode": mode, "paths": sorted({normalize_web_path(u) for u in urls})}
+    return {"mode": "none"}
+
+
+def run_scan(direct: bool, confirm: str | None = None) -> int:
     """실행 판정이 'run'인 어댑터만 스킬이 돌리고, 어댑터별 결과를 저장한 뒤 합쳐 findings를 만든다.
 
-    게이트 READY가 전제. operator/forbidden 어댑터는 실행하지 않고 안내만 한다. 실행된 어댑터의
-    결과만 바뀌고 나머지 어댑터의 결과는 그대로 남는다. 아무것도 실행되지 않으면 쓰지 않는다.
+    게이트 READY가 전제. operator/forbidden 어댑터는 실행하지 않고 안내만 한다. 웹 어댑터는
+    제외 자산을 스캐너에 넘길 수 있어야 하고, 실행 계획을 보여 준 뒤 그 계획의 확인 코드가
+    --confirm으로 왔을 때만 돈다(ADR 0003). 실행된 어댑터의 결과만 바뀐다.
     """
     try:
         scope = load_json(SCOPE_FILE)
@@ -1327,8 +1607,10 @@ def run_scan(direct: bool) -> int:
     except ValueError as error:
         print(f"ERROR: {error}")
         return 1
-    preserve_legacy_findings()  # 어댑터별 저장 이전 결과를 첫 쓰기 전에 보존
-    ran: list[str] = []
+    exclusions = [str(x) for x in scope.get("exclusions", [])]
+    now = now_utc()
+    # 1단계: 어댑터·대상별로 무엇을 할지 정한다. jobs는 (이름, 어댑터, 대상, 추가 인자, 웹 계획 또는 None)
+    jobs: list[tuple[str, dict[str, Any], str, list[str], dict[str, Any] | None]] = []
     for name, adapter in adapters:
         if not isinstance(adapter, dict) or "__error__" in adapter:
             print(f"- {name}: 선언 오류, 건너뜀 (validate로 확인)")
@@ -1342,50 +1624,101 @@ def run_scan(direct: bool) -> int:
         if decision == "forbidden":
             print(f"- {name}: forbidden — {reason}")
             continue
+        web = is_web_adapter(adapter)
+        target_args: list[tuple[str, list[str]]] = []
+        for target in targets:
+            if not web:
+                target_args.append((target, []))
+                continue
+            if is_excluded(target, exclusions):
+                print(f"- {name} @ {target}: 대상 전체가 제외 자산이라 건너뜀")
+                continue
+            args, why = web_scope_args(adapter, exclusions_for_target(target, exclusions))
+            if args is None:
+                print(f"- {name} @ {target}: 거부 — {why}. 실행도 들여오기도 하지 않습니다.")
+                continue
+            rate = adapter.get("rate_limit")
+            if rate:
+                args += _render_tokens(str(rate), "{rate}", f"{web_rate_limit(scope, target):g}")
+            target_args.append((target, args))
+        if web and decision == "run" and web_direct_blockers(adapter):
+            decision, reason = "operator", "; ".join(web_direct_blockers(adapter))
         if decision == "operator":
             print(f"- {name}: operator — {reason}")
-            for target in targets:
-                rendered = str(adapter.get("command", "")).replace("{target}", target).replace("{output}", f"{name}.sarif")
+            for target, args in target_args:
+                rendered = " ".join(render_command(str(adapter.get("command", "")), target, Path(f"{name}.out"), args))
                 print(f"    운영자 실행: {rendered}")
                 print(f"    들여오기: python3 tools/assess_toolkit.py ingest --adapter {name} --file <출력 파일> --target {target}")
             continue
-        adapter_findings: list[dict[str, Any]] = []
-        succeeded: list[str] = []
-        for target in targets:
-            with _tempfile.TemporaryDirectory() as tmp:
-                output = Path(tmp) / f"{name}.sarif"
-                try:
-                    code = execute_adapter(str(adapter.get("command", "")), target, output)
-                except Exception as error:  # noqa: BLE001 — 도구 부재·실행 오류를 안내로
-                    print(f"- {name} @ {target}: 실행 실패 ({error}); availability로 설치 확인")
-                    continue
-                if not output.exists():
-                    print(f"- {name} @ {target}: 출력 파일 없음 (종료코드 {code})")
-                    continue
-                try:
-                    raw = load_json(output)
-                except json.JSONDecodeError:
-                    print(f"- {name} @ {target}: 출력이 JSON이 아님")
-                    continue
-                try:
-                    sarif = normalize_to_sarif(str(adapter.get("output_format", "")), raw)
-                except ValueError as error:
-                    print(f"- {name} @ {target}: {error}")
-                    continue
-                items = findings_from_sarif(sarif, name)
-                tag_sources(items, name, target, "skill")
-                adapter_findings += items
-                succeeded.append(target)
-                print(f"- {name} @ {target}: run — 검출 {len(items)}건")
-        if not succeeded:
+        for target, args in target_args:
+            plan = web_run_plan(name, adapter, scope, target, args) if web else None
+            jobs.append((name, adapter, target, args, plan))
+    # 2단계: 웹 실행은 계획 전체의 확인 코드가 맞을 때만
+    plans = [plan for *_, plan in jobs if plan is not None]
+    web_confirmed = bool(plans) and confirm == plan_code(plans)
+    if plans and not web_confirmed:
+        print("WEB: 아래 웹 실행은 사용자 확인이 필요합니다. 확인되면 같은 명령에 --confirm을 붙여 다시 실행합니다.")
+        for plan in plans:
+            exc = plan["exclusions"]
+            print(f"  - {plan['adapter']} @ {plan['target']}: 초당 {plan['ratePerSecond']:g}건 이하, "
+                  f"최대 {plan['maxSeconds']}초(기간 끝 {plan['windowEnd']} 전까지), "
+                  f"제외 호스트 {', '.join(exc['hosts']) or '없음'} · 제외 URL {', '.join(exc['urls']) or '없음'}")
+        print(f"  확인 코드: {plan_code(plans)}  →  scan --direct --confirm {plan_code(plans)}")
+        if confirm:
+            print("  (받은 확인 코드가 현재 계획과 다릅니다. 계획이 바뀌었으면 다시 확인받으세요.)")
+    preserve_legacy_findings()  # 어댑터별 저장 이전 결과를 첫 쓰기 전에 보존
+    results: dict[str, dict[str, Any]] = {}
+    for name, adapter, target, args, plan in jobs:
+        if plan is not None and not web_confirmed:
+            continue
+        timeout = DEFAULT_MAX_SECONDS
+        if plan is not None:
+            timeout = web_time_limit(adapter, scope, now)
+            if timeout <= 0:
+                print(f"- {name} @ {target}: 점검 기간이 끝나 실행하지 않음")
+                continue
+        entry = results.setdefault(name, {"findings": [], "targets": [], "coverage": {}})
+        with _tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / f"{name}.out"
+            try:
+                code = execute_adapter(str(adapter.get("command", "")), target, output, timeout=timeout, extra_args=args)
+            except Exception as error:  # noqa: BLE001 — 도구 부재·실행 오류·시간 초과를 안내로
+                print(f"- {name} @ {target}: 실행 실패 ({error}); availability로 설치 확인")
+                continue
+            if not output.exists():
+                print(f"- {name} @ {target}: 출력 파일 없음 (종료코드 {code})")
+                continue
+            try:
+                raw = load_json(output)
+            except json.JSONDecodeError:
+                print(f"- {name} @ {target}: 출력이 JSON이 아님")
+                continue
+            try:
+                sarif = normalize_to_sarif(str(adapter.get("output_format", "")), raw)
+            except ValueError as error:
+                print(f"- {name} @ {target}: {error}")
+                continue
+            items = findings_from_sarif(sarif, name)
+            tag_sources(items, name, target, "skill")
+            entry["findings"] += items
+            entry["targets"].append(target)
+            if plan is not None:
+                entry["coverage"][target] = collect_coverage(adapter, Path(tmp))
+            print(f"- {name} @ {target}: run — 검출 {len(items)}건")
+    ran: list[str] = []
+    for name, entry in results.items():
+        if not entry["targets"]:
             print(f"- {name}: 성공한 실행이 없어 이전 결과를 유지합니다")
             continue
         scans_dir().mkdir(parents=True, exist_ok=True)
-        write_json_atomic(scans_dir() / f"{name}.json", {
+        record = {
             "schemaVersion": SCHEMA_VERSION, "adapter": name,
-            "ranAt": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "targets": succeeded, "findings": adapter_findings,
-        })
+            "ranAt": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "targets": entry["targets"], "findings": entry["findings"],
+        }
+        if entry["coverage"]:
+            record["coverage"] = entry["coverage"]
+        write_json_atomic(scans_dir() / f"{name}.json", record)
         ran.append(name)
     if not ran:
         print("SCAN: 실행된 어댑터가 없어 검출을 바꾸지 않았습니다.")
@@ -1419,6 +1752,10 @@ def run_adapters(direct: bool) -> int:
             print(f"- {name}: (선언 오류 — validate로 확인)")
             continue
         decision, reason = execution_decision(adapter, scope, direct)
+        if is_web_adapter(adapter) and decision == "run" and web_direct_blockers(adapter):
+            decision, reason = "operator", "; ".join(web_direct_blockers(adapter))
+        elif is_web_adapter(adapter) and decision == "run":
+            reason += " (웹: 실행 전 계획 확인 필요)"
         print(f"- {name} [{adapter.get('category')}/{adapter.get('intrusiveness')}] → {decision}: {reason}")
     return 0
 
@@ -1429,6 +1766,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--adapter", help="ingest: 운영자가 돌린 어댑터 이름")
     parser.add_argument("--file", help="ingest: 운영자가 넘긴 출력 파일")
     parser.add_argument("--target", help="ingest: 출력이 가리키는 스코프 대상(어댑터 대상이 하나면 생략)")
+    parser.add_argument("--confirm", help="scan: 사용자가 확인한 웹 실행 계획의 확인 코드")
+    parser.add_argument("--coverage", help="ingest: 웹 스캐너가 방문한 URL 목록 파일(url-list 커버리지)")
     parser.add_argument("--strict", action="store_true", help="treat a not-ready gate as a validation error")
     parser.add_argument("--direct", action="store_true", help="adapters: 사용자가 직접 실행을 명시했다고 본다")
     parser.add_argument("--dry-run", action="store_true", help="bridge: 파일·판정을 쓰지 않고 건수만 보고")
@@ -1445,9 +1784,9 @@ def main() -> int:
     if args.command == "adapters":
         return run_adapters(args.direct)
     if args.command == "scan":
-        return run_scan(args.direct)
+        return run_scan(args.direct, args.confirm)
     if args.command == "ingest":
-        return run_ingest(args.adapter, args.file, args.target)
+        return run_ingest(args.adapter, args.file, args.target, args.coverage)
     if args.command == "dispositions":
         return run_dispositions()
     if args.command == "bridge":

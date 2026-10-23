@@ -1,0 +1,19 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": { "driver": { "name": "nuclei", "rules": [
+        { "id": "exposed-git-config", "properties": { "tags": ["exposure", "CWE-200"] } }
+      ] } },
+      "results": [
+        {
+          "ruleId": "exposed-git-config",
+          "level": "warning",
+          "message": { "text": "Git config file exposed" },
+          "properties": { "method": "GET" },
+          "locations": [ { "physicalLocation": { "artifactLocation": { "uri": "https://staging.example.test/.git/config" } } } ]
+        }
+      ]
+    }
+  ]
+}

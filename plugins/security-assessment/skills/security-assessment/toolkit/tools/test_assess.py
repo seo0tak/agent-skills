@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import re
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -233,7 +234,7 @@ class AssessCase(unittest.TestCase):
         self.assertTrue(any("does not match filename" in e for e in errors))
 
     def test_unknown_output_format_is_rejected_until_normalizer_exists(self):
-        errors = self.adapter_errors("zap", self.valid_adapter(id="zap", category="dast", output_format="zap-json"))
+        errors = self.adapter_errors("burp", self.valid_adapter(id="burp", category="dast", output_format="burp-xml"))
         self.assertTrue(any("no normalizer yet" in e for e in errors))
 
     def test_bad_category_and_intrusiveness_are_rejected(self):
@@ -286,7 +287,7 @@ class AssessCase(unittest.TestCase):
         fixture = (TOOLS_DIR.parent / "examples" / fixture_rel).read_text(encoding="utf-8")
         calls = []
 
-        def fake_execute(command_template, target, output_path, timeout=600):
+        def fake_execute(command_template, target, output_path, timeout=600, extra_args=()):
             calls.append((command_template, target))
             Path(output_path).write_text(fixture, encoding="utf-8")
             return 0
@@ -691,7 +692,7 @@ class AssessCase(unittest.TestCase):
         self._fixtures = getattr(self, "_fixtures", {})
         self._fixtures[name] = json.dumps(sarif_doc)
 
-        def fake_execute(command_template, target, output_path, timeout=600):
+        def fake_execute(command_template, target, output_path, timeout=600, extra_args=()):
             Path(output_path).write_text(self._fixtures[command_template.split()[0]], encoding="utf-8")
             return 0
         assess.execute_adapter = fake_execute
@@ -1003,6 +1004,195 @@ class AssessCase(unittest.TestCase):
             self.assertIn("ingest --adapter semgrep --file <출력 파일> --target ./src", out)
         finally:
             restore()
+
+    # --- 웹 스캔 (ADR 0003) ---
+    WEB = "https://staging.example.test"
+
+    def zap_sample(self):
+        return json.loads((TOOLS_DIR.parent / "examples/zap/zap-sample.json").read_text(encoding="utf-8"))
+
+    def example_adapter(self, name):
+        return json.loads((TOOLS_DIR.parent / "examples/adapters" / f"{name}.json").read_text(encoding="utf-8"))
+
+    def test_url_fingerprint_ignores_query_values_and_ids(self):
+        findings = assess.merge_findings(assess.findings_from_sarif(assess.zap_to_sarif(self.zap_sample()), "zap"))
+        self.assertEqual(len(findings), 2)  # 같은 헤더 결함 두 인스턴스는 하나로, XSS는 따로
+        header = next(f for f in findings if f["cwe"] == "CWE-693")
+        self.assertEqual(header["location"]["web"]["path"], "staging.example.test/orders/{n}")
+        self.assertEqual(header["location"]["web"]["params"], ["token", "view", "x-content-type-options"])
+        xss = next(f for f in findings if f["cwe"] == "CWE-79")
+        self.assertEqual(xss["location"]["web"], {"method": "GET", "path": "staging.example.test/search", "params": ["q"]})
+
+    def test_web_path_normalizes_ids(self):
+        self.assertEqual(assess.normalize_web_path("https://A.test/u/42/doc/550e8400-e29b-41d4-a716-446655440000/"),
+                         "a.test/u/{n}/doc/{id}")
+
+    def test_rate_limit_is_semantic_only_for_web_and_keeps_old_fingerprints(self):
+        scope = copy.deepcopy(EXAMPLE)
+        for target in scope["targets"]:
+            target.pop("rateLimit", None)
+        old_material = {
+            "targets": sorted((t["type"], t["value"]) for t in scope["targets"]),
+            "exclusions": sorted(scope["exclusions"]), "window": scope["window"],
+            "consent": {k: scope["consent"][k] for k in ("authorizer", "role", "date", "reference")},
+            "intrusiveness": scope["intrusiveness"],
+        }
+        import hashlib
+        old = hashlib.sha256(json.dumps(old_material, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        self.assertEqual(assess.semantic_fingerprint(scope), old)  # 상한 없는 스코프의 기존 승인은 유지
+        scope["targets"][1]["rateLimit"] = 10
+        self.assertNotEqual(assess.semantic_fingerprint(scope), old)
+        scope["targets"][0]["rateLimit"] = 3
+        report = assess.Report()
+        assess.validate_scope(report, scope)
+        self.assertTrue(any("web targets only" in e for e in report.errors))
+
+    def test_exclusions_for_target_and_scope_args(self):
+        relevant = assess.exclusions_for_target(self.WEB, [
+            "https://staging.example.test/admin", "api.staging.example.test", "prod.example.test", "src/dao"])
+        self.assertEqual(relevant, {"hosts": ["api.staging.example.test"], "urls": ["https://staging.example.test/admin"]})
+        nuclei = self.example_adapter("nuclei")
+        args, why = assess.web_scope_args(nuclei, relevant)
+        self.assertIsNone(args)
+        self.assertIn("exclude_url", why)
+        args, _ = assess.web_scope_args(nuclei, {"hosts": ["api.staging.example.test"], "urls": []})
+        self.assertEqual(args, ["-exclude-hosts", "api.staging.example.test"])
+
+    def test_render_command_fills_container_placeholders(self):
+        argv = assess.render_command(self.example_adapter("nuclei")["command"], self.WEB,
+                                     Path("/tmp/x/nuclei.out"), ["-rate-limit", "10"])
+        self.assertIn("/tmp/x:/out", argv)
+        self.assertIn("/out/nuclei.out", argv)
+        self.assertEqual(argv[-2:], ["-rate-limit", "10"])
+
+    def test_web_adapter_without_rate_or_scope_control_is_operator_only(self):
+        zap = self.example_adapter("zap-baseline")
+        self.assertEqual(len(assess.web_direct_blockers(zap)), 2)
+        self.assertEqual(assess.web_direct_blockers(self.example_adapter("nuclei")), [])
+
+    def test_web_adapter_fields_are_validated(self):
+        bad = self.valid_adapter(id="w", category="dast", rate_limit="-rl", coverage={"mode": "url-list"},
+                                 scope_control={"stays_on_target": "yes", "exclude_host": "-eh"}, max_seconds=0)
+        errors = self.adapter_errors("w", bad)
+        for text in ("rate_limit must contain", "coverage.file is required", "stays_on_target must be",
+                     "exclude_host must contain", "max_seconds must be"):
+            self.assertTrue(any(text in e for e in errors), text)
+
+    def _web_scan_env(self, exclusions=(), window_end="2026-10-29"):
+        scope = authorized_scope(intrusiveness="active-nondestructive",
+                                 targets=[{"type": "web", "value": self.WEB, "rateLimit": 7}],
+                                 exclusions=list(exclusions), window={"start": "2026-10-22", "end": window_end})
+        self.write(scope)
+        adapter_dir, restore = self._scan_env()
+        (adapter_dir / "nuclei.json").write_text(json.dumps(self.example_adapter("nuclei")), encoding="utf-8")
+        calls = []
+
+        def fake_execute(command_template, target, output_path, timeout=600, extra_args=()):
+            calls.append({"target": target, "timeout": timeout, "args": list(extra_args),
+                          "argv": assess.render_command(command_template, target, Path(output_path), extra_args)})
+            Path(output_path).write_text(json.dumps(self.sarif("nuclei-sample.sarif")), encoding="utf-8")
+            return 0
+        assess.execute_adapter = fake_execute
+        return calls, restore
+
+    def _scan_confirm(self, confirm):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = assess.run_scan(True, confirm)
+        return code, buf.getvalue()
+
+    def test_web_scan_runs_only_with_the_plan_confirmation_code(self):
+        calls, restore = self._web_scan_env(exclusions=["api.staging.example.test"])
+        try:
+            code, out = self._scan_confirm(None)
+            self.assertEqual(code, 0, out)
+            self.assertEqual(calls, [])
+            self.assertIn("초당 7건 이하", out)
+            self.assertIn("api.staging.example.test", out)
+            plan_code = re.search(r"확인 코드: (\w+)", out).group(1)
+            code, out = self._scan_confirm("wrong")
+            self.assertEqual(calls, [])
+            self.assertIn("계획과 다릅니다", out)
+            code, out = self._scan_confirm(plan_code)
+            self.assertEqual(code, 0, out)
+            self.assertEqual(calls[0]["args"], ["-exclude-hosts", "api.staging.example.test", "-rate-limit", "7"])
+            self.assertLessEqual(calls[0]["timeout"], 900)
+            stored = json.loads((assess.scans_dir() / "nuclei.json").read_text(encoding="utf-8"))
+            self.assertEqual(stored["coverage"], {self.WEB: {"mode": "fixed-probes"}})
+            self.assertEqual(self._findings()[0]["location"]["web"]["path"], "staging.example.test/.git/config")
+        finally:
+            restore()
+
+    def test_web_scan_refuses_targets_with_unpassable_exclusions(self):
+        calls, restore = self._web_scan_env(exclusions=["https://staging.example.test/admin"])
+        try:
+            code, out = self._scan_confirm(None)
+            self.assertIn("거부", out)
+            self.assertNotIn("확인 코드", out)
+            self.assertEqual(calls, [])
+        finally:
+            restore()
+
+    def test_web_time_limit_stops_at_window_end(self):
+        adapter = {"max_seconds": 900}
+        scope = {"window": {"end": "2026-10-24"}}
+        late = datetime(2026, 10, 24, 23, 55, tzinfo=timezone.utc)
+        self.assertEqual(assess.web_time_limit(adapter, scope, late), 299)
+        self.assertLessEqual(assess.web_time_limit(adapter, scope, datetime(2026, 10, 25, tzinfo=timezone.utc)), 0)
+
+    def test_ingest_refuses_web_output_when_exclusions_cannot_be_enforced(self):
+        self.write(authorized_scope(intrusiveness="active-nondestructive",
+                                    targets=[{"type": "web", "value": self.WEB}],
+                                    exclusions=["https://staging.example.test/admin"]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            (adapter_dir / "zap-baseline.json").write_text(json.dumps(self.example_adapter("zap-baseline")), encoding="utf-8")
+            out_file = Path(self._tmp.name) / "zap.json"
+            out_file.write_text(json.dumps(self.zap_sample()), encoding="utf-8")
+            code, out = self._ingest("zap-baseline", out_file)
+            self.assertEqual(code, 1)
+            self.assertIn("들여오지 않습니다", out)
+        finally:
+            restore()
+
+    def test_ingest_web_output_records_url_list_coverage(self):
+        self.write(authorized_scope(intrusiveness="active-nondestructive", targets=[{"type": "web", "value": self.WEB}],
+                                    exclusions=[]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            zap = self.example_adapter("zap-baseline")
+            zap["coverage"] = {"mode": "url-list", "file": "visited.txt"}
+            (adapter_dir / "zap-baseline.json").write_text(json.dumps(zap), encoding="utf-8")
+            out_file = Path(self._tmp.name) / "zap.json"
+            out_file.write_text(json.dumps(self.zap_sample()), encoding="utf-8")
+            visited = Path(self._tmp.name) / "visited.txt"
+            visited.write_text("https://staging.example.test/search?q=1\nhttps://staging.example.test/orders/5\n", encoding="utf-8")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                code = assess.run_ingest("zap-baseline", str(out_file), None, str(visited))
+            self.assertEqual(code, 0, buf.getvalue())
+            stored = json.loads((assess.scans_dir() / "zap-baseline.json").read_text(encoding="utf-8"))
+            self.assertEqual(stored["coverage"][self.WEB]["paths"],
+                             ["staging.example.test/orders/{n}", "staging.example.test/search"])
+        finally:
+            restore()
+
+    def test_web_finding_resolves_only_when_coverage_saw_its_path(self):
+        def web(fp, path):
+            return {"fingerprint": fp, "cwe": "CWE-79", "location": {"file": f"https://{path}", "web": {"path": path}},
+                    "sources": [{"adapter": "zap", "target": self.WEB}]}
+        previous = [web("a", "staging.example.test/search"), web("b", "staging.example.test/admin2")]
+        seen = {"zap": {self.WEB: {"mode": "url-list", "paths": ["staging.example.test/search"]}}}
+        result = assess.round_resolution(previous, [], {"zap"}, seen)
+        self.assertEqual(result, {"resolved": ["a:CWE-79"], "notRechecked": ["b:CWE-79"]})
+        none = assess.round_resolution(previous, [], {"zap"}, {"zap": {self.WEB: {"mode": "none"}}})
+        self.assertEqual(none["resolved"], [])
+        probes = assess.round_resolution(previous, [], {"zap"}, {"zap": {self.WEB: {"mode": "fixed-probes"}}})
+        self.assertEqual(len(probes["resolved"]), 2)
+
+    def test_example_web_adapters_validate(self):
+        for name in ("nuclei", "zap-baseline"):
+            self.assertEqual(self.adapter_errors(name, self.example_adapter(name)), [], name)
 
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):

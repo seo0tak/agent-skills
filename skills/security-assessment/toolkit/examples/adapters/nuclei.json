@@ -1,0 +1,16 @@
+{
+  "id": "nuclei",
+  "category": "dast",
+  "intrusiveness": "active-nondestructive",
+  "availability": "docker image inspect projectdiscovery/nuclei",
+  "command": "docker run --rm -v {output_dir}:/out projectdiscovery/nuclei -u {target} -silent -exclude-tags intrusive,dos,fuzz -sarif-export /out/{output_name}",
+  "output_format": "sarif",
+  "scope_control": {
+    "stays_on_target": true,
+    "exclude_host": "-exclude-hosts {host}"
+  },
+  "rate_limit": "-rate-limit {rate}",
+  "coverage": { "mode": "fixed-probes" },
+  "max_seconds": 900,
+  "description": "웹 비파괴 템플릿 스캔(컨테이너). 대상 URL에 같은 탐침 묶음을 보내므로 커버리지는 fixed-probes. 제외 URL(경로)을 넘기는 방법이 없어, 대상 안에 경로 제외가 있으면 거부된다."
+}

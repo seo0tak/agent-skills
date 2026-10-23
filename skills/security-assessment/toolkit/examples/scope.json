@@ -5,7 +5,7 @@
   "approvalFingerprint": "PLACEHOLDER",
   "targets": [
     { "type": "repo", "value": "./", "notes": "이 저장소(예시)" },
-    { "type": "web", "value": "https://staging.example.test", "notes": "스테이징만" }
+    { "type": "web", "value": "https://staging.example.test", "rateLimit": 10, "notes": "스테이징만, 초당 10건 이하" }
   ],
   "exclusions": ["https://staging.example.test/admin", "prod.example.test"],
   "window": { "start": "2026-10-22", "end": "2026-10-29" },

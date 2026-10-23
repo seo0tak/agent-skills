@@ -10,9 +10,30 @@
     "category": { "enum": ["sast", "sca", "secret", "dast", "iac"] },
     "intrusiveness": { "enum": ["passive", "active-nondestructive", "intrusive"] },
     "availability": { "type": "string", "minLength": 1, "description": "도구 설치 확인 명령(선언만; 실행 판정은 별도)." },
-    "command": { "type": "string", "minLength": 1, "description": "실행 명령 템플릿. 대상·출력 자리표시자를 포함한다." },
+    "command": { "type": "string", "minLength": 1, "description": "실행 명령 템플릿. {target}, {output}(출력 파일 경로), 컨테이너 마운트용 {output_dir}·{output_name}을 쓸 수 있다." },
     "output_format": { "type": "string", "minLength": 1, "description": "출력 형식. 'sarif'는 통과, 그 외는 같은 이름의 정규화기가 있어야 한다." },
-    "description": { "type": "string" }
+    "description": { "type": "string" },
+    "scope_control": {
+      "type": "object",
+      "description": "웹 어댑터가 범위를 스캐너 자체에서 지키는 방법(ADR 0003). 대상 안의 제외 자산을 넘길 방법이 없으면 실행·들여오기를 거부한다.",
+      "properties": {
+        "stays_on_target": { "type": "boolean", "description": "스캐너가 대상 밖 호스트로 나가지 않게 설정되어 있다는 선언. 없으면 직접 실행하지 않는다." },
+        "exclude_host": { "type": "string", "description": "제외 하위 도메인 하나를 넘기는 인자 템플릿. {host} 포함." },
+        "exclude_url": { "type": "string", "description": "제외 URL 하나를 넘기는 인자 템플릿. {url} 포함." }
+      },
+      "additionalProperties": false
+    },
+    "rate_limit": { "type": "string", "description": "초당 요청 상한을 넘기는 인자 템플릿. {rate} 포함. 없는 웹 어댑터는 직접 실행하지 않는다." },
+    "coverage": {
+      "type": "object",
+      "required": ["mode"],
+      "description": "웹 실행이 실제로 본 범위. 웹 검출의 해소 판단에 쓴다.",
+      "properties": {
+        "mode": { "enum": ["none", "fixed-probes", "url-list"], "description": "none=알 수 없음, fixed-probes=매번 같은 탐침을 대상 전체에, url-list=방문 URL 파일." },
+        "file": { "type": "string", "description": "url-list일 때 출력 디렉터리 안의 방문 URL 파일 이름(한 줄에 하나)." }
+      }
+    },
+    "max_seconds": { "type": "integer", "minimum": 1, "description": "한 번 실행의 시간 상한(초). 점검 기간 끝까지 남은 시간이 더 짧으면 그쪽을 쓴다. 기본 600." }
   },
   "additionalProperties": true
 }
