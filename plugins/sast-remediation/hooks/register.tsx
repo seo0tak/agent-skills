@@ -38,12 +38,34 @@ const STAGES: { key: string; label: string; icon: string; hex: string; theme: st
 // 아이콘은 Emoji_Presentation 문자만 쓴다. 이 문자들은 어느 터미널에서나 정확히 두 칸이라 폭이 어긋나지 않는다.
 // ⚠ ⏸ ★ 같은 기호나 FE0F를 붙여야 그림이 되는 이모지(🛡️ 등)는 폭이 모호해 쓰지 않는다(테스트가 검사).
 const ICON = {
-  title: '🔍', scope: '🎯', all: '📦', empty: '📭', checkers: '📋', context: '🧠', cost: '💰',
+  title: '🔍', scope: '🎯', all: '📦', conclusion: '📝', empty: '📭', checkers: '📋', context: '🧠', cost: '💰',
   io: '📨', cache: '📚', requests: '🔁', fiveHour: '⌛', sevenDay: '📅', clock: '🕒',
 }
 // 남은 건수 신호등: 5건 이상 빨강, 3~4 주황, 1~2 노랑, 0 초록
 const signal = (remaining: number) => remaining >= 5 ? '🔴' : remaining >= 3 ? '🟠' : remaining >= 1 ? '🟡' : '🟢'
 const heat = (remaining: number) => remaining >= 5 ? 'error' : remaining >= 3 ? 'warning' : remaining >= 1 ? 'suggestion' : 'success'
+// 결론: 표시 순서·이름·색(실제 결함 빨강, 오탐 초록, 운영·예외 보라, 추가 검토 파랑, 미검토 회색)
+const CONCLUSIONS: { key: string; label: string; theme: string; hex: string }[] = [
+  { key: 'fix', label: '수정 필요', theme: 'error', hex: '#d4483f' },
+  { key: 'false-positive', label: '오탐', theme: 'success', hex: '#2fa36b' },
+  { key: 'operations', label: '운영 조치', theme: 'merged', hex: '#8b6fd6' },
+  { key: 'exception', label: '예외', theme: 'merged', hex: '#8b6fd6' },
+  { key: 'needs-review', label: '추가 검토', theme: 'suggestion', hex: '#5b7cf0' },
+  { key: 'unreviewed', label: '미검토', theme: 'inactive', hex: '#8a8f99' },
+]
+// 컨텍스트 구성 이름(/context가 영어로 줌)과 그래픽용 색(엔진은 테마 키로 줌)
+const CONTEXT_LABEL: Record<string, string> = {
+  'System prompt': '시스템 프롬프트', 'System tools': '시스템 도구', 'MCP tools': 'MCP 도구', 'Custom agents': '에이전트',
+  'Memory files': '메모리 파일', Skills: '스킬', Messages: '대화', 'Free space': '남은 칸', 'Autocompact buffer': '압축 예비',
+}
+const THEME_HEX: Record<string, string> = {
+  inactive: '#8a8f99', subtle: '#6b7080', suggestion: '#5b7cf0', success: '#2fa36b', warning: '#d9962b', error: '#d4483f',
+  merged: '#8b6fd6', claude: '#d97757', permission: '#7c8cf8', promptBorder: '#8a8f99', remember: '#5b9bd5', planMode: '#48968c',
+  autoAccept: '#a66bd6', bashBorder: '#e05d8a', ide: '#4f8fd9',
+}
+const BREAKDOWN_GAP_MS = 15_000
+let lastBreakdown = 0
+
 const RISK_ORDER = ['critical', 'very-high', 'high', 'medium', 'low']
 const RISK_LABEL: Record<string, string> = {
   critical: '긴급', 'very-high': '매우 높음', high: '높음', medium: '보통', low: '낮음', info: '정보', unknown: '미확인',
@@ -56,7 +78,7 @@ const BLUE = '#5b7cf0'
 
 type Summary = {
   total: number
-  by: { workflowStatus: Record<string, number>; risk?: Record<string, number> }
+  by: { workflowStatus: Record<string, number>; risk?: Record<string, number>; conclusion?: Record<string, number> }
   byChecker: Record<string, { total: number; verified: number; deferred: number; remaining: number }>
 }
 
@@ -97,6 +119,7 @@ function counts(summary: Summary): Counts {
     deferred: byStatus.deferred ?? 0,
     inProgress: byStatus['in-progress'] ?? 0,
     byStatus,
+    byConclusion: summary.by?.conclusion ?? {},
   }
 }
 
@@ -183,8 +206,25 @@ async function refreshProgress($: EngineInterface, force = false) {
   await showStatus($)
 }
 
+// 컨텍스트 구성: 로컬 추정(summary)이라 요청을 보내지 않는다. 그래도 15초에 한 번만.
+async function refreshBreakdown($: EngineInterface, force = false) {
+  const now = await $.clock.now()
+  if (!force && now - lastBreakdown < BREAKDOWN_GAP_MS) return
+  lastBreakdown = now
+  try {
+    const measured = await $.session.usage({ breakdown: 'summary' })
+    const rows = measured.context.breakdown?.categories
+    if (!rows) return
+    await update($, usage, u => ({ ...u, breakdown: rows.filter(c => c.kind !== 'deferred' && c.tokens > 0)
+      .map(c => ({ name: c.name, tokens: c.tokens, color: c.color, kind: c.kind })) }))
+  } catch {
+    // 구성은 덧붙이는 정보다. 못 읽으면 게이지만 보여 준다.
+  }
+}
+
 async function activate($: EngineInterface) {
   await update($, active, () => true)
+  await refreshBreakdown($, true)
   await refreshProgress($, true)
   await $.ui.open({ id: PANE, title: TITLE, rows: 22 })
 }
@@ -312,7 +352,8 @@ export const register: Register = on => {
   })
 
   on('session.measure', async ($, e, next) => {
-    await update($, usage, () => usageFrom(e))
+    await update($, usage, u => ({ ...usageFrom(e), breakdown: u.breakdown }))
+    if (await read($, active)) await refreshBreakdown($)
     await showStatus($)
     return next(e)
   })
@@ -412,6 +453,51 @@ export const register: Register = on => {
       )
       : <Text key={key} wrap="truncate"><Text dimColor>{label}</Text>  <Text dimColor={dimValue}>{value}</Text></Text>
 
+    // 작업 단계 막대와 아이콘 범례(전체 또는 범위 안)
+    const stageView = (c: Counts, keyPrefix: string) => {
+      const stages = STAGES.filter(s => (c.byStatus[s.key] ?? 0) > 0)
+      const legend = (
+        <Box flexDirection="row" columnGap={2} flexWrap="wrap">
+          {stages.map(s => (
+            <Text key={`${keyPrefix}-stage-${s.key}`}><Text color={s.theme} bold>{s.icon} {c.byStatus[s.key]}</Text> <Text dimColor>{s.label}</Text></Text>
+          ))}
+        </Box>
+      )
+      const stageBar = bar(stages.map(s => ({ value: c.byStatus[s.key] ?? 0, hex: s.hex, theme: s.theme })), c.total,
+        `작업 단계: ${stages.map(s => `${s.label} ${c.byStatus[s.key]}`).join(', ')}`)
+      return { stageBar, legend }
+    }
+
+    // 이름 + 양 막대 + 값 한 줄(터미널). 그래픽은 이름·값 줄 아래 막대.
+    const amountRows = (items: { key: string; label: string; value: number; theme: string; hex: string; detail: string; bold?: boolean }[]) => {
+      const max = Math.max(1, ...items.map(i => i.value))
+      if (Svg) {
+        return (
+          <Box flexDirection="column" gap={1}>
+            {items.map(i => (
+              <Box key={i.key} flexDirection="column">
+                {labelValue(i.label, i.detail, !i.bold)}
+                <Svg source={barSvg([{ value: i.value, hex: i.hex }], max, 5)} alt={`${i.label} ${i.detail}`} height={5} />
+              </Box>
+            ))}
+          </Box>
+        )
+      }
+      const labelWidth = Math.max(...items.map(i => cellWidth(i.label)))
+      const width = narrow ? 0 : Math.max(6, Math.min(30, columns - labelWidth - 24))
+      return (
+        <Box flexDirection="column">
+          {items.map(i => (
+            <Text key={i.key} wrap="truncate">
+              {i.label}{' '.repeat(labelWidth - cellWidth(i.label))}
+              {width > 0 ? <Text> {volumeBar(0, i.value, max, width, i.theme)}</Text> : ''}
+              {'  '}<Text bold={i.bold} dimColor={!i.bold}>{i.detail}</Text>
+            </Text>
+          ))}
+        </Box>
+      )
+    }
+
     const main = p.kind === 'ok' ? p.scope ?? p.all : null
     const mainPct = main ? percent(main.verified, main.total) : 0
 
@@ -433,16 +519,7 @@ export const register: Register = on => {
       const scopeLine = p.scope
         ? <Text wrap="wrap"><Text bold>{ICON.scope} 처리 범위</Text>  <Text dimColor>위험도 {RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk} 이상{sep}남음 {remaining}{sep}{ICON.all} 전체 {p.all.verified} / {p.all.total}</Text></Text>
         : <Text wrap="wrap"><Text bold>{ICON.all} 전체</Text>  <Text dimColor>검증 완료 기준{sep}남음 {remaining}</Text></Text>
-      const stages = STAGES.filter(s => (p.all.byStatus[s.key] ?? 0) > 0)
-      const legend = (
-        <Box flexDirection="row" columnGap={2} flexWrap="wrap">
-          {stages.map(s => (
-            <Text key={`stage-${s.key}`}><Text color={s.theme} bold>{s.icon} {p.all.byStatus[s.key]}</Text> <Text dimColor>{s.label}</Text></Text>
-          ))}
-        </Box>
-      )
-      const stageBar = bar(stages.map(s => ({ value: p.all.byStatus[s.key] ?? 0, hex: s.hex, theme: s.theme })), p.all.total,
-        `작업 단계: ${stages.map(s => `${s.label} ${p.all.byStatus[s.key]}`).join(', ')}`)
+      const { stageBar, legend } = stageView(p.all, 'all')
       if (Svg) {
         return (
           <Box flexDirection="column" gap={1}>
@@ -549,6 +626,43 @@ export const register: Register = on => {
         ? <Svg source={barSvg([{ value: ctx ?? 0, hex: contextColor(ctx) }], 100, 10, [70, 85])}
             alt={`컨텍스트 ${ctx === undefined ? '알 수 없음' : `${Math.round(ctx)}%`}, 주의 70%, 위험 85%`} height={10} />
         : pctBar(ctx ?? 0, contextColor(ctx), ctxTheme, '컨텍스트')
+      // 컨텍스트 구성: 쓰는 항목은 /context 색, 남은 칸은 비우고, 압축 예비는 회색. 아래에 항목별 토큰.
+      const composition = (() => {
+        const rows = u.breakdown ?? []
+        if (rows.length === 0) return null
+        const all = rows.reduce((sum, c) => sum + c.tokens, 0)
+        const paint = (c: { color: string; kind: string }) => c.kind === 'free' ? '' : c.kind === 'buffer' ? 'inactive' : c.color
+        const label = (c: { name: string; kind: string }) =>
+          c.kind === 'free' ? '남은 칸' : c.kind === 'buffer' ? '압축 예비' : CONTEXT_LABEL[c.name] ?? c.name
+        const graphic = Svg
+          ? <Svg source={barSvg(rows.map(c => ({ value: c.tokens, hex: c.kind === 'free' ? 'transparent' : THEME_HEX[paint(c)] ?? '#8a8f99' })), all, 8)}
+              alt={`컨텍스트 구성: ${rows.map(c => `${label(c)} ${compact(c.tokens)}`).join(', ')}`} height={8} />
+          : (() => {
+            let used = 0
+            return (
+              <Text>
+                {rows.map((c, index) => {
+                  const cells = index === rows.length - 1 ? barWidth - used : Math.min(barWidth - used, Math.round((c.tokens / all) * barWidth))
+                  used += cells
+                  return cells > 0 ? <Text key={`ctx-${index}`} backgroundColor={paint(c) || undefined}>{' '.repeat(cells)}</Text> : ''
+                })}
+              </Text>
+            )
+          })()
+        const nameWidth = Math.max(...rows.map(c => cellWidth(label(c))))
+        return (
+          <Box flexDirection="column">
+            <Text bold>{ICON.context} 컨텍스트 구성</Text>
+            {graphic}
+            {rows.map((c, index) => (
+              <Text key={`ctx-row-${index}`} wrap="truncate">
+                <Text backgroundColor={paint(c) || undefined}>{c.kind === 'free' ? '--' : '  '}</Text> {label(c)}{' '.repeat(nameWidth - cellWidth(label(c)))}
+                {'  '}<Text dimColor={c.kind !== 'used'}>{compact(c.tokens).padStart(7)}  {String(Math.round((c.tokens / all) * 100)).padStart(3)}%</Text>
+              </Text>
+            ))}
+          </Box>
+        )
+      })()
       const limitTheme = (pct: number) => pct >= 85 ? 'error' : pct >= 70 ? 'warning' : 'suggestion'
       const limitHex = (pct: number) => pct >= 85 ? BAD : pct >= 70 ? WARN : BLUE
       return (
@@ -557,6 +671,7 @@ export const register: Register = on => {
             <Text><Text bold>{ICON.context} 컨텍스트 <Text color={ctxTheme}>{ctx === undefined ? '-' : `${Math.round(ctx)}%`}</Text></Text>  <Text dimColor>{compact(u.contextTokens)} / {compact(u.contextWindow)}</Text></Text>
             {gauge}
           </Box>
+          {composition}
           <Box flexDirection="column">
             {labelValue(`${ICON.cost} 이번 세션 비용`, u.costUsd === undefined ? '-' : `$${u.costUsd.toFixed(2)}`, false, 'cost')}
             {t.requests === 0
@@ -593,6 +708,17 @@ export const register: Register = on => {
         return cut >= 0 && index <= cut ? '범위 안' : '범위 밖'
       }
       const outside = p.all.total - p.scope.total
+      const scopeStages = stageView(p.scope, 'scope')
+      // 결론 분포: 범위 안 항목 기준. 알 수 없는 값도 그대로 보인다.
+      const known = CONCLUSIONS.map(c => c.key)
+      const conclusions = [
+        ...CONCLUSIONS,
+        ...Object.keys(p.scope.byConclusion).filter(key => !known.includes(key))
+          .map(key => ({ key, label: key, theme: 'inactive', hex: '#8a8f99' })),
+      ].filter(c => (p.scope!.byConclusion[c.key] ?? 0) > 0).map(c => ({
+        key: `conclusion-${c.key}`, label: c.label, value: p.scope!.byConclusion[c.key] ?? 0, theme: c.theme, hex: c.hex,
+        detail: `${p.scope!.byConclusion[c.key]}건`, bold: c.key !== 'unreviewed',
+      }))
       return (
         <Box flexDirection="column" gap={1}>
           <Text>{ICON.scope} 기준: 위험도 <Text bold>{RISK_LABEL[p.scope.minRisk] ?? p.scope.minRisk}</Text> 이상</Text>
@@ -600,6 +726,18 @@ export const register: Register = on => {
             <Text tabular>{ICON.all} 범위 안 {p.scope.total}{sep}그 밖 {outside}</Text>
             {pctBar(percent(p.scope.total, p.all.total), BLUE, 'suggestion', `범위 안 ${percent(p.scope.total, p.all.total)}%`)}
           </Box>
+          <Box flexDirection="column">
+            <Text bold>{ICON.scope} 범위 안 작업 단계  <Text dimColor>{p.scope.verified} / {p.scope.total} 검증 완료</Text></Text>
+            {scopeStages.stageBar}
+            {scopeStages.legend}
+          </Box>
+          {conclusions.length > 0 && (
+            <Box flexDirection="column">
+              <Text bold>{ICON.conclusion} 결론 (범위 안)</Text>
+              {amountRows(conclusions)}
+            </Box>
+          )}
+          <Text bold>{ICON.all} 위험도별</Text>
           {Svg
             ? (
               <Box flexDirection="column">

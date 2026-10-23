@@ -28,7 +28,10 @@ const ALL = JSON.stringify({
 })
 const IN_SCOPE = JSON.stringify({
   total: 22,
-  by: { workflowStatus: { analyzed: 3, 'change-complete': 2, verified: 15, deferred: 1, 'in-progress': 1 } },
+  by: {
+    workflowStatus: { analyzed: 3, 'change-complete': 2, verified: 15, deferred: 1, 'in-progress': 1 },
+    conclusion: { fix: 14, 'false-positive': 5, 'needs-review': 2, unreviewed: 1 },
+  },
   byChecker: {},
 })
 
@@ -57,10 +60,21 @@ function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null
   on('ui.toast', () => ({ value: {} }))
   on('ui.scroll', () => { seen.engineScrolls = (seen.engineScrolls ?? 0) + 1; return { value: {} } }) // 엔진이 패널 전체를 움직임
   on('clock.now', () => ({ value: 1_700_000_000_000 }))
-  on('session.usage', () => ({
+  on('session.usage', (_: unknown, e?: { breakdown?: string }) => ({
     value: {
       startedAt: 0,
-      context: { tokens: 412_300, window: 1_000_000, percent: 41 },
+      context: {
+        tokens: 412_300, window: 1_000_000, percent: 41,
+        // 구성은 breakdown을 물었을 때만 온다
+        ...(e?.breakdown ? { breakdown: { totalTokens: 412_300, maxTokens: 1_000_000, categories: [
+          { name: 'System prompt', tokens: 3_100, color: 'promptBorder', isDeferred: false, kind: 'used' },
+          { name: 'System tools', tokens: 21_400, color: 'inactive', isDeferred: false, kind: 'used' },
+          { name: 'Messages', tokens: 387_800, color: 'permission', isDeferred: false, kind: 'used' },
+          { name: 'MCP tools', tokens: 9_000, color: 'claude', isDeferred: true, kind: 'deferred' },
+          { name: 'Free space', tokens: 547_700, color: 'inactive', isDeferred: false, kind: 'free' },
+          { name: 'Autocompact buffer', tokens: 40_000, color: 'inactive', isDeferred: false, kind: 'buffer' },
+        ] } } : {}),
+      },
       rateLimits: [{ kind: 'five_hour', percentUsed: 37 }],
       cost: { usd: 18.42 },
     },
@@ -112,10 +126,18 @@ test('the tabs switch to tokens and scope', async ($, on) => {
   await ui.press({ key: 'tab-tokens' })
   expect((await ui.find({ type: 'Text', text: /🧠 컨텍스트 41%/ }))?.text).toContain('412.3k / 1.00M')
   expect((await ui.find({ type: 'Text', text: /이번 세션 비용/ }))?.text).toContain('$18.42')
+  expect((await ui.find({ type: 'Text', text: /컨텍스트 구성/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /대화 +387\.8k +39%/ }))?.text).toBeTruthy() // 이름은 한글로
+  expect((await ui.find({ type: 'Text', text: /압축 예비/ }))?.text).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /MCP 도구/ })).toBeUndefined() // 지연 로드 도구는 뺀다
 
   await ui.press({ key: 'tab-scope' })
   expect((await ui.find({ type: 'Text', text: /범위 안 22/ }))?.text).toBe('📦 범위 안 22, 그 밖 26')
   expect((await ui.find({ type: 'Text', text: /2건, 미확인/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /범위 안 작업 단계/ }))?.text).toContain('15 / 22 검증 완료')
+  expect((await ui.find({ type: 'Text', text: /^⏳ 1 작업 중$/ }))?.text).toBeTruthy() // 범위 안 단계 범례
+  expect((await ui.find({ type: 'Text', text: /^수정 필요 .*14건$/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /^미검토 .*1건$/ }))?.text).toBeTruthy()
   await ui.unmount()
 })
 

@@ -4,6 +4,7 @@ export type Counts = {
   deferred: number
   inProgress: number
   byStatus: Record<string, number>
+  byConclusion: Record<string, number>
 }
 
 export type ScopeCounts = Counts & { minRisk: string }
@@ -27,6 +28,8 @@ export type UsageView = {
   contextWindow?: number
   costUsd?: number
   rateLimits: { kind: string; percentUsed: number; resetsAt?: string }[]
+  // /context와 같은 컨텍스트 구성(엔진의 로컬 추정). 지연 로드 도구는 뺀다.
+  breakdown?: { name: string; tokens: number; color: string; kind: string }[]
 }
 
 export type TokenTotals = { input: number; output: number; cacheRead: number; cacheWrite: number; requests: number }
