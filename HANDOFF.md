@@ -1,12 +1,12 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.3 / skill-architect v0.5.3 / security-assessment v0.11.2)
+# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.17.3 / skill-architect v0.5.3 / security-assessment v0.12.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-10-23 security-assessment 0.11.0 M4 · 패널 개편 · 시인성 재점검)
+## 최신 작업 기준 (2026-10-23 security-assessment 0.12.0 M5 · 패널 개편 · 시인성 재점검)
 
-배포 버전: sast-remediation **v1.17.3**, skill-architect **v0.5.3**, security-assessment **v0.11.2**.
+배포 버전: sast-remediation **v1.17.3**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
 최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료.
 
 ### security-assessment
@@ -138,7 +138,16 @@
   `py -3` 순으로 찾고 찾은 것을 기억한다(실행 불가·9009·Windows 문구만 다음 후보로, 툴킷 자체 오류는 그대로
   표시). 테스트 5건(Windows 대체 경로 포함). 두 스킬 SKILL.md에 "`python3`가 없으면 `py -3`·`python`" 한 줄
   (security-assessment 0.11.2). 툴킷 문서의 다른 명령 예시는 여전히 `python3` 표기.
-- 다음: M5 구현. 인증 웹 스캔·네트워크 스캔은 별도 설계.
+- **M5 구현 완료(0.12.0)**: 방법론 체크리스트 = 점검 기록 장부. 기준 파일 `checklists/<이름>.json`(항목 ID·제목·
+  링크·필요 침습도·대상 종류, `steps`·`procedure`·`payload(s)` 필드는 validate 에러), 기록 `data/checklist.json`
+  (상태 not-checked·checked·issue-found·not-applicable, 범위 밖은 계산), 확정 상태는 decidedBy user + reason,
+  issue-found는 evidence 필수, 범위 밖 항목에 결과를 적으면 에러. 어댑터 `checklist_items` 매핑 + 이번 차수 실행
+  결과 → `suggestedBy` 제안만. `checklist` 명령(JSON), 표지 「방법론 체크리스트」 표, `evidence/checklist.csv`와
+  드리프트 검사. 예시 기준 파일 `examples/checklists/wstg-sample.json`(WSTG 일부 항목, ID·제목·링크만, 링크는
+  WSTG 프로젝트 페이지), `examples/checklist.json`, zap-baseline에 CONF-07·SESS-02 매핑. 프롬프트
+  `04-checklist.md`, 스키마 2개, 업그레이드 시 `checklists/` 보존. assess 108건, CLI 왕복 확인.
+- 다음: 계획한 M0~M5는 끝. 남은 것은 인증 웹 스캔·네트워크 스캔(별도 설계), 실제 스캐너(nuclei·ZAP·
+  Prowler·Checkov) 출력으로의 검증, 패널 실제 화면 확인.
 - **진행률 패널을 플러그인에 포함(sast-remediation 1.17.0)**: `plugins/sast-remediation/hooks/register.tsx`
   (+ `hooks/hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`, plugin.json `types`). Claude Code 전용
   mod, `skills/` 정본이 아니라 플러그인 쪽(agents/와 같은 위치)이 원본. 열리는 조건: 프로젝트에
@@ -408,7 +417,7 @@ Claude·Codex 모두 GitHub 소스 설치 확인. 규약은 CLAUDE.md.
   (claude·codex 매니페스트·README 표) — 커밋 전 둘 다 통과
 - 설치 경로 검증은 사용자가 설치 테스트를 승인한 별도 작업에서 수행한다.
   기존 설치를 일괄 제거하거나 캐시를 삭제하지 않는다.
-- security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(103건).
+- security-assessment: 툴킷에서 `python3 -B -m unittest tools.test_assess`(108건).
   CLI 왕복은 저장소 밖 임시 사본에서(저장소 안에서 scan·evidence를 돌리지 않는다).
 - mermaid를 고치면 브라우저에서 렌더링해 파싱 오류 0을 확인한다(문법 오류가 조용히 남는다).
 - 구조도(D2)·시퀀스(PlantUML)는 `docs/diagrams/` 원본을 고치고 `python3 scripts/render_diagrams.py`로

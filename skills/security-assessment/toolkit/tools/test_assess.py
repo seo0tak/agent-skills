@@ -1354,6 +1354,115 @@ class AssessCase(unittest.TestCase):
         self.assertTrue(any("output_file must be" in e for e in errors))
         self.assertTrue(any("cloud_args.regions must contain" in e for e in errors))
 
+    # --- 방법론 체크리스트 (ADR 0005) ---
+    def wstg(self):
+        return json.loads((TOOLS_DIR.parent / "examples/checklists/wstg-sample.json").read_text(encoding="utf-8"))
+
+    def _checklist_env(self, records, scope=None):
+        """체크리스트·증적 경로를 임시 위치로 돌리고 기준 파일과 기록을 둔다."""
+        base = Path(self._tmp.name)
+        names = ("CHECKLIST_DIR", "CHECKLIST_FILE", "CHECKLIST_CSV", "EVIDENCE_CSV", "COVER_MD",
+                 "FINDINGS_FILE", "DISPOSITIONS_FILE", "ADAPTER_DIR")
+        orig = {n: getattr(assess, n) for n in names}
+        assess.CHECKLIST_DIR = base / "checklists"
+        assess.CHECKLIST_FILE = base / "checklist.json"
+        assess.CHECKLIST_CSV = base / "evidence" / "checklist.csv"
+        assess.EVIDENCE_CSV = base / "evidence" / "findings.csv"
+        assess.COVER_MD = base / "evidence" / "cover.md"
+        assess.FINDINGS_FILE = base / "findings.json"
+        assess.DISPOSITIONS_FILE = base / "dispositions.json"
+        assess.ADAPTER_DIR = base / "adapters"
+        assess.CHECKLIST_DIR.mkdir(exist_ok=True)
+        (assess.CHECKLIST_DIR / "wstg-sample.json").write_text(json.dumps(self.wstg()), encoding="utf-8")
+        assess.CHECKLIST_FILE.write_text(json.dumps({"schemaVersion": "1.0", "standard": "wstg-sample",
+                                                     "items": records}), encoding="utf-8")
+        self.write(scope or authorized_scope())
+
+        def restore():
+            for n, v in orig.items():
+                setattr(assess, n, v)
+        return restore
+
+    def test_standard_file_holds_records_not_procedures(self):
+        report = assess.Report()
+        assess.validate_standard(report, "wstg-sample", self.wstg())
+        self.assertEqual(report.errors, [])
+        bad = self.wstg()
+        bad["items"][0]["steps"] = ["..."]
+        bad["items"][1]["intrusiveness"] = "loud"
+        report = assess.Report()
+        assess.validate_standard(report, "wstg-sample", bad)
+        self.assertTrue(any("records results only" in e for e in report.errors))
+        self.assertTrue(any("intrusiveness must be" in e for e in report.errors))
+
+    def test_items_beyond_the_scope_cap_or_without_targets_are_out_of_scope(self):
+        items = {i["id"]: i for i in self.wstg()["items"]}
+        scope = authorized_scope()  # 상한 active-nondestructive, repo·web·infra 대상
+        self.assertEqual(assess.item_out_of_scope(items["WSTG-CONF-07"], scope), "")
+        self.assertIn("상한", assess.item_out_of_scope(items["WSTG-INPV-05"], scope))
+        repo_only = authorized_scope(targets=[{"type": "repo", "value": "./"}])
+        self.assertIn("대상", assess.item_out_of_scope(items["WSTG-CONF-07"], repo_only))
+
+    def test_rows_suggest_scan_coverage_but_do_not_confirm(self):
+        zap = self.example_adapter("zap-baseline")
+        rows = assess.checklist_rows(self.wstg(), {"WSTG-CONF-07": {}, "WSTG-INPV-05": {"status": "checked"}},
+                                     authorized_scope(), [("zap-baseline", zap)],
+                                     {"zap-baseline": {"targets": [self.WEB]}})
+        by = {r["item"]: r for r in rows}
+        self.assertEqual(by["WSTG-CONF-07"]["status"], "not-checked")
+        self.assertEqual(by["WSTG-CONF-07"]["suggestedBy"], ["zap-baseline"])
+        self.assertEqual(by["WSTG-INPV-05"]["status"], "out-of-scope")
+        none_ran = assess.checklist_rows(self.wstg(), {"WSTG-CONF-07": {}}, authorized_scope(), [("zap-baseline", zap)], {})
+        self.assertEqual(none_ran[0]["suggestedBy"], [])
+
+    def test_checklist_results_need_user_confirmation_reason_and_scope(self):
+        restore = self._checklist_env({
+            "WSTG-CONF-07": {"status": "checked", "decidedBy": "ai", "reason": "근거"},
+            "WSTG-SESS-02": {"status": "issue-found", "decidedBy": "user", "reason": "근거"},
+            "WSTG-INPV-05": {"status": "checked", "decidedBy": "user", "reason": "근거"},
+            "WSTG-NOPE-01": {"status": "not-checked"},
+            "WSTG-INFO-02": {"status": "not-applicable", "decidedBy": "user"},
+        })
+        try:
+            report = assess.Report()
+            assess.validate_checklist(report)
+        finally:
+            restore()
+        joined = "\n".join(report.errors)
+        self.assertIn("WSTG-CONF-07 is 'checked'; only the user confirms", joined)
+        self.assertIn("WSTG-SESS-02 is 'issue-found' but names no evidence", joined)
+        self.assertIn("WSTG-INPV-05 is out of scope", joined)
+        self.assertIn("WSTG-NOPE-01 is not in checklists", joined)
+        self.assertIn("WSTG-INFO-02 is 'not-applicable' but has no reason", joined)
+
+    def test_example_checklist_validates_and_evidence_carries_it(self):
+        records = json.loads((TOOLS_DIR.parent / "examples/checklist.json").read_text(encoding="utf-8"))["items"]
+        restore = self._checklist_env(records)
+        try:
+            report = assess.Report()
+            assess.validate_checklist(report)
+            self.assertEqual(report.errors, [])
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(assess.run_evidence(), 0)
+            cover = assess.COVER_MD.read_text(encoding="utf-8")
+            self.assertIn("## 5. 방법론 체크리스트", cover)
+            self.assertIn("| 점검함 | 1 |", cover)
+            self.assertIn("| 결함 발견 | 1 |", cover)
+            self.assertIn("| 범위 밖 | 1 |", cover)  # INPV-05는 상한 밖
+            csv_text = assess.CHECKLIST_CSV.read_text(encoding="utf-8")
+            self.assertTrue(csv_text.startswith("item,title,status,decidedBy,reason,evidence,suggestedBy,link"))
+            report = assess.Report()
+            assess.validate_evidence(report)
+            self.assertEqual(report.errors, [])
+            data = json.loads(assess.CHECKLIST_FILE.read_text(encoding="utf-8"))
+            data["items"]["WSTG-INFO-02"] = {"status": "not-applicable", "decidedBy": "user", "reason": "정적 사이트"}
+            assess.CHECKLIST_FILE.write_text(json.dumps(data), encoding="utf-8")
+            report = assess.Report()
+            assess.validate_evidence(report)
+            self.assertTrue(any("checklist.csv is out of date" in e for e in report.errors))
+        finally:
+            restore()
+
     # --- strict ---
     def test_strict_validate_folds_gate_block_into_errors(self):
         scope = copy.deepcopy(EXAMPLE)

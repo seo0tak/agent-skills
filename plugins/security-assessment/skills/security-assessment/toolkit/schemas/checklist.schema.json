@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/security-assessment/checklist.schema.json",
+  "title": "Methodology Checklist Records",
+  "description": "data/checklist.json: 이번 점검에서 고른 기준 항목과 결과의 기록. 시험 방법은 표준 문서를 따르며 여기에 적지 않는다(ADR 0005). 범위 밖은 기록이 아니라 계산이다.",
+  "type": "object",
+  "required": ["schemaVersion", "standard", "items"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "standard": { "type": "string", "minLength": 1, "description": "checklists/<standard>.json의 이름." },
+    "updatedAt": { "type": ["string", "null"], "format": "date-time" },
+    "items": {
+      "type": "object",
+      "description": "항목 ID → 기록.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "status": { "enum": ["not-checked", "checked", "issue-found", "not-applicable"] },
+          "decidedBy": { "const": "user", "description": "checked·issue-found·not-applicable 확정은 사용자만." },
+          "reason": { "type": "string", "description": "확정한 상태의 근거. 확정 상태에 필수." },
+          "evidence": { "type": "array", "items": { "type": "string" }, "description": "검출 키(fingerprint:키)나 메모·첨부 경로. issue-found에 필수." }
+        }
+      }
+    }
+  }
+}

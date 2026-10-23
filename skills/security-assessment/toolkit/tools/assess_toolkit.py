@@ -454,6 +454,9 @@ def validate_web_fields(report: Report, where: str, adapter: dict[str, Any]) -> 
     if "output_file" in adapter and (not str(adapter["output_file"]).strip() or "/" in str(adapter["output_file"])
                                      or str(adapter["output_file"]) in {".", ".."}):
         report.error(f"{where}.output_file must be a plain file name inside the output directory")
+    mapped = adapter.get("checklist_items")
+    if mapped is not None and (not isinstance(mapped, list) or any(not str(x).strip() for x in mapped)):
+        report.error(f"{where}.checklist_items must be a list of checklist item ids")
     seconds = adapter.get("max_seconds")
     if seconds is not None and (isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0):
         report.error(f"{where}.max_seconds must be a positive integer")
@@ -908,6 +911,7 @@ def run_validate(strict: bool) -> int:
     validate_findings_file(report)
     validate_dispositions_file(report)
     validate_runtime_files(report)
+    validate_checklist(report)
     validate_evidence(report)
     if strict and isinstance(scope, dict) and not report.errors:
         ready, blockers = gate_status(scope)
@@ -1094,7 +1098,8 @@ def load_control_summary() -> dict[str, dict[str, int]]:
 
 def render_cover_md(scope: dict[str, Any], findings: list[dict[str, Any]],
                     records: dict[str, Any], generated_at: str | None,
-                    controls: dict[str, dict[str, int]] | None = None) -> str:
+                    controls: dict[str, dict[str, int]] | None = None,
+                    checklist: dict[str, Any] | None = None) -> str:
     """표지 보고서(Markdown). 범위·인가·방법·집계. 숫자는 증적 워크북과 같은 데이터에서
     집계하므로 구조적으로 일치한다. 현재 시각을 넣지 않는다(드리프트 방지)."""
     summary = disposition_summary(findings, records)
@@ -1174,6 +1179,19 @@ def render_cover_md(scope: dict[str, Any], findings: list[dict[str, Any]],
             *[f"| {name} | {c['pass']} | {c['fail']} | {c['manual']} |" for name, c in controls.items()],
             "",
         ]
+    if checklist:
+        counts = checklist["counts"]
+        lines += [
+            f"## {6 if controls else 5}. 방법론 체크리스트",
+            "",
+            f"기준: {checklist['title']} ({checklist['version']}). 고른 항목 {checklist['selected']}개. 시험 방법은 표준 문서를",
+            "따랐고, 이 표는 무엇을 점검했는지와 결과의 기록이다. 항목별 근거는 `checklist.csv`에 있다.",
+            "",
+            "| 상태 | 항목 수 |",
+            "|---|---|",
+            *[f"| {CHECKLIST_LABEL[key]} | {counts.get(key, 0)} |" for key in CHECKLIST_ORDER],
+            "",
+        ]
     return "\n".join(lines)
 
 
@@ -1196,7 +1214,11 @@ def run_evidence() -> int:
         print(f"ERROR: cannot read data: {error}")
         return 1
     write_text_atomic(EVIDENCE_CSV, render_evidence_csv(findings, records))
-    write_text_atomic(COVER_MD, render_cover_md(scope, findings, records, generated_at, load_control_summary()))
+    rows = checklist_rows_or_none()
+    write_text_atomic(COVER_MD, render_cover_md(scope, findings, records, generated_at, load_control_summary(),
+                                                checklist_summary(rows)))
+    if rows is not None:
+        write_text_atomic(CHECKLIST_CSV, render_checklist_csv(rows["rows"]))
     summary = disposition_summary(findings, records)
     print(f"증적 생성: 검출 {summary['total']}건 → evidence/findings.csv, evidence/cover.md")
     return 0
@@ -1219,10 +1241,215 @@ def validate_evidence(report: Report) -> None:
         text = COVER_MD.read_text(encoding="utf-8")
         if GENERATED_MARKER not in text:
             report.warn("evidence/cover.md is hand-written; numbers cannot be checked against findings.csv")
-        elif text != render_cover_md(scope, findings, records, generated_at, load_control_summary()):
+        elif text != render_cover_md(scope, findings, records, generated_at, load_control_summary(),
+                                     checklist_summary(checklist_rows_or_none())):
             report.error("evidence/cover.md is out of date with data; run evidence")
     else:
         report.error("evidence/findings.csv exists but cover.md is missing; run evidence")
+    rows = checklist_rows_or_none()
+    if rows is not None and (EVIDENCE_CSV.exists() or CHECKLIST_CSV.exists()):
+        if not CHECKLIST_CSV.exists():
+            report.error("evidence/checklist.csv is missing; run evidence")
+        elif CHECKLIST_CSV.read_text(encoding="utf-8") != render_checklist_csv(rows["rows"]):
+            report.error("evidence/checklist.csv is out of date with data/checklist.json; run evidence")
+
+
+# ---- 방법론 체크리스트 (ADR 0005) ----
+# 기준의 항목마다 무엇을 점검했고 결과가 어땠는지, 근거가 어디 있는지를 남기는 장부다.
+# 시험 방법은 표준 문서를 따르고, 툴킷은 실행 단계를 담지 않는다.
+CHECKLIST_DIR = ROOT / "checklists"
+CHECKLIST_FILE = DATA_DIR / "checklist.json"
+CHECKLIST_CSV = EVIDENCE_DIR / "checklist.csv"
+CHECKLIST_STATUS = {"not-checked", "checked", "issue-found", "not-applicable"}
+CHECKLIST_ORDER = ["out-of-scope", "not-checked", "checked", "issue-found", "not-applicable"]
+CHECKLIST_LABEL = {"out-of-scope": "범위 밖", "not-checked": "미점검", "checked": "점검함",
+                   "issue-found": "결함 발견", "not-applicable": "해당 없음"}
+# 확정하는 상태: 사용자가 근거와 함께 기록한다.
+CHECKLIST_CONFIRMED = {"checked", "issue-found", "not-applicable"}
+CHECKLIST_COLUMNS = ("item", "title", "status", "decidedBy", "reason", "evidence", "suggestedBy", "link")
+
+
+def load_standard(name: str) -> dict[str, Any]:
+    data = load_json(CHECKLIST_DIR / f"{name}.json")
+    if not isinstance(data, dict):
+        raise ValueError(f"checklists/{name}.json must be an object")
+    return data
+
+
+def validate_standard(report: Report, name: str, data: Any) -> None:
+    where = f"checklists/{name}.json"
+    if not isinstance(data, dict):
+        report.error(f"{where} must be an object")
+        return
+    for field in ("id", "title", "version", "source"):
+        if not str(data.get(field, "")).strip():
+            report.error(f"{where}.{field} is empty")
+    items = data.get("items")
+    if not isinstance(items, list) or not items:
+        report.error(f"{where}.items must be a non-empty list")
+        return
+    seen: set[str] = set()
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            report.error(f"{where}.items[{index}] must be an object")
+            continue
+        item_id = str(item.get("id", ""))
+        if not item_id or item_id in seen:
+            report.error(f"{where}.items[{index}].id is empty or duplicated")
+        seen.add(item_id)
+        if not str(item.get("title", "")).strip():
+            report.error(f"{where}.items[{index}].title is empty")
+        if item.get("intrusiveness") not in INTRUSIVENESS:
+            report.error(f"{where}.items[{index}].intrusiveness must be one of {sorted(INTRUSIVENESS)}")
+        types = item.get("targetTypes")
+        if not isinstance(types, list) or not types or any(t not in TARGET_TYPES for t in types):
+            report.error(f"{where}.items[{index}].targetTypes must list {sorted(TARGET_TYPES)}")
+        for forbidden in ("steps", "procedure", "payload", "payloads"):
+            if forbidden in item:
+                report.error(f"{where}.items[{index}] has '{forbidden}'; the checklist records results only "
+                             "and links to the standard for how to test")
+
+
+def item_out_of_scope(item: dict[str, Any], scope: dict[str, Any]) -> str:
+    """항목이 이번 스코프 밖이면 사유, 아니면 빈 문자열. 순수 함수."""
+    need = INTRUSIVENESS_RANK.get(str(item.get("intrusiveness")), 99)
+    cap = INTRUSIVENESS_RANK.get(str(scope.get("intrusiveness")), -1)
+    if need > cap:
+        return f"필요 침습도({item.get('intrusiveness')})가 스코프 상한({scope.get('intrusiveness')})을 넘음"
+    types = {str(t.get("type")) for t in scope.get("targets", []) if isinstance(t, dict)}
+    if not types & set(item.get("targetTypes") or []):
+        return f"스코프에 맞는 대상({', '.join(item.get('targetTypes') or [])})이 없음"
+    return ""
+
+
+def checklist_rows(standard: dict[str, Any], records: dict[str, Any], scope: dict[str, Any],
+                   adapters: list[tuple[str, Any]], scan_results: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """고른 항목마다 상태·근거·스캔 제안을 계산한다. 순수 함수.
+
+    스캔 제안: 어댑터가 checklist_items로 그 항목을 가리키고 이번 차수에 실행 결과가 있으면
+    "스캔으로 점검됨"을 제안할 뿐, 점검함으로 확정하지 않는다.
+    """
+    items = {str(i.get("id")): i for i in standard.get("items") or [] if isinstance(i, dict)}
+    rows: list[dict[str, Any]] = []
+    for item_id, record in records.items():
+        item = items.get(item_id) or {}
+        record = record if isinstance(record, dict) else {}
+        reason_out = item_out_of_scope(item, scope) if item else "기준 파일에 없는 항목"
+        suggested = sorted(
+            name for name, adapter in adapters
+            if isinstance(adapter, dict) and item_id in (adapter.get("checklist_items") or [])
+            and name in scan_results and (scan_results[name].get("targets") or [])
+        )
+        rows.append({
+            "item": item_id, "title": str(item.get("title") or ""), "link": str(item.get("link") or ""),
+            "status": "out-of-scope" if reason_out else str(record.get("status") or "not-checked"),
+            "outOfScope": reason_out, "decidedBy": str(record.get("decidedBy") or ""),
+            "reason": " ".join(str(record.get("reason") or "").split()),
+            "evidence": [str(e) for e in record.get("evidence") or []], "suggestedBy": suggested,
+        })
+    return rows
+
+
+def checklist_rows_or_none() -> dict[str, Any] | None:
+    """data/checklist.json이 있으면 기준·행을, 없으면 None(체크리스트를 쓰지 않는 점검)."""
+    if not CHECKLIST_FILE.exists():
+        return None
+    try:
+        data = load_json(CHECKLIST_FILE)
+        standard = load_standard(str(data.get("standard")))
+        scope = load_json(SCOPE_FILE) if SCOPE_FILE.exists() else {}
+        results = load_scan_results()
+    except (OSError, ValueError, json.JSONDecodeError, AttributeError):
+        return None
+    rows = checklist_rows(standard, data.get("items") or {}, scope if isinstance(scope, dict) else {},
+                         load_adapters(), results)
+    return {"standard": standard, "rows": rows}
+
+
+def checklist_summary(view: dict[str, Any] | None) -> dict[str, Any] | None:
+    if view is None:
+        return None
+    counts: dict[str, int] = {}
+    for row in view["rows"]:
+        counts[row["status"]] = counts.get(row["status"], 0) + 1
+    standard = view["standard"]
+    return {"title": standard.get("title"), "version": standard.get("version"),
+            "selected": len(view["rows"]), "counts": counts}
+
+
+def render_checklist_csv(rows: list[dict[str, Any]]) -> str:
+    import csv
+    import io as _io
+    buffer = _io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(CHECKLIST_COLUMNS)
+    for row in sorted(rows, key=lambda r: r["item"]):
+        writer.writerow([row["item"], row["title"], row["status"], row["decidedBy"],
+                         row["reason"] or row["outOfScope"], ";".join(row["evidence"]),
+                         ";".join(row["suggestedBy"]), row["link"]])
+    return buffer.getvalue()
+
+
+def validate_checklist(report: Report) -> None:
+    if CHECKLIST_DIR.is_dir():
+        for path in sorted(CHECKLIST_DIR.glob("*.json")):
+            try:
+                validate_standard(report, path.stem, load_json(path))
+            except (OSError, json.JSONDecodeError) as error:
+                report.error(f"cannot read checklists/{path.name}: {error}")
+    if not CHECKLIST_FILE.exists():
+        return
+    try:
+        data = load_json(CHECKLIST_FILE)
+    except (OSError, json.JSONDecodeError) as error:
+        report.error(f"cannot read data/checklist.json: {error} (likely half-written)")
+        return
+    if not isinstance(data, dict) or not isinstance(data.get("items"), dict):
+        report.error("data/checklist.json must be an object with an items object")
+        return
+    name = str(data.get("standard") or "")
+    if not (CHECKLIST_DIR / f"{name}.json").exists():
+        report.error(f"data/checklist.json names standard '{name}' but checklists/{name}.json does not exist")
+        return
+    try:
+        standard = load_standard(name)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return
+    scope = load_json(SCOPE_FILE) if SCOPE_FILE.exists() else {}
+    known = {str(i.get("id")): i for i in standard.get("items") or [] if isinstance(i, dict)}
+    for item_id, record in data["items"].items():
+        where = f"checklist item {item_id}"
+        if item_id not in known:
+            report.error(f"{where} is not in checklists/{name}.json")
+            continue
+        if not isinstance(record, dict):
+            report.error(f"{where} must be an object")
+            continue
+        status = record.get("status", "not-checked")
+        if status not in CHECKLIST_STATUS:
+            report.error(f"{where}.status must be one of {sorted(CHECKLIST_STATUS)}")
+            continue
+        outside = item_out_of_scope(known[item_id], scope if isinstance(scope, dict) else {})
+        if outside and status != "not-checked":
+            report.error(f"{where} is out of scope ({outside}) but has a result '{status}'")
+        if status in CHECKLIST_CONFIRMED:
+            if record.get("decidedBy") != "user":
+                report.error(f"{where} is '{status}'; only the user confirms checklist results (decidedBy user)")
+            if not str(record.get("reason", "")).strip():
+                report.error(f"{where} is '{status}' but has no reason")
+        if status == "issue-found" and not record.get("evidence"):
+            report.error(f"{where} is 'issue-found' but names no evidence (finding key or note path)")
+
+
+def run_checklist() -> int:
+    """고른 항목의 상태·스캔 제안·건수를 JSON으로 보여 준다. 어떤 시험도 실행하지 않는다."""
+    view = checklist_rows_or_none()
+    if view is None:
+        print("data/checklist.json이 없거나 기준 파일을 읽을 수 없습니다. examples/checklist.json 형식으로 만드세요.")
+        return 1
+    summary = checklist_summary(view) or {}
+    print(json_text({**summary, "items": view["rows"]}), end="")
+    return 0
 
 
 def is_code_level(finding: dict[str, Any]) -> bool:
@@ -2094,7 +2321,7 @@ def run_adapters(direct: bool) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="security-assessment: authorization gate, scanning, dispositions, handoff and evidence.")
-    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan", "ingest", "dispositions", "bridge", "evidence", "new-round"))
+    parser.add_argument("command", choices=("validate", "authorize", "gate", "adapters", "scan", "ingest", "dispositions", "checklist", "bridge", "evidence", "new-round"))
     parser.add_argument("--adapter", help="ingest: 운영자가 돌린 어댑터 이름")
     parser.add_argument("--file", help="ingest: 운영자가 넘긴 출력 파일")
     parser.add_argument("--target", help="ingest: 출력이 가리키는 스코프 대상(어댑터 대상이 하나면 생략)")
@@ -2121,6 +2348,8 @@ def main() -> int:
         return run_ingest(args.adapter, args.file, args.target, args.coverage)
     if args.command == "dispositions":
         return run_dispositions()
+    if args.command == "checklist":
+        return run_checklist()
     if args.command == "bridge":
         return run_bridge(args.dry_run, args.all_findings)
     if args.command == "evidence":

@@ -1,0 +1,23 @@
+{
+  "id": "wstg-sample",
+  "title": "OWASP WSTG (예시 일부)",
+  "version": "4.2",
+  "source": "https://owasp.org/www-project-web-security-testing-guide/",
+  "notes": "형식을 보이기 위한 일부 항목. 실제 점검에서는 표준 문서에서 항목을 가져와 같은 형식으로 둔다. 시험 방법은 표준 문서를 따르며 이 파일에 적지 않는다.",
+  "items": [
+    { "id": "WSTG-INFO-02", "title": "Fingerprint Web Server", "intrusiveness": "active-nondestructive", "targetTypes": ["web"],
+      "link": "https://owasp.org/www-project-web-security-testing-guide/" },
+    { "id": "WSTG-CONF-04", "title": "Review Old Backup and Unreferenced Files for Sensitive Information", "intrusiveness": "active-nondestructive", "targetTypes": ["web"],
+      "link": "https://owasp.org/www-project-web-security-testing-guide/" },
+    { "id": "WSTG-CONF-07", "title": "Test HTTP Strict Transport Security", "intrusiveness": "active-nondestructive", "targetTypes": ["web"],
+      "link": "https://owasp.org/www-project-web-security-testing-guide/" },
+    { "id": "WSTG-ATHN-01", "title": "Testing for Credentials Transported over an Encrypted Channel", "intrusiveness": "active-nondestructive", "targetTypes": ["web"],
+      "link": "https://owasp.org/www-project-web-security-testing-guide/" },
+    { "id": "WSTG-SESS-02", "title": "Testing for Cookies Attributes", "intrusiveness": "active-nondestructive", "targetTypes": ["web"],
+      "link": "https://owasp.org/www-project-web-security-testing-guide/" },
+    { "id": "WSTG-INPV-01", "title": "Testing for Reflected Cross Site Scripting", "intrusiveness": "intrusive", "targetTypes": ["web"],
+      "link": "https://owasp.org/www-project-web-security-testing-guide/" },
+    { "id": "WSTG-INPV-05", "title": "Testing for SQL Injection", "intrusiveness": "intrusive", "targetTypes": ["web"],
+      "link": "https://owasp.org/www-project-web-security-testing-guide/" }
+  ]
+}

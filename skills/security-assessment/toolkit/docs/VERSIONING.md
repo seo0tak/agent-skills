@@ -14,8 +14,8 @@ sast-remediation과 같은 원칙을 따른다.
 
 프로젝트의 `security-assessment-toolkit/`을 새 버전으로 올릴 때는 고정 자산만 교체한다:
 `tools/`, `schemas/`, `prompts/`, `docs/`, `examples/`, `README.md`. 진행 중인 데이터는
-보존한다: `data/`(범위·검출·판정·어댑터별 결과·보관 차수), `adapters/`(프로젝트가 선언한
-어댑터), `evidence/`. 교체한 뒤 `validate`를 실행한다.
+보존한다: `data/`(범위·검출·판정·어댑터별 결과·보관 차수·체크리스트 기록), `adapters/`(프로젝트가 선언한
+어댑터), `checklists/`(프로젝트가 둔 기준 파일), `evidence/`. 교체한 뒤 `validate`를 실행한다.
 
 0.8.0으로 올릴 때 기존 `data/findings.json`은 첫 `scan`에서 `data/scans/_legacy.json`으로
 한 번 옮겨져 보존된다. 이 보존 결과는 어떤 어댑터가 찾았는지 기록이 없어, 다음 차수에서
@@ -39,6 +39,10 @@ validate가 드리프트를 에러로 보므로 `evidence`를 다시 실행한�
 계정을 점검하려면 infra 대상에 `regions`와 `credential`(프로파일 이름, `readOnlyConfirmed: true`)을
 적고 다시 authorize한다.
 
+0.12.0으로 올릴 때 기존 데이터는 그대로 읽힌다. 체크리스트를 쓰려면 기준 파일을 `checklists/`에,
+고른 항목을 `data/checklist.json`에 둔다. 둘 다 프로젝트가 만든 데이터라 업그레이드 때 보존한다.
+`data/checklist.json`이 생긴 뒤 `evidence`를 다시 실행하면 표지에 체크리스트 표가 더해진다.
+
 ## 마일스톤
 
 - M0: 인가 게이트 + validate + 테스트.
@@ -57,9 +61,12 @@ validate가 드리프트를 에러로 보므로 `evidence`를 다시 실행한�
   스코프 웹 대상 `rateLimit`, 웹 실행 계획과 확인 코드(`scan --confirm`), URL 지문 정규화, 커버리지
   기반 웹 해소, `ingest --coverage`, ZAP JSON 정규화기, 컨테이너 출력 자리표시(`{output_dir}`·
   `{output_name}`), 웹 스캔 프롬프트(`02-web-scan.md`). 설계 결정은 ADR 0003.
-- 0.11.0 (현재) M4: IaC와 클라우드 설정(읽기 전용). infra 대상(`aws:<계정>`, 리전, 자격증명 참조),
+- 0.11.0 M4: IaC와 클라우드 설정(읽기 전용). infra 대상(`aws:<계정>`, 리전, 자격증명 참조),
   `cloud` 카테고리와 `cloud_args`(프로파일·리전·리소스 제외), 출력의 계정·리전 범위 검사, Prowler 정규화기,
   `output_file`, 통제 항목·점검 ID 묶음, 기준별 통과·실패·수동 건수와 표지 「기준 대조」, 클라우드 커버리지
   해소, 클라우드 설정 결함은 넘기지 않음, 프롬프트 `03-cloud-scan.md`, 예시 어댑터 checkov·prowler.
   설계 결정은 ADR 0004. 네트워크·호스트 스캔과 인증이 필요한 웹 스캔은 별도 설계가 필요하다.
-- 예정 M5: 방법론 체크리스트.
+- 0.12.0 (현재) M5: 방법론 체크리스트(점검 기록 장부). 기준 파일(항목 ID·제목·링크·필요 침습도·대상
+  종류, 시험 단계 필드 거부), `data/checklist.json` 상태·근거, 범위 밖 계산, 어댑터 `checklist_items`
+  매핑으로 스캔 제안, 사용자 확정(decidedBy user), `checklist` 명령, 표지 표와 `evidence/checklist.csv`,
+  프롬프트 `04-checklist.md`. 설계 결정은 ADR 0005.

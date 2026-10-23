@@ -43,6 +43,7 @@
       },
       "additionalProperties": false
     },
+    "checklist_items": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "이 도구가 일부를 보는 방법론 체크리스트 항목 ID. 실행 결과가 있으면 '스캔으로 점검됨'을 제안할 뿐 확정하지 않는다(ADR 0005)." },
     "output_file": { "type": "string", "description": "도구가 출력 파일 이름을 스스로 정할 때 출력 디렉터리 안의 그 파일 이름." },
     "max_seconds": { "type": "integer", "minimum": 1, "description": "한 번 실행의 시간 상한(초). 점검 기간 끝까지 남은 시간이 더 짧으면 그쪽을 쓴다. 기본 600." }
   },

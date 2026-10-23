@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0",
+  "standard": "wstg-sample",
+  "updatedAt": "2026-10-23T00:00:00Z",
+  "items": {
+    "WSTG-CONF-07": { "status": "checked", "decidedBy": "user", "reason": "zap-baseline 실행 결과를 확인했고 HSTS 헤더가 모든 응답에 있다.", "evidence": ["scans/zap-baseline.json"] },
+    "WSTG-SESS-02": { "status": "issue-found", "decidedBy": "user", "reason": "세션 쿠키에 Secure 속성이 없다.", "evidence": ["fp:CWE-614"] },
+    "WSTG-INFO-02": { "status": "not-checked" },
+    "WSTG-INPV-05": { "status": "not-checked" }
+  }
+}

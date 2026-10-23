@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/security-assessment/checklist-standard.schema.json",
+  "title": "Methodology Checklist Standard",
+  "description": "checklists/<이름>.json: 기준의 항목 목록. 항목 ID·제목·표준 링크·필요 침습도·대상 종류만 담는다. 시험 단계나 입력값 필드는 validate가 거부한다(ADR 0005).",
+  "type": "object",
+  "required": ["id", "title", "version", "source", "items"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1, "description": "표준 문서 위치." },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "intrusiveness", "targetTypes"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "link": { "type": "string", "description": "이 항목의 표준 문서 링크. 시험 방법은 여기를 따른다." },
+          "intrusiveness": { "enum": ["passive", "active-nondestructive", "intrusive"], "description": "이 항목을 점검하는 데 필요한 침습도. 스코프 상한을 넘으면 범위 밖." },
+          "targetTypes": { "type": "array", "minItems": 1, "items": { "enum": ["repo", "web", "infra"] } }
+        },
+        "not": { "anyOf": [ { "required": ["steps"] }, { "required": ["procedure"] }, { "required": ["payload"] }, { "required": ["payloads"] } ] }
+      }
+    }
+  }
+}

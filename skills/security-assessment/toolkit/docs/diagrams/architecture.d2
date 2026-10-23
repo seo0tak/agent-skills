@@ -47,13 +47,18 @@ out: "3 · 넘김과 증적" {
   bridge: "bridge" {class: proc}
   sarif: "handoff.sarif" {class: out}
   sr: "sast-remediation" {class: ext}
+  checklist: "checklist.json\n방법론 항목 · 결과 · 근거" {class: store}
   ev: "evidence" {class: proc}
   csv: "evidence/findings.csv" {class: out}
-  cover: "evidence/cover.md\n기준 대조 포함" {class: out}
+  cover: "evidence/cover.md\n기준 대조 · 체크리스트 포함" {class: out}
+  ckcsv: "evidence/checklist.csv" {class: out}
   bridge -> sarif -> sr
   ev -> csv
   ev -> cover
+  ev -> ckcsv
+  checklist -> ev
 }
 collect.scans -> judge.findings: "합침"
 judge.disp -> out.bridge
 judge.disp -> out.ev
+
