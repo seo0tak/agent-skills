@@ -15,7 +15,7 @@
 
 | 스킬 | 유형 | 버전 |
 |---|---|---|
-| **sast-remediation** | 보안 | 1.16.0 |
+| **sast-remediation** | 보안 | 1.17.0 |
 | **security-assessment** | 보안 | 0.10.0 |
 | **skill-architect** | 메타(스킬 설계 기준) | 0.5.2 |
 
@@ -25,7 +25,8 @@
   검토·조치·검증 근거를 관리합니다. 저장된 기록으로 작업을 수동 재개하고,
   브라우저에서 추출한 결과 초안을 백업할 수 있습니다. 작업·오류·변경 이력을
   누적 보존합니다. 체크리스트는 작업 내용·상태 변화 중심의 이력을 제공하고,
-  시스템 운영 기록과 진단 상세를 별도로 조회할 수 있습니다.
+  시스템 운영 기록과 진단 상세를 별도로 조회할 수 있습니다. Claude Code에서는
+  채팅 옆 패널에 조치 진행률과 세션 토큰·비용을 보여 줍니다(선택 기능).
 - **skill-architect** — 이 저장소의 스킬 설계 기준(트리거·입력·상태·복구·검증 등
   10개 범주)을 제공하고, 그 기준으로 새 스킬을 설계하거나 기존 스킬을 점검합니다.
   요청하면 개선 이력도 남깁니다.
@@ -214,6 +215,7 @@ plugins/<이름>/                   ← Claude Code / Codex 플러그인 배포 
   .codex-plugin/plugin.json       ← Codex 플러그인 정보 파일 (같은 버전)
   skills/<이름>/                  ← 정본의 사본 (scripts/sync-plugins.sh)
   agents/                         ← Claude 전용 서브에이전트
+  hooks/ · types/ · tests/        ← Claude Code 전용 화면 확장(mod). sast-remediation 진행률 패널
 .claude-plugin/marketplace.json   ← Claude Code 카탈로그 (name: 0tak)
 .agents/plugins/marketplace.json  ← Codex 카탈로그
 ```

@@ -9,6 +9,8 @@ plugins/<이름>/                ← Claude Code / Codex 플러그인 배포 구
   .codex-plugin/plugin.json    ← Codex 정보 파일 (같은 버전)
   skills/<이름>/                ← 정본의 사본 (scripts/sync-plugins.sh가 생성)
   agents/                      ← Claude 전용 서브에이전트. 정본으로 옮기지 않음
+  hooks/ · types/ · tests/     ← Claude Code 전용 화면 확장(mod). 정본으로 옮기지 않음.
+                                 고친 뒤 `claude plugin validate`·`claude plugin test`로 확인
 .claude-plugin/marketplace.json  ← Claude Code 카탈로그 (name: 0tak)
 .agents/plugins/marketplace.json ← Codex 카탈로그 (같은 플러그인 목록)
 ```

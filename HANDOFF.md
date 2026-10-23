@@ -1,4 +1,4 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.16.0 / skill-architect v0.5.2 / security-assessment v0.10.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-22, sast-remediation v1.17.0 / skill-architect v0.5.2 / security-assessment v0.10.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
@@ -6,7 +6,7 @@
 
 ## 최신 작업 기준 (2026-10-23 security-assessment 0.10.0 M3 · 다이어그램 체계)
 
-배포 버전: sast-remediation **v1.16.0**, skill-architect **v0.5.2**, security-assessment **v0.10.0**.
+배포 버전: sast-remediation **v1.17.0**, skill-architect **v0.5.2**, security-assessment **v0.10.0**.
 최신 커밋 `318a4d6`(M3 구현), 전부 push 완료. 작업 트리 깨끗함.
 
 ### security-assessment
@@ -110,14 +110,16 @@
   해소 = 같은 계정·리전·점검 항목 재확인. confirmed IaC는 넘기고 클라우드 설정 결함은 증적에만.
   CONTEXT.md에 Control·Credential reference. 저장소 IaC 점검(Checkov SARIF → repo)은 지금도 동작한다.
 - 다음: M4 구현, 이어서 M5(방법론 체크리스트). 인증 웹 스캔·네트워크 스캔은 별도 설계.
-- 패널 mod(`~/.claude/dev-mods/<세션>/sast-progress/`)는 작성·검증·테스트 완료. 저장소 밖 개인 mod라
-  배포물에 들어 있지 않다. 표시: 진행 막대·완료/전체/남음/보류·단계별 건수·체커별 막대(남은 순)·갱신
-  시각, 컨텍스트 %(토큰/창)·세션 누적 입력/출력/캐시 토큰·모델 요청 수·비용·사용 한도 막대, 상태 줄
-  `SAST 60% (29/48) · ctx 41% · $18.42`. 표본 데이터로 렌더 확인(테스트 환경에서는 모델 요청 스트림을
-  흉내 낼 수 없어 누적 토큰만 0). 실제 프로젝트 데이터로는 아직 보지 않았다.
-
-## 이전 작업 기준 (2026-10-14 체커별 진행)
-
+- **진행률 패널을 플러그인에 포함(sast-remediation 1.17.0)**: `plugins/sast-remediation/hooks/register.tsx`
+  (+ `hooks/hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`, plugin.json `types`). Claude Code 전용
+  mod, `skills/` 정본이 아니라 플러그인 쪽(agents/와 같은 위치)이 원본. 열리는 조건: 프로젝트에
+  `sast-remediation-toolkit/`이 있으면 세션 시작 시, 없으면 `skill.prompt` 이벤트로 이 스킬이 실행될 때
+  (`/(^|:)sast-remediation$/`). 그 전에는 패널·상태 줄 모두 없음(`active` 상태). `/sast-progress`로 수동
+  열기·새로 고침. 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test
+  plugins/sast-remediation`(2건), tsc. 세션 개인 mod 사본은 지웠다(중복 표시 방지). **실제 설치본으로
+  불러오는 확인과 Codex 설치본이 hooks/를 무시하는지는 아직 보지 않았다** — 설치 시험은 실제
+  마켓플레이스 이름으로 하지 말 것(메모리 규칙). mod API는 Claude Code 미리 보기 기능이라 버전에 따라
+  바뀔 수 있다.
 - 배포 버전은 sast-remediation **v1.15.0**, skill-architect **v0.4.3**이다.
   1.15.0은 대시보드 "분포 및 추천 작업 보기" 안에 "체커별 진행" 패널과
   `query --summary`의 `byChecker` 집계를 더했다. 완료=workflowStatus `verified`만,
