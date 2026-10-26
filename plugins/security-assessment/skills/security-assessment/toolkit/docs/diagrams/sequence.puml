@@ -33,6 +33,15 @@ end
 T --> A: 묶음 후 검출 목록
 A -> U: 판정 근거 보고, 오탐·범위 밖 제안과 불확실한 항목 질문
 U -> A: 오탐·범위 밖 확정 (decidedBy user)
-A -> T: dispositions 기록 후 bridge, evidence
-T --> A: handoff.sarif, findings.csv, cover.md
+A -> T: dispositions 기록
+opt 방법론 체크리스트를 남길 때 (04)
+  U -> A: 이번 점검에서 다룰 기준 항목 선택
+  A -> T: checklist
+  T --> A: 항목별 상태 · 범위 밖 · 스캔 제안 (suggestedBy)
+  A -> U: 제안과 근거 보고, 미점검 항목 확인 요청
+  U -> A: 항목별 결과 확정 (checked · issue-found · not-applicable, decidedBy user)
+  A -> T: data/checklist.json 기록 후 validate
+end
+A -> T: bridge, evidence
+T --> A: handoff.sarif, findings.csv, cover.md (체크리스트가 있으면 checklist.csv)
 @enduml

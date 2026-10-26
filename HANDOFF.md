@@ -26,13 +26,10 @@
     캐시(파일 수정 시각 기준)를 검토.
   - `.impeccable/`(impeccable critique 기록, 23/36)이 저장소에 커밋되지 않은 채 있다. 커밋할지 `.gitignore`에
     넣을지 사용자 결정 대기. 패널 다음 단계로 dataviz 팔레트 검사(단계·결론·컨텍스트 색 대비·색약 구분)가 남았다.
-- 다이어그램 점검(2026-10-26, 12장 렌더해 확인, 모두 깨짐 없음·`--check` 통과)에서 나온 개선 후보, 사용자가
-  패널을 먼저 하기로 해 미착수:
-  1. security-assessment 구조도: 구역을 건너는 긴 대각선 3개(scans→findings, dispositions→evidence·bridge)가
-     구역 3 상자 위를 지난다. 원본 1705px라 GitHub에서 글자가 작다. 재배치.
-  2. security-assessment 시퀀스: 방법론 체크리스트(사용자 확정) 단계가 빠졌다. 흐름도에는 있음. `opt` 블록 추가.
-  3. skill-architect 구조도: 1473×393으로 가로로 길어 GitHub에서 60%로 줄어든다. 두 줄로 접기.
-  4. sast-remediation 구조도: `sast_activity.py → 작업 이력 로그`가 떨어진 섬, sast_state 화살표가 교차.
+- 다이어그램 점검(12장 렌더해 확인, 모두 깨짐 없음)에서 나온 수정 4건은 반영함: security-assessment 구조도
+  지그재그(2단 오른쪽→왼쪽, 3단을 증적·넘김 두 상자로, 구역 제목 왼쪽 위), 시퀀스에 체크리스트 `opt` 블록,
+  skill-architect 구조도 위→아래(1473px → 1086px), sast-remediation 구조도에 작업 이력 → `activity.js` 미러 연결과
+  sast_state 교차 제거. 렌더는 Homebrew `d2`·`plantuml`로 하고, 원본을 안 바꾼 SVG는 되돌려 버전 차이 잡음을 막았다.
   - 그 뒤 impeccable critique로 대시보드(`SECURITY_CHECKLIST.html`)·사용 가이드(`USAGE.html`) 리뷰를 제안해 둠.
 
 ### security-assessment (v0.12.0, M0~M5 완료)
