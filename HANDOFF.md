@@ -1,13 +1,13 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-23, sast-remediation v1.21.1 / skill-architect v0.5.3 / security-assessment v0.12.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-26, sast-remediation v1.21.1 / skill-architect v0.5.3 / security-assessment v0.12.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-10-23)
+## 최신 작업 기준 (2026-10-26)
 
 배포 버전: sast-remediation **v1.21.1**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
-최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`0ec8701`).
+최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`e0fa508`).
 
 ### 남은 일
 
@@ -17,13 +17,22 @@
     파일 이름(`output_file`)을 실제 버전으로 확인해야 한다. 실제 대상에 요청을 보내는 확인은 사용자가
     인가한 대상·계정에서만 한다.
 - sast-remediation 진행률 패널:
-  - 1.18.1은 사용자 Windows 화면에서 확인됨(체커 탭 집계 스크립트, 머리 띠, 지금 탭 알약). 1.18.2 반응형은 사용자
-    화면에서 정상. 1.19.0 체커 스크롤은 사용자 화면에서 정상. 1.21.0은 사용자 화면에서 범위 완료 띠·상대 신호등·범위 탭 정상. 1.21.1(옛 툴킷 범위 체커, 컨텍스트 가로 범례)은
-    실제 화면 확인이 아직이다 — 특히 Windows Terminal에서 휠이 목록으로 들어가는지, 한글 열 제목·위험도 이름 정렬.
+  - 1.21.0까지 사용자 Windows 화면에서 확인됨(체커 집계·스크롤·반응형·범위 완료 띠·상대 신호등·범위 탭).
+    1.21.1(옛 툴킷 범위 안 체커가 기본으로 나오는지와 `v` 전환, 컨텍스트 가로 범례, 탭 누르면 갱신)은 화면 확인이 아직이다.
   - 설치본으로 불러오는 확인과 Codex 설치본이 `hooks/`를 무시하는지는 아직이다 — 설치 시험은 실제
     마켓플레이스 이름(0tak)으로 하지 말 것(메모리 규칙).
   - 체커 집계 스크립트는 턴마다 findings.json 전체를 읽는다. 검출이 수만 건이면 느려질 수 있어 필요하면
     캐시(파일 수정 시각 기준)를 검토.
+  - `.impeccable/`(impeccable critique 기록, 23/36)이 저장소에 커밋되지 않은 채 있다. 커밋할지 `.gitignore`에
+    넣을지 사용자 결정 대기. 패널 다음 단계로 dataviz 팔레트 검사(단계·결론·컨텍스트 색 대비·색약 구분)가 남았다.
+- 다이어그램 점검(2026-10-26, 12장 렌더해 확인, 모두 깨짐 없음·`--check` 통과)에서 나온 개선 후보, 사용자가
+  패널을 먼저 하기로 해 미착수:
+  1. security-assessment 구조도: 구역을 건너는 긴 대각선 3개(scans→findings, dispositions→evidence·bridge)가
+     구역 3 상자 위를 지난다. 원본 1705px라 GitHub에서 글자가 작다. 재배치.
+  2. security-assessment 시퀀스: 방법론 체크리스트(사용자 확정) 단계가 빠졌다. 흐름도에는 있음. `opt` 블록 추가.
+  3. skill-architect 구조도: 1473×393으로 가로로 길어 GitHub에서 60%로 줄어든다. 두 줄로 접기.
+  4. sast-remediation 구조도: `sast_activity.py → 작업 이력 로그`가 떨어진 섬, sast_state 화살표가 교차.
+  - 그 뒤 impeccable critique로 대시보드(`SECURITY_CHECKLIST.html`)·사용 가이드(`USAGE.html`) 리뷰를 제안해 둠.
 
 ### security-assessment (v0.12.0, M0~M5 완료)
 
