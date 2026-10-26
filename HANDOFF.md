@@ -1,7 +1,8 @@
 # HANDOFF — 개발 세션 인수인계 (2026-10-26, sast-remediation v1.21.1 / skill-architect v0.5.3 / security-assessment v0.12.0)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
-이어서 작업할 수 있다. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
+이어서 작업할 수 있다. 작업 방법(구조·문서·다이어그램·설계·모드 기법)을 다른 저장소에 옮겨 쓸 때는
+`docs/PLAYBOOK.md`. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
 ## 최신 작업 기준 (2026-10-26)
