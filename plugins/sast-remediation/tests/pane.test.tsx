@@ -38,16 +38,13 @@ const IN_SCOPE = JSON.stringify({
   },
 })
 
-// 옛 툴킷의 범위 안 체커는 query --scope in-scope 행으로 센다
-const SCOPE_ROWS = JSON.stringify([
-  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'verified' } },
-  { checker: { code: 'SQL_INJECTION' }, progress: { workflowStatus: 'analyzed' } },
-])
-
 // 1.15.0 이전 툴킷: summary에 byChecker가 없고, 패널이 짧은 스크립트(python -c)로 데이터 파일을 센다.
 const COUNTED = JSON.stringify({
-  XSS: { total: 1, verified: 1, deferred: 0, remaining: 0 },
-  SQL_INJECTION: { total: 3, verified: 1, deferred: 0, remaining: 2 },
+  all: {
+    XSS: { total: 1, verified: 1, deferred: 0, remaining: 0 },
+    SQL_INJECTION: { total: 3, verified: 1, deferred: 0, remaining: 2 },
+  },
+  scope: { SQL_INJECTION: { total: 2, verified: 1, deferred: 0, remaining: 1 } },
 })
 
 // 체커 10개(남은 건수 10, 9, …, 1 순)
@@ -57,7 +54,7 @@ const MANY = JSON.stringify({
     [`CHECKER_${String(i + 1).padStart(2, '0')}`, { total: 10 - i, verified: 0, deferred: 0, remaining: 10 - i }])),
 })
 
-type Seen = { opened: number; status: string[]; argv0: string[]; engineScrolls?: number }
+type Seen = { opened: number; status: string[]; argv0: string[]; engineScrolls?: number; countArg?: string }
 
 // 엔진을 대신하는 훅. hasToolkit이 거짓이면 프로젝트에 툴킷 복사본이 없는 상태, minRisk가 null이면 처리 범위 미설정.
 const STORE_ALIAS = 'Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.'
@@ -95,9 +92,9 @@ function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null
     // Windows: python3는 Store 바로가기라 9009로 끝나고, py -3이 실제 파이썬이다.
     if (windows && e.argv[0] === 'python3') return { value: { exitCode: 9009, stdout: '', stderr: STORE_ALIAS } }
     if (windows && e.argv[0] === 'python') throw new Error('spawn python ENOENT')
-    if (e.argv.includes('-c')) return { value: { exitCode: 0, stdout: oldToolkit ? COUNTED : '{}', stderr: '' } }
-    if (!e.argv.includes('--summary') && e.argv.includes('in-scope')) {
-      return { value: { exitCode: 0, stdout: noCheckers ? '[]' : SCOPE_ROWS, stderr: '' } }
+    if (e.argv.includes('-c')) {
+      seen.countArg = e.argv.at(-1) // 집계 스크립트에 넘긴 최소 위험도
+      return { value: { exitCode: 0, stdout: oldToolkit ? COUNTED : '{"all": {}, "scope": {}}', stderr: '' } }
     }
     const summary = e.argv.includes('in-scope') ? IN_SCOPE : ALL
     const older = oldToolkit || noCheckers
@@ -145,8 +142,8 @@ test('the tabs switch to tokens and scope', async ($, on) => {
   await ui.press({ key: 'tab-tokens' })
   expect((await ui.find({ type: 'Text', text: /🧠 컨텍스트 41%/ }))?.text).toContain('412.3k / 1.00M')
   expect((await ui.find({ type: 'Text', text: /이번 세션 비용/ }))?.text).toContain('$18.42')
-  expect((await ui.find({ type: 'Text', text: /대화 +387\.8k +39%/ }))?.text).toBeTruthy() // 이름은 한글로
-  expect((await ui.find({ type: 'Text', text: /시스템 프롬프트 +3\.1k +<1%/ }))?.text).toBeTruthy() // 1% 미만은 <1%
+  expect((await ui.find({ type: 'Text', text: /^ {2} 대화 387\.8k 39%$/ }))?.text).toBeTruthy() // 이름은 한글로, 가로 범례
+  expect((await ui.find({ type: 'Text', text: /시스템 프롬프트 3\.1k <1%/ }))?.text).toBeTruthy() // 1% 미만은 <1%
   expect((await ui.find({ type: 'Text', text: /압축 예비/ }))?.text).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /MCP 도구/ })).toBeUndefined() // 지연 로드 도구는 뺀다
 
@@ -240,7 +237,8 @@ test('with an older toolkit the checker tab counts the data files', async ($, on
   engine(on, seen, true, 'high', false, true)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: /🔴 SQL_INJECTION.*남음 1 +1\/2/ }))?.text).toBeTruthy() // 범위 안: query 행
+  expect(seen.countArg).toBe('high') // 범위 안도 같은 스크립트가 최소 위험도로 센다
+  expect((await ui.find({ type: 'Text', text: /🔴 SQL_INJECTION.*남음 1 +1\/2/ }))?.text).toBeTruthy() // 범위 안
   await ui.press({ key: 'checker-view' })
   expect((await ui.find({ type: 'Text', text: /🔴 SQL_INJECTION.*남음 2 +1\/3/ }))?.text).toBeTruthy() // 전체: 집계 스크립트
   expect((await ui.find({ type: 'Text', text: /🟢 XSS.*남음 0 +1\/1/ }))?.text).toBeTruthy()

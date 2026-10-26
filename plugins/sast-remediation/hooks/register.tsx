@@ -149,34 +149,28 @@ export function parseSummary(stdout: string, checkedAt: number, scoped: string |
 
 // byChecker가 없는 옛 툴킷(1.15.0 이전)용: 데이터 파일을 읽기만 해서 체커별 진행을 센다(대시보드와 같은 정의).
 // query 행 전체는 검출이 수천 건이면 출력 한도(4 MiB)를 넘어 잘리므로, 집계만 출력하는 짧은 스크립트를 쓴다.
+// 인자로 최소 위험도를 주면 처리 범위 안도 함께 센다. 범위 규칙은 툴킷 sast_scope.scope_bucket과 같다
+// (위험도가 RISK_LEVELS에서 최소 위험도와 같거나 앞이면 범위 안, info·미확인은 범위 밖).
 export const CHECKER_COUNT_SCRIPT = [
-  'import json',
+  'import json, sys',
+  "R = ['critical', 'very-high', 'high', 'medium', 'low']",
+  "m = sys.argv[1] if len(sys.argv) > 1 else ''",
   "f = json.load(open('data/findings.json', encoding='utf-8'))",
   "p = json.load(open('data/progress.json', encoding='utf-8')).get('items', {})",
-  'b = {}',
+  "b = {'all': {}, 'scope': {}}",
   'for i in f:',
   '    if not isinstance(i, dict): continue',
   "    c = str((i.get('checker') or {}).get('code') or 'unknown')",
   "    s = (p.get(str(i.get('id', ''))) or {}).get('workflowStatus') or 'todo'",
-  "    e = b.setdefault(c, {'total': 0, 'verified': 0, 'deferred': 0})",
-  "    e['total'] += 1; e['verified'] += s == 'verified'; e['deferred'] += s == 'deferred'",
-  "for e in b.values(): e['remaining'] = e['total'] - e['verified']",
+  "    v = (i.get('risk') or {}).get('level')",
+  "    inside = m in R and v in R and R.index(v) <= R.index(m)",
+  "    for k in (['all', 'scope'] if inside else ['all']):",
+  "        e = b[k].setdefault(c, {'total': 0, 'verified': 0, 'deferred': 0})",
+  "        e['total'] += 1; e['verified'] += s == 'verified'; e['deferred'] += s == 'deferred'",
+  "for k in b:",
+  "    for e in b[k].values(): e['remaining'] = e['total'] - e['verified']",
   'print(json.dumps(b))',
 ].join('\n')
-
-// 옛 툴킷의 범위 안 체커: query --scope in-scope 행을 센다(범위 안은 보통 수백 건이라 출력 한도 안).
-export function checkersFromRows(stdout: string) {
-  const rows = JSON.parse(stdout) as { checker?: { code?: string }; progress?: { workflowStatus?: string } }[]
-  const by: Record<string, { total: number; verified: number; deferred: number; remaining: number }> = {}
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const entry = by[row.checker?.code || 'unknown'] ??= { total: 0, verified: 0, deferred: 0, remaining: 0 }
-    entry.total += 1
-    if (row.progress?.workflowStatus === 'verified') entry.verified += 1
-    if (row.progress?.workflowStatus === 'deferred') entry.deferred += 1
-    entry.remaining = entry.total - entry.verified
-  }
-  return checkersFromCounts(JSON.stringify(by))
-}
 
 export function checkersFromCounts(stdout: string) {
   const by = JSON.parse(stdout) as Summary['byChecker']
@@ -217,13 +211,18 @@ async function refreshProgress($: EngineInterface, force = false) {
         scoped = inScope.exitCode === 0 ? inScope.stdout : null
       }
       view = parseSummary(run.stdout, now, scoped, minRisk)
-      if (view.kind === 'ok' && view.checkers.length === 0 && view.all.total > 0) {
-        const counted = await runPython($, ['-c', CHECKER_COUNT_SCRIPT])
-        if (counted.exitCode === 0) view = { ...view, checkers: checkersFromCounts(counted.stdout) }
-      }
-      if (view.kind === 'ok' && view.scope && view.scope.total > 0 && !view.scopeCheckers?.length) {
-        const rows = await runToolkit($, ['query', '--scope', 'in-scope'])
-        if (rows.exitCode === 0 && !rows.isStdoutTruncated) view = { ...view, scopeCheckers: checkersFromRows(rows.stdout) }
+      const needAll = view.kind === 'ok' && view.checkers.length === 0 && view.all.total > 0
+      const needScope = view.kind === 'ok' && !!view.scope && view.scope.total > 0 && !view.scopeCheckers?.length
+      if (view.kind === 'ok' && (needAll || needScope)) {
+        const counted = await runPython($, ['-c', CHECKER_COUNT_SCRIPT, view.scope?.minRisk ?? ''])
+        if (counted.exitCode === 0) {
+          const both = JSON.parse(counted.stdout) as { all?: Summary['byChecker']; scope?: Summary['byChecker'] }
+          view = {
+            ...view,
+            checkers: needAll ? checkersFromCounts(JSON.stringify(both.all ?? {})) : view.checkers,
+            scopeCheckers: needScope ? checkersFromCounts(JSON.stringify(both.scope ?? {})) : view.scopeCheckers,
+          }
+        }
       }
     } catch (error) {
       const previous = await read($, progress)
@@ -445,7 +444,8 @@ export const register: Register = on => {
     const barWidth = Math.max(10, columns - 2)
     const rows = e.props?.scroll?.bodyRows ?? 24
 
-    const setTab = (next: PaneTab) => () => update($, tab, () => next)
+    // 탭을 누를 때도 다시 읽는다(5초 간격). 대화가 없는 세션에 띄운 패널은 턴이 끝나지 않아 오래되기 때문.
+    const setTab = (next: PaneTab) => async () => { await update($, tab, () => next); await refreshProgress($) }
 
     // 막대: 그래픽은 Svg, 터미널은 색칠한 빈칸(어느 글꼴에서나 한 칸).
     const bar = (parts: { value: number; hex: string; theme: string }[], total: number, alt: string, height = 8) => {
@@ -733,13 +733,12 @@ export const register: Register = on => {
       })()
       const composition = (() => {
         if (ordered.length === 0 || all === 0) return null
-        const nameWidth = Math.max(...ordered.map(c => cellWidth(label(c))))
+        // 범례는 가로로 흐르게 둔다. 세로 목록으로 두면 색 견본이 막대 바로 아래 한 열로 쌓여 막대가 겹친 것처럼 보였다.
         return (
-          <Box flexDirection="column">
+          <Box flexDirection="row" columnGap={2} flexWrap="wrap">
             {ordered.map((c, index) => (
-              <Text key={`ctx-row-${index}`} wrap="truncate">
-                <Text backgroundColor={theme(c, index)} dimColor={c.kind === 'buffer'}>{c.kind === 'buffer' ? '::' : '  '}</Text> {label(c)}{' '.repeat(nameWidth - cellWidth(label(c)))}
-                {'  '}<Text dimColor={c.kind !== 'used'}>{compact(c.tokens).padStart(7)}  {share(c.tokens).padStart(4)}</Text>
+              <Text key={`ctx-row-${index}`}>
+                <Text backgroundColor={theme(c, index)} dimColor={c.kind === 'buffer'}>{c.kind === 'buffer' ? '::' : '  '}</Text> <Text dimColor={c.kind !== 'used'}>{label(c)} {compact(c.tokens)} {share(c.tokens)}</Text>
               </Text>
             ))}
           </Box>
