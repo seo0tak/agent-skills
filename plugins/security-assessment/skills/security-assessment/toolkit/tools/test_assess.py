@@ -1475,5 +1475,112 @@ class AssessCase(unittest.TestCase):
         self.assertIn("gate not ready", out)
 
 
+    # --- 저장소 전체 리뷰 반영 ---
+    def test_partial_scan_keeps_the_failed_target_results(self):
+        self.write(authorized_scope(intrusiveness="passive",
+                                    targets=[{"type": "repo", "value": "./a"}, {"type": "repo", "value": "./b"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            self.assertEqual(self._scan()[0], 0)
+            fixture = self._fixtures["semgrep"]
+
+            def flaky(command_template, target, output_path, timeout=600, extra_args=()):
+                if target == "./b":
+                    raise RuntimeError("tool crashed")
+                Path(output_path).write_text(fixture, encoding="utf-8")
+                return 0
+            assess.execute_adapter = flaky
+            code, out = self._scan()
+            self.assertEqual(code, 0, out)
+            record = json.loads((assess.scans_dir() / "semgrep.json").read_text(encoding="utf-8"))
+            self.assertEqual(record["targets"], ["./a", "./b"])
+            self.assertEqual({s.get("target") for f in record["findings"] for s in f["sources"]}, {"./a", "./b"})
+            self.assertEqual(len(self._findings()), 2)
+        finally:
+            restore()
+
+    def test_error_json_does_not_replace_previous_results(self):
+        self.write(authorized_scope(intrusiveness="passive", targets=[{"type": "repo", "value": "./src"}]))
+        adapter_dir, restore = self._scan_env()
+        try:
+            self._set_adapter(adapter_dir, "semgrep", self.sarif("semgrep-sample.sarif"))
+            self._scan()
+            self._set_adapter(adapter_dir, "semgrep", {"error": "scan failed"})
+            code, out = self._scan()
+            self.assertIn("runs 목록이 없습니다", out)
+            self.assertEqual(len(self._findings()), 2)
+        finally:
+            restore()
+        for fmt, raw in (("osv-json", {"error": "x"}), ("zap-json", {}), ("prowler-ocsf", {"error": "x"})):
+            with self.assertRaises(ValueError):
+                assess.normalize_to_sarif(fmt, raw)
+        self.assertEqual(assess.normalize_to_sarif("osv-json", {"results": []})["runs"][0]["results"], [])
+
+    def test_code_finding_is_resolved_only_when_its_own_target_was_rescanned(self):
+        previous = [{"fingerprint": "a", "cwe": "CWE-89", "sources": [{"adapter": "semgrep", "target": "repo-B"}]}]
+        other = assess.round_resolution(previous, [], {"semgrep"}, None, {"semgrep": {"repo-A"}})
+        self.assertEqual(other, {"resolved": [], "notRechecked": ["a:CWE-89"]})
+        same = assess.round_resolution(previous, [], {"semgrep"}, None, {"semgrep": {"repo-A", "repo-B"}})
+        self.assertEqual(same, {"resolved": ["a:CWE-89"], "notRechecked": []})
+
+    def test_explicit_midnight_end_is_not_extended_to_end_of_day(self):
+        self.write(authorized_scope(window={"start": "2026-10-22", "end": "2026-10-24T00:00:00Z"}))
+        assess.now_utc = lambda: datetime(2026, 10, 24, 0, 0, 1, tzinfo=timezone.utc)
+        code, out = self.gate()
+        self.assertEqual(code, 1)
+        self.assertIn("expired", out)
+        scope = {"window": {"end": "2026-10-24T00:00:00Z"}}
+        self.assertLessEqual(assess.web_time_limit({"max_seconds": 600}, scope,
+                                                   datetime(2026, 10, 24, 0, 0, 1, tzinfo=timezone.utc)), 0)
+        self.write(authorized_scope(window={"start": "2026-10-22", "end": "2026-10-24"}))
+        assess.now_utc = lambda: datetime(2026, 10, 24, 23, 0, tzinfo=timezone.utc)
+        self.assertEqual(self.gate()[0], 0)
+
+    def test_stored_location_and_message_drop_secret_values(self):
+        sarif = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "zap"}}, "results": [{
+            "ruleId": "r", "message": {"text": "leak api_key=sk-abcdefghijklmnopqrstuvwx at https://h.test/x?session=zz9 "
+                                                "Authorization: Bearer abcdefghijkl"},
+            "properties": {"method": "GET"},
+            "locations": [{"physicalLocation": {"artifactLocation": {
+                "uri": "https://user:pw@h.test/a?token=abc123&q=1"}}}]}]}]}
+        finding = assess.findings_from_sarif(sarif, "zap")[0]
+        stored = json.dumps(finding)
+        for secret in ("pw@", "abc123", "sk-abcdefghijklmnopqrstuvwx", "zz9", "abcdefghijkl"):
+            self.assertNotIn(secret, stored)
+        self.assertEqual(finding["location"]["file"], "https://h.test/a?token=REDACTED&q=REDACTED")
+        self.assertEqual(finding["location"]["web"]["params"], ["q", "token"])
+        self.assertLessEqual(len(assess.redact_text("x" * 1000)), assess.MESSAGE_LIMIT)
+
+    def test_csv_cells_cannot_start_a_spreadsheet_formula(self):
+        finding = {"fingerprint": "f", "cwe": "CWE-1", "location": {"file": "=HYPERLINK(\"x\")", "line": 3},
+                   "sources": [{"scanner": "@s"}]}
+        text = assess.render_evidence_csv([finding], {"f:CWE-1": {"reason": "-1+2", "disposition": "suspected"}})
+        self.assertIn("'=HYPERLINK", text)
+        self.assertIn("'-1+2", text)
+        self.assertIn("'@s", text)
+        self.assertIn(",3,", text)
+        rows = [{"item": "I", "title": "+t", "status": "checked", "decidedBy": "user", "reason": "", "outOfScope": "",
+                 "evidence": [], "suggestedBy": [], "link": ""}]
+        self.assertIn("'+t", assess.render_checklist_csv(rows))
+
+    def test_new_round_archives_checklist_and_reopens_items_unchecked(self):
+        restore = self._checklist_env({
+            "WSTG-CONF-07": {"status": "checked", "decidedBy": "user", "reason": "확인함", "evidence": ["x"]},
+            "WSTG-INFO-02": {"status": "not-checked"}})
+        try:
+            assess.FINDINGS_FILE.write_text(json.dumps({"schemaVersion": "1.0", "findings": []}), encoding="utf-8")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(assess.run_new_round(), 0)
+            reopened = json.loads(assess.CHECKLIST_FILE.read_text(encoding="utf-8"))
+            self.assertEqual(reopened["standard"], "wstg-sample")
+            self.assertEqual(reopened["items"], {"WSTG-CONF-07": {"status": "not-checked"},
+                                                 "WSTG-INFO-02": {"status": "not-checked"}})
+            archived = json.loads((assess.rounds_dir() / "checklist-001.json").read_text(encoding="utf-8"))
+            self.assertEqual(archived["items"]["WSTG-CONF-07"]["status"], "checked")
+            self.assertEqual(archived["round"], 1)
+        finally:
+            restore()
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

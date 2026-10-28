@@ -1,14 +1,18 @@
-# HANDOFF — 개발 세션 인수인계 (2026-10-26, sast-remediation v1.21.1 / skill-architect v0.5.3 / security-assessment v0.12.0)
+# HANDOFF — 개발 세션 인수인계 (2026-10-28, sast-remediation v1.21.2 / skill-architect v0.5.3 / security-assessment v0.12.1)
 
 새 세션은 이 문서와 저장소 루트 README.md, CLAUDE.md(저장소 규약)를 읽으면
 이어서 작업할 수 있다. 작업 방법(구조·문서·다이어그램·설계·모드 기법)을 다른 저장소에 옮겨 쓸 때는
 `docs/PLAYBOOK.md`. 원리는 `skills/sast-remediation/toolkit/docs/HOW_IT_WORKS.md`,
 버전·호환 규칙은 같은 곳의 `docs/VERSIONING.md`.
 
-## 최신 작업 기준 (2026-10-26)
+## 최신 작업 기준 (2026-10-28)
 
-배포 버전: sast-remediation **v1.21.1**, skill-architect **v0.5.3**, security-assessment **v0.12.0**.
-최신 커밋은 `git log -1`로 확인. 이 문서를 갱신한 시점까지 전부 push 완료(`e0fa508`).
+배포 버전: sast-remediation **v1.21.2**, skill-architect **v0.5.3**, security-assessment **v0.12.1**.
+최신 커밋은 `git log -1`로 확인. push 여부는 `git status -sb`로 확인(`65e6899`까지 push됨).
+
+Codex 플러그인으로 저장소 전체 리뷰(읽기 전용 `task`)를 받아 P1 5건·P2 4건을 모두 반영했다. 각 건마다
+고치기 전 코드에서 실패하는 회귀 테스트를 붙였다. 리뷰 샌드박스에서는 임시 디렉터리를 못 만들어 단위 테스트
+대부분이 돌지 않았으므로, 다시 리뷰를 맡길 때 테스트 결과는 로컬 실행으로 확인한다.
 
 ### 남은 일
 
@@ -32,7 +36,7 @@
   sast_state 교차 제거. 렌더는 Homebrew `d2`·`plantuml`로 하고, 원본을 안 바꾼 SVG는 되돌려 버전 차이 잡음을 막았다.
   - 그 뒤 impeccable critique로 대시보드(`SECURITY_CHECKLIST.html`)·사용 가이드(`USAGE.html`) 리뷰를 제안해 둠.
 
-### security-assessment (v0.12.0, M0~M5 완료)
+### security-assessment (v0.12.1, M0~M5 완료)
 
 - 인가 기반 오케스트레이터. 기성 스캐너를 조율하고 검출을 묶어 판정·증적을 만들며, 공격 코드·페이로드·
   시험 절차를 만들지 않는다. 인가 게이트는 선언 범위 밖 실수를 막고 인가 주장을 기록하지만 동의 진위는
@@ -40,13 +44,18 @@
   `docs/superpowers/plans/2026-10-14-security-assessment.md`.
 - 단계: M0 게이트(0.1.0) → M1 어댑터·수집·묶음·정규화(0.2~0.4) → M2 판정·SARIF 다리·증적(0.5~0.7) →
   기준 점검 결함 1~4(0.8.0) → 개선 5: 판정 주체·판정 프롬프트·`ingest`(0.9.0) → M3 웹(0.10.0) →
-  M4 IaC·클라우드(0.11.0) → M5 방법론 체크리스트(0.12.0). 각 단계 앞에 설계 점검을 하고 결정은 모두
+  M4 IaC·클라우드(0.11.0) → M5 방법론 체크리스트(0.12.0) → 전체 리뷰 반영(0.12.1). 각 단계 앞에 설계 점검을 하고 결정은 모두
   사용자가 고른 권장안이다.
 - 데이터 흐름: `data/scope.json`(인가) → `scan`(직접) 또는 `ingest`(운영자 출력) → `data/scans/<어댑터>.json`
   → `data/findings.json`(묶음, 제외 자산 뺌) → `data/dispositions.json`(판정·확인 단계·주체) → `bridge` →
   `data/handoff.sarif`(confirmed 코드 결함만) / `evidence` → `evidence/findings.csv`·`cover.md`·
-  `checklist.csv`(생성물, 드리프트는 validate 에러). `new-round`가 차수를 닫고, 해소는 같은 어댑터 재실행
-  (웹·클라우드는 커버리지까지)으로만 인정한다.
+  `checklist.csv`(생성물, 드리프트는 validate 에러). `new-round`가 차수를 닫고(체크리스트 판정도 보관하고
+  미점검으로 다시 연다), 해소는 같은 어댑터의 같은 대상 재실행(웹·클라우드는 커버리지까지)으로만 인정한다.
+- 0.12.1에서 지킨 성질: 저장하는 URL은 사용자정보·쿼리 값을 지우고 메시지는 비밀값 모양을 가리고 300자로
+  줄인다. 여러 대상 중 성공한 대상의 결과만 바꾼다. 형식 뼈대가 없는 출력(오류 JSON)은 결과를 바꾸지 않는다.
+  시각까지 적은 종료는 연장하지 않고 실행마다 기간을 다시 본다. CSV 셀의 수식 시작 문자 앞에 `'`.
+  남은 것: 스캐너 종료코드로 실패를 가르는 선언(어댑터마다 정상·검출 발견 코드가 달라 별도 설계)과,
+  메시지 안의 공격 페이로드 원문을 걸러 내는 규칙(지금은 비밀값 정제와 길이 제한만).
 - 판정 주체(ADR 없음, 0.9.0): false-positive·out-of-scope를 reviewed로 확정하는 것은 user만.
 - M3 웹(ADR 0003): 어댑터 `scope_control`·`rate_limit`·`coverage`·`max_seconds`, 스코프 웹 대상 `rateLimit`,
   `scan --direct`는 계획과 확인 코드만 내고 `--confirm <코드>`일 때 실행, 넘길 수 없는 제외 자산이 걸린 대상은
@@ -62,7 +71,7 @@
 - 툴킷 원본 상태에서 `validate`는 빈 템플릿 `scope.json` 때문에 에러 7건이 정상이다.
 - 업그레이드 주의는 `toolkit/docs/VERSIONING.md`(0.9.0 증적 열 추가, 0.11.0 iac 묶음 키 변경 등).
 
-### sast-remediation 진행률 패널 (v1.21.1, Claude Code 전용)
+### sast-remediation 진행률 패널 (v1.21.2, Claude Code 전용)
 
 - 위치: `plugins/sast-remediation/hooks/register.tsx`(+ `hooks.json`, `types/index.d.ts`, `tests/pane.test.tsx`).
   `skills/` 정본이 아니라 플러그인 쪽이 원본(agents/와 같은 위치). mod API는 Claude Code 미리 보기 기능.
@@ -115,7 +124,7 @@
   (`query` 전체 행은 검출 수천 건에서 4 MiB 출력 한도를 넘어 잘렸다, 1.18.1). 파이썬은 `python3` → `python` →
   `py -3` 순(Windows Store 바로가기 대응).
 - 이력: 1.17.0 패널 → 1.17.1 요약 카드+탭(A안) → 1.17.3 Windows 파이썬 → 1.17.4 터미널 잘림 → 1.17.5 체커 대안 →
-  1.18.0 E안 → 1.18.1 큰 프로젝트 체커·띠·탭 대비 → 1.18.2 반응형 → 1.19.0 체커 목록 스크롤·건수 막대 → 1.20.0 컨텍스트 구성·범위 안 단계·결론 → 1.20.1 컨텍스트 막대 통합 → 1.21.0 설계 리뷰 반영 → 1.21.1 옛 툴킷 범위 체커·컨텍스트 가로 범례·탭 누르면 갱신. 자세한 건 `toolkit/docs/VERSIONING.md`.
+  1.18.0 E안 → 1.18.1 큰 프로젝트 체커·띠·탭 대비 → 1.18.2 반응형 → 1.19.0 체커 목록 스크롤·건수 막대 → 1.20.0 컨텍스트 구성·범위 안 단계·결론 → 1.20.1 컨텍스트 막대 통합 → 1.21.0 설계 리뷰 반영 → 1.21.1 옛 툴킷 범위 체커·컨텍스트 가로 범례·탭 누르면 갱신 → 1.21.2 짧은 체커 코드 오류·구버전 결과 읽기. 자세한 건 `toolkit/docs/VERSIONING.md`.
 - 확인: `claude plugin validate plugins/sast-remediation`, `claude plugin test plugins/sast-remediation`(10건),
   타입 검사(엔진이 타입을 깔기 전에는 스크래치 tsconfig로 plugin-authoring 타입 + hooks + types를 묶어 tsc).
 

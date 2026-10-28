@@ -190,10 +190,33 @@ NORMALIZERS = {"sarif": _identity_sarif, "osv-json": osv_to_sarif, "zap-json": z
 KNOWN_OUTPUT_FORMATS = set(NORMALIZERS)
 
 
+# 형식마다 정상 출력이면 반드시 있는 뼈대. 오류 JSON({"error": ...})을 '검출 없음'으로 받지 않는다.
+def _output_shape_error(output_format: str, raw: Any) -> str:
+    if output_format == "sarif":
+        runs = raw.get("runs") if isinstance(raw, dict) else None
+        if not isinstance(runs, list) or not all(isinstance(r, dict) for r in runs):
+            return "SARIF 출력에 runs 목록이 없습니다"
+        if any(not isinstance(r.get("results", []), list) for r in runs):
+            return "SARIF run의 results가 목록이 아닙니다"
+    elif output_format == "osv-json":
+        if not isinstance(raw, dict) or not isinstance(raw.get("results"), list):
+            return "OSV 출력에 results 목록이 없습니다"
+    elif output_format == "zap-json":
+        if not isinstance(raw, dict) or not isinstance(raw.get("site"), list):
+            return "ZAP 출력에 site 목록이 없습니다"
+    elif output_format == "prowler-ocsf":
+        if not isinstance(raw, list):
+            return "Prowler OCSF 출력이 목록이 아닙니다"
+    return ""
+
+
 def normalize_to_sarif(output_format: str, raw: Any) -> Any:
     normalizer = NORMALIZERS.get(output_format)
     if normalizer is None:
         raise ValueError(f"no normalizer for output_format {output_format!r}")
+    problem = _output_shape_error(output_format, raw)
+    if problem:
+        raise ValueError(f"{problem}. 스캐너 실행이 실패했을 수 있어 이전 결과를 유지합니다")
     return normalizer(raw)
 # 티켓 ID(예: SEC-1234) 또는 http(s) URL.
 REFERENCE_RE = re.compile(r"^(https?://\S+|[A-Za-z][A-Za-z0-9]*-\d+)$")
@@ -245,6 +268,14 @@ class Report:
             print(f"FAILED: {len(self.errors)} error(s), {len(self.warnings)} warning(s)")
         else:
             print(f"OK: validation completed with {len(self.warnings)} warning(s)")
+
+
+def window_end(value: str) -> datetime | None:
+    """점검 기간 끝. 날짜만 쓴 값(YYYY-MM-DD)만 그날 23:59:59까지 늘린다. 시각을 쓴 값은 그대로."""
+    end = parse_day(value)
+    if end is not None and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(value).strip()):
+        end = end.replace(hour=23, minute=59, second=59)
+    return end
 
 
 def parse_day(value: str) -> datetime | None:
@@ -545,10 +576,9 @@ def web_direct_blockers(adapter: dict[str, Any]) -> list[str]:
 def web_time_limit(adapter: dict[str, Any], scope: dict[str, Any], now: datetime) -> int:
     """실행 시간 상한(초): 어댑터 상한과 점검 기간 끝까지 남은 시간 중 작은 쪽."""
     limit = int(adapter.get("max_seconds") or DEFAULT_MAX_SECONDS)
-    end = parse_day(str((scope.get("window") or {}).get("end", "")))
+    end = window_end(str((scope.get("window") or {}).get("end", "")))
     if end is not None:
-        end_of = end.replace(hour=23, minute=59, second=59) if end.hour == end.minute == 0 else end
-        limit = min(limit, int((end_of - now).total_seconds()))
+        limit = min(limit, int((end - now).total_seconds()))
     return limit
 
 
@@ -763,6 +793,42 @@ def fingerprint_for_url(method: str, url: str, params: list[str]) -> str:
     material = f"web|{(method or 'ANY').upper()}|{normalize_web_path(url)}|{','.join(params)}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
+_SECRET_NAME = r"[A-Za-z0-9_.-]*(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|apikey|auth|session|sig(?:nature)?|credential|private[_-]?key|access[_-]?key)[A-Za-z0-9_.-]*"
+_SECRET_PATTERNS = [
+    # 인증 방식 뒤의 값을 먼저 지운다(Authorization: Bearer ... 에서 방식 이름만 지워지지 않게).
+    (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 [REDACTED]"),
+    # 이름=값, 이름: 값 (쿼리·헤더·설정 문자열)
+    (re.compile(rf"(?i)\b({_SECRET_NAME})(\s*[:=]\s*)(?!(?:bearer|basic) \[REDACTED\])(\"[^\"]*\"|'[^']*'|[^\s&;,'\"]+)"), r"\1\2[REDACTED]"),
+    (re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"), "[REDACTED]"),
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"), "[REDACTED]"),
+    (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|xox[abpors]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9]{20,})\b"), "[REDACTED]"),
+]
+MESSAGE_LIMIT = 300
+
+
+def sanitize_url(url: str) -> str:
+    """URL에서 사용자정보와 쿼리·조각의 값을 지운다. 파라미터 이름은 지문·증적에 필요해 남긴다."""
+    from urllib.parse import parse_qsl, urlsplit, urlunsplit
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or ""
+        port = parts.port
+    except ValueError:
+        return redact_text(url)
+    netloc = (f"[{host}]" if ":" in host else host) + (f":{port}" if port else "")
+    query = "&".join(f"{name}=REDACTED" for name, _ in parse_qsl(parts.query, keep_blank_values=True))
+    return urlunsplit((parts.scheme, netloc, parts.path, query, ""))
+
+
+def redact_text(text: str) -> str:
+    """스캐너 메시지에서 비밀값처럼 보이는 값을 지우고 길이를 줄인다. 증적에 원문을 옮기지 않는다."""
+    text = re.sub(r"https?://\S+", lambda m: sanitize_url(m.group(0)), text)
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    text = " ".join(text.split())
+    return text if len(text) <= MESSAGE_LIMIT else text[:MESSAGE_LIMIT - 1] + "…"
+
+
 def findings_from_sarif(sarif: Any, fallback_scanner: str, category: str | None = None) -> list[dict[str, Any]]:
     """SARIF 하나를 정규화된 검출 목록으로. 순수 함수."""
     out: list[dict[str, Any]] = []
@@ -801,6 +867,8 @@ def findings_from_sarif(sarif: Any, fallback_scanner: str, category: str | None 
                 params = web_params(file, str(props.get("param") or ""))
                 location["web"] = {"method": method, "path": normalize_web_path(file), "params": params}
                 fingerprint = fingerprint_for_url(method, file, params)
+                # 지문을 만든 뒤 저장하는 위치에서는 사용자정보·쿼리 값을 지운다.
+                location["file"] = sanitize_url(file)
             else:
                 fingerprint = fingerprint_for(file, function, snippet)
             cwe = cwe_from_result(result, rule)
@@ -814,7 +882,7 @@ def findings_from_sarif(sarif: Any, fallback_scanner: str, category: str | None 
             out.append({
                 **entry,
                 "location": location,
-                "message": str((result.get("message") or {}).get("text") or ""),
+                "message": redact_text(str((result.get("message") or {}).get("text") or "")),
                 # properties.severity(예: OSV의 CVSS 점수)를 우선, 없으면 SARIF level.
                 "severity": str((result.get("properties") or {}).get("severity") or result.get("level") or ""),
                 "sources": [{"scanner": scanner, "ruleId": rule_id, "line": line}],
@@ -881,14 +949,12 @@ def gate_status(scope: dict[str, Any]) -> tuple[bool, list[str]]:
     if recorded != semantic_fingerprint(scope):
         blockers.append("scope changed since authorization; approval is void, re-run authorize")
     window = scope.get("window") or {}
-    start, end = parse_day(window.get("start", "")), parse_day(window.get("end", ""))
+    start, end = parse_day(window.get("start", "")), window_end(window.get("end", ""))
     today = now_utc()
     if start is not None and today < start:
         blockers.append(f"assessment window has not started (starts {window.get('start')})")
     if end is not None:
-        # 날짜만 주어진 종료는 그 날의 끝까지 유효로 본다.
-        end_of = end.replace(hour=23, minute=59, second=59) if end.hour == end.minute == 0 else end
-        if today > end_of:
+        if today > end:
             blockers.append(f"assessment window has expired (ended {window.get('end')})")
     return (not blockers), blockers
 
@@ -1047,6 +1113,13 @@ def _sorted_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted((f for f in findings if isinstance(f, dict)), key=key)
 
 
+def csv_cell(value: Any) -> Any:
+    """스프레드시트가 수식으로 읽는 글자(= + - @ 탭 CR)로 시작하는 문자열 앞에 '를 붙인다."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 def render_evidence_csv(findings: list[dict[str, Any]], records: dict[str, Any]) -> str:
     """증적 워크북(CSV). 검출 하나가 한 행. 순수 함수 — 같은 입력이면 같은 출력."""
     import csv
@@ -1059,7 +1132,7 @@ def render_evidence_csv(findings: list[dict[str, Any]], records: dict[str, Any])
         record = records.get(finding_key(finding)) or {}
         loc = finding.get("location") or {}
         scanners = sorted({str(s.get("scanner")) for s in finding.get("sources") or [] if isinstance(s, dict)})
-        writer.writerow([
+        writer.writerow([csv_cell(cell) for cell in [
             finding.get("fingerprint", ""),
             finding.get("cwe", ""),
             loc.get("file") or "",
@@ -1072,7 +1145,7 @@ def render_evidence_csv(findings: list[dict[str, Any]], records: dict[str, Any])
             record.get("decidedBy") or "",
             "true" if record.get("handedOff") else "false",
             ";".join(scanners),
-        ])
+        ]])
     return buffer.getvalue()
 
 
@@ -1384,9 +1457,10 @@ def render_checklist_csv(rows: list[dict[str, Any]]) -> str:
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(CHECKLIST_COLUMNS)
     for row in sorted(rows, key=lambda r: r["item"]):
-        writer.writerow([row["item"], row["title"], row["status"], row["decidedBy"],
-                         row["reason"] or row["outOfScope"], ";".join(row["evidence"]),
-                         ";".join(row["suggestedBy"]), row["link"]])
+        writer.writerow([csv_cell(cell) for cell in [
+            row["item"], row["title"], row["status"], row["decidedBy"],
+            row["reason"] or row["outOfScope"], ";".join(row["evidence"]),
+            ";".join(row["suggestedBy"]), row["link"]]])
     return buffer.getvalue()
 
 
@@ -1648,7 +1722,8 @@ def run_dispositions() -> int:
     if previous is not None:
         adapters_run = {name for name in scan_results if name != LEGACY_SCAN}
         coverage = {name: data.get("coverage") or {} for name, data in scan_results.items()}
-        resolution = round_resolution(previous.get("findings", []), findings, adapters_run, coverage)
+        resolution = round_resolution(previous.get("findings", []), findings, adapters_run, coverage,
+                                      scan_targets(scan_results))
         summary["sincePreviousRound"] = {
             "round": previous.get("round"),
             "resolved": resolution["resolved"],
@@ -1801,9 +1876,26 @@ def web_rechecked(finding: dict[str, Any], coverage: dict[str, dict[str, Any]]) 
     return True
 
 
+def targets_rechecked(finding: dict[str, Any], targets_run: dict[str, set[str]]) -> bool:
+    """출처마다 같은 어댑터가 같은 대상을 이번 차수에 돌렸는지. 대상 표시가 없는 예전 출처는 어댑터만 본다."""
+    for source in finding.get("sources") or []:
+        if not isinstance(source, dict) or not source.get("adapter"):
+            continue
+        target = source.get("target")
+        if target and str(target) not in targets_run.get(str(source["adapter"]), set()):
+            return False
+    return True
+
+
+def scan_targets(scan_results: dict[str, dict[str, Any]]) -> dict[str, set[str]]:
+    return {name: {str(t) for t in data.get("targets") or []}
+            for name, data in scan_results.items() if name != LEGACY_SCAN}
+
+
 def round_resolution(previous: list[dict[str, Any]], current: list[dict[str, Any]],
                      adapters_run: set[str],
-                     coverage: dict[str, dict[str, dict[str, Any]]] | None = None) -> dict[str, list[str]]:
+                     coverage: dict[str, dict[str, dict[str, Any]]] | None = None,
+                     targets_run: dict[str, set[str]] | None = None) -> dict[str, list[str]]:
     """직전 차수 대비 사라진 검출을 분류한다. 순수 함수.
 
     사라진 검출은 그 검출을 찾았던 어댑터가 이번 차수에 모두 다시 돌았을 때만 해소로 본다.
@@ -1824,7 +1916,8 @@ def round_resolution(previous: list[dict[str, Any]], current: list[dict[str, Any
         elif is_url(str(location.get("file") or "")):
             seen_again = web_rechecked(finding, coverage or {})
         else:
-            seen_again = True
+            # 같은 어댑터라도 다른 저장소만 다시 봤다면 이 검출은 확인하지 않은 것이다.
+            seen_again = targets_rechecked(finding, targets_run) if targets_run is not None else True
         if sources and sources <= adapters_run and seen_again:
             resolved.append(key)
         else:
@@ -1918,15 +2011,35 @@ def run_new_round() -> int:
     except ValueError as error:
         print(f"ERROR: {error}")
         return 1
+    checklist = None
+    if CHECKLIST_FILE.exists():
+        try:
+            checklist = load_json(CHECKLIST_FILE)
+        except (OSError, json.JSONDecodeError) as error:
+            print(f"ERROR: cannot read data/checklist.json: {error}")
+            return 1
+        if not isinstance(checklist, dict) or not isinstance(checklist.get("items"), dict):
+            print("ERROR: data/checklist.json must be an object with an items object")
+            return 1
     write_json_atomic(directory / f"round-{number:03d}.json", {
         "schemaVersion": SCHEMA_VERSION, "round": number,
         "closedAt": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "adaptersRun": adapters_run, "findings": findings,
     })
+    if checklist is not None:
+        # 지난 차수의 판정·근거는 보관하고, 같은 기준·항목을 미점검으로 다시 연다.
+        write_json_atomic(directory / f"checklist-{number:03d}.json", {**checklist, "round": number})
+        write_json_atomic(CHECKLIST_FILE, {
+            **{k: v for k, v in checklist.items() if k != "items"},
+            "updatedAt": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "items": {item: {"status": "not-checked"} for item in checklist["items"]},
+        })
     for path in scans_dir().glob("*.json") if scans_dir().is_dir() else []:
         path.unlink()
     FINDINGS_FILE.unlink()
     print(f"{number}차 점검을 닫았습니다: 검출 {len(findings)}건을 data/rounds/round-{number:03d}.json에 보관.")
+    if checklist is not None:
+        print(f"체크리스트 판정은 data/rounds/checklist-{number:03d}.json에 보관하고, 새 차수는 같은 항목을 미점검으로 시작합니다.")
     print("새 차수에서 scan을 실행하면 직전 차수 대비 해소 여부를 dispositions로 볼 수 있습니다.")
     return 0
 
@@ -2213,9 +2326,14 @@ def run_scan(direct: bool, confirm: str | None = None) -> int:
     for name, adapter, target, args, plan in jobs:
         if plan is not None and not web_confirmed:
             continue
+        # 앞 작업이 오래 걸렸을 수 있으니 실행마다 지금 시각으로 기간을 다시 본다.
+        still_ready, late = gate_status(scope)
+        if not still_ready:
+            print(f"- {name} @ {target}: 실행하지 않음 — {'; '.join(late)}")
+            continue
         timeout = DEFAULT_MAX_SECONDS
         if plan is not None:
-            timeout = web_time_limit(adapter, scope, now)
+            timeout = web_time_limit(adapter, scope, now_utc())
             if timeout <= 0:
                 print(f"- {name} @ {target}: 점검 기간이 끝나 실행하지 않음")
                 continue
@@ -2261,20 +2379,41 @@ def run_scan(direct: bool, confirm: str | None = None) -> int:
                 entry["coverage"][target] = collect_coverage(adapter, Path(tmp))
             print(f"- {name} @ {target}: run — 검출 {len(items)}건")
     ran: list[str] = []
+    previous = load_scan_results()
     for name, entry in results.items():
         if not entry["targets"]:
             print(f"- {name}: 성공한 실행이 없어 이전 결과를 유지합니다")
             continue
         scans_dir().mkdir(parents=True, exist_ok=True)
+        # 성공한 대상의 결과만 바꾸고, 실패·미실행 대상의 검출·커버리지·통제 요약은 그대로 둔다.
+        # 스코프에서 빠진 대상의 옛 결과는 남기지 않는다.
+        existing = previous.get(name)
+        in_scope = set(targets_for_adapter(next(a for n, a, *_ in jobs if n == name), scope))
+        kept_targets = [str(t) for t in (existing or {}).get("targets") or [] if str(t) in in_scope]
+        dropped = {str(t) for t in (existing or {}).get("targets") or []} - set(kept_targets)
+        coverage = dict((existing or {}).get("coverage") or {})
+        controls = dict((existing or {}).get("controls") or {})
+        ingested = [e for e in (existing or {}).get("ingested") or []
+                    if isinstance(e, dict) and e.get("target") in in_scope and e.get("target") not in entry["targets"]]
+        for target in {*entry["targets"], *dropped}:
+            coverage.pop(target, None)
+            controls.pop(target, None)
+            if existing:
+                existing = {**existing, "findings": replace_target_findings(existing, target, [])}
+        findings = list((existing or {}).get("findings") or []) + list(entry["findings"])
+        coverage.update(entry["coverage"])
+        controls.update(entry.get("controls") or {})
         record = {
             "schemaVersion": SCHEMA_VERSION, "adapter": name,
             "ranAt": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "targets": entry["targets"], "findings": entry["findings"],
+            "targets": sorted({*kept_targets, *entry["targets"]}), "findings": findings,
         }
-        if entry["coverage"]:
-            record["coverage"] = entry["coverage"]
-        if entry.get("controls"):
-            record["controls"] = entry["controls"]
+        if ingested:
+            record["ingested"] = ingested
+        if coverage:
+            record["coverage"] = coverage
+        if controls:
+            record["controls"] = controls
         write_json_atomic(scans_dir() / f"{name}.json", record)
         ran.append(name)
     if not ran:

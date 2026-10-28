@@ -110,7 +110,7 @@ python3 tools/assess_toolkit.py validate
 | `checklist` | 방법론 체크리스트(`data/checklist.json` + `checklists/<기준>.json`)의 항목별 상태·스캔 제안·건수(JSON). 어떤 시험도 실행하지 않는다 |
 | `bridge` | confirmed 코드 결함을 SARIF(`data/handoff.sarif`)로 내보내고 handedOff 표시. `--dry-run`·`--all` |
 | `evidence` | 증적 워크북 `evidence/findings.csv`와 표지 보고서 `evidence/cover.md`(스캐너가 통제 항목 결과를 내면 기준별 통과·실패·수동 표, 체크리스트가 있으면 상태별 표와 `evidence/checklist.csv` 포함)를 데이터에서 생성. 데이터가 바뀌면 validate가 드리프트를 에러로 |
-| `new-round` | 현재 차수의 검출을 `data/rounds/`에 보관하고 새 차수를 연다. 판정은 유지되고, 다음 스캔 뒤 `dispositions`가 직전 차수 대비 해소를 보여 준다 |
+| `new-round` | 현재 차수의 검출과 체크리스트 판정을 `data/rounds/`에 보관하고 새 차수를 연다. 판정은 유지되고 체크리스트 항목은 미점검으로 다시 열린다. 다음 스캔 뒤 `dispositions`가 직전 차수 대비 해소를 보여 준다 |
 
 ## 테스트
 
