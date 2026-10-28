@@ -59,7 +59,7 @@ type Seen = { opened: number; status: string[]; argv0: string[]; engineScrolls?:
 // 엔진을 대신하는 훅. hasToolkit이 거짓이면 프로젝트에 툴킷 복사본이 없는 상태, minRisk가 null이면 처리 범위 미설정.
 const STORE_ALIAS = 'Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.'
 
-function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null, windows = false, oldToolkit = false, noCheckers = false, many = false) {
+function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null, windows = false, oldToolkit = false, noCheckers = false, many = false, byChecker?: object) {
   on('command.register', () => ({ value: { command: 'sast-progress' } }))
   on('ui.open', () => { seen.opened += 1; return { value: { isPlaced: true } } })
   on('ui.status', (_: unknown, e: { text?: string }) => { seen.status.push(String(e.text)); return { value: {} } })
@@ -98,6 +98,7 @@ function engine(on: any, seen: Seen, hasToolkit: boolean, minRisk: string | null
     }
     const summary = e.argv.includes('in-scope') ? IN_SCOPE : ALL
     const older = oldToolkit || noCheckers
+    if (byChecker) return { value: { exitCode: 0, stdout: JSON.stringify({ ...JSON.parse(summary), byChecker }), stderr: '' } }
     if (many && !e.argv.includes('in-scope')) return { value: { exitCode: 0, stdout: MANY, stderr: '' } }
     return { value: { exitCode: 0, stdout: older ? JSON.stringify({ ...JSON.parse(summary), byChecker: undefined }) : summary, stderr: '' } }
   })
@@ -277,6 +278,15 @@ test('the checker rows follow the pane width', async ($, on) => {
   expect(row).toMatch(/남음 7$/)
   expect(row).not.toMatch(/5\/12/)
   await narrow.unmount()
+})
+
+test('short checker codes narrower than the header still draw', async ($, on) => {
+  const seen: Seen = { opened: 0, status: [], argv0: [] }
+  engine(on, seen, true, 'high', false, false, false, false, { XSS: { total: 2, verified: 1, deferred: 0, remaining: 1 } })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /XSS .*남음 1/ }))?.text).toBeTruthy()
+  await ui.unmount()
 })
 
 test('a long checker list scrolls under a pinned header', async ($, on) => {

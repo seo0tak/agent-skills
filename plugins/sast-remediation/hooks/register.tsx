@@ -652,7 +652,8 @@ export const register: Register = on => {
       const fracWidth = Math.max(...shown.map(c => `${c.verified}/${c.total}`.length))
       const tailWidth = 2 + 4 + 1 + remWidth + (narrow ? 0 : 2 + fracWidth)
       const longest = Math.max(...shown.map(c => c.code.length))
-      const nameWidth = Math.min(longest, narrow ? 14 : wide ? 44 : 26, Math.max(8, columns - 3 - tailWidth - 2))
+      // 열 제목('체커', 2칸 글자 둘)보다 좁아지지 않게 한다. XSS처럼 짧은 코드만 있으면 제목 패딩이 음수가 된다.
+      const nameWidth = Math.max(cellWidth('체커'), Math.min(longest, narrow ? 14 : wide ? 44 : 26, Math.max(8, columns - 3 - tailWidth - 2)))
       const miniWidth = narrow ? 0 : Math.min(40, columns - 3 - nameWidth - 1 - tailWidth - 1)
       const name = (code: string) => code.length > nameWidth ? `${code.slice(0, nameWidth - 1)}~` : code.padEnd(nameWidth)
       const maxTotal = Math.max(...list.map(c => c.total))

@@ -270,13 +270,17 @@ class Workspace:
     def results(self):
         directory = safe_record(self.root, "security-results")
         results = {}
+        # 검증기와 같은 정책: 레코드의 schemaVersion 누락은 구버전으로 보고 경고만 남긴다.
+        self.result_warnings = []
         for path in sorted(directory.glob("*.json")):
             if path.name == "index.json":
                 continue
             self.check_id(path.stem)
             result = read_json(safe_record(self.root, str(path.relative_to(self.root))))
-            if not isinstance(result, dict) or result.get("schemaVersion") != "1.0" or result.get("id") != path.stem:
+            if not isinstance(result, dict) or result.get("schemaVersion", "1.0") != "1.0" or result.get("id") != path.stem:
                 raise ValueError(f"unsupported result record: {path.name}")
+            if "schemaVersion" not in result:
+                self.result_warnings.append(f"result {path.stem} schemaVersion is missing; expected '1.0' (migration may be needed)")
             if result.get("workflowStatus") not in WORKFLOWS or result.get("conclusion") not in CONCLUSIONS or not isinstance(result.get("verification"), dict):
                 raise ValueError(f"unsupported result fields: {path.name}")
             # Reuse the shipped result schema without an external dependency.
@@ -285,7 +289,7 @@ class Workspace:
             except ImportError:
                 from sast_toolkit import ValidationReport, validate_schema_contract
             report = ValidationReport()
-            if not validate_schema_contract(report, result, "result.schema.json", f"result {path.stem}"):
+            if not validate_schema_contract(report, result, "result.schema.json", f"result {path.stem}", record_version=True):
                 raise ValueError(f"unsupported result schema: {path.name}: {report.errors}")
             results[path.stem] = result
         return results
@@ -398,6 +402,7 @@ class Workspace:
                     raise ValueError(f"ambiguous recovery conflict for {key} ({origin}); reconcile explicitly")
                 recovered["items"][key] = copy.deepcopy(item)
         results = self.results()
+        warnings.extend(self.result_warnings)
         verification = {key: self.verification_status(key, value) for key, value in results.items()}
         lost_notes = []
         for key, result in results.items():
@@ -464,7 +469,8 @@ class Workspace:
                 "inScopeResumeCandidates": sorted(candidates & in_scope),
                 # Unlike progress-only counts, this also checks canonical evidence,
                 # freshness, agreement and unfinished checkpoints. Policy review remains separate.
-                "selectedReadyForCompletion": bool(in_scope) and not bool(candidates & in_scope)}
+                "selectedReadyForCompletion": bool(in_scope) and not bool(candidates & in_scope),
+                "warnings": self.result_warnings}
 
 
 def parse_args():

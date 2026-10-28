@@ -276,6 +276,20 @@ class StateTests(unittest.TestCase):
         self.assertEqual(item["note"], "Investigating boundary")
         self.assertEqual(preview["verification"]["SAMPLE-001"]["status"], "unbound")
 
+    def test_legacy_result_without_schema_version_warns_like_validator(self):
+        record = self.result()
+        record.pop("schemaVersion")
+        self.store_result(record)
+        status = self.run_state("status")
+        self.assertIn("SAMPLE-001", status["verification"])
+        self.assertTrue(any("schemaVersion is missing" in w for w in status["warnings"]))
+        preview = self.run_state("recover-progress")
+        self.assertTrue(any("schemaVersion is missing" in w for w in preview["warnings"]))
+        record["schemaVersion"] = "0.9"
+        self.store_result(record)
+        rejected = self.run_state("status", ok=False)
+        self.assertIn("unsupported result record", json.dumps(rejected))
+
     def test_foreign_or_malformed_backup_rejected_without_state_mutation(self):
         self.run_state("checkpoint", "--id", "SAMPLE-001")
         backup = self.project / "backup.json"
